@@ -1,0 +1,8 @@
+{
+  "name": "Podcast Insight Dashboard",
+  "description": "Generate insights, summaries, and social media clips from podcast transcripts using AI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
