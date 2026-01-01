@@ -1,45 +1,98 @@
-# Podcast Insight Dashboard
+📌 Podcast Insight Dashboard
 
-A React + Vite dashboard that analyzes podcast transcripts with Gemini, saves results to Supabase, and displays them in a user dashboard with a full results view.
+An AI-powered dashboard for analyzing podcast transcripts and generating structured insights, content, and workflows.
 
-## What it does
-- Log in / persist session (Supabase Auth)
-- Run transcript analysis (Gemini via backend API)
-- Save transcript + structured analysis results to Supabase
-- View analyses in the Dashboard
-- View detailed results per transcript (platform content, overview, exports, etc.)
+🚀 Current Status (Stable Checkpoint)
 
-## Tech Stack
-- Frontend: React + TypeScript + Vite
-- Backend: Node/Express (TypeScript)
-- AI: Google Gemini
-- Database/Auth: Supabase (Postgres + Auth)
+✅ Transcript analysis runs successfully
+✅ Gemini API analysis returns structured JSON
+✅ Results are saved to Supabase
+✅ Results display correctly in the Dashboard
+✅ Overview and Platform Content tabs fully functional
 
-## Project Structure (high level)
-- `/src` - React app (pages, components, lib, services)
-- `/server` - API server (Gemini calls + endpoints)
-- `/services` - Shared / app services (depending on your structure)
+⚠️ Blog & SEO tab UI present but not yet wired
+⚠️ Repurposing uses placeholder generation logic
+⚠️ Monetization logic scaffolded but not finalized
 
-## Requirements
-- Node.js (LTS recommended)
-- Supabase project (URL + Anon key)
-- Gemini API key
+🧠 Core Features
 
-## Environment Variables
+AI Transcript Analysis
 
-### Frontend (.env.local)
-Create `./.env.local` in the project root:
+Key takeaways
 
-```bash
+Quotes with speakers & timestamps
+
+Sentiment analysis
+
+Social & platform-specific content
+
+Dashboard
+
+View all past analyses
+
+Status tracking
+
+Supabase-backed persistence
+
+Results View
+
+Overview insights
+
+Platform-ready content
+
+Export options (PDF, DOCX, JSON)
+
+🛠 Tech Stack
+
+Frontend: React + Vite + TypeScript
+
+Backend: Node + Express
+
+AI: Google Gemini API
+
+Database: Supabase (Postgres + Auth)
+
+Styling: Tailwind CSS
+
+🔐 Environment Variables
+
+Create .env.local in the root:
+
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_API_BASE_URL=http://localhost:8080
 
-## Production notes
 
-- This repository requires a configured backend and Supabase project for production use. The application will throw clear errors on startup if `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` or `VITE_API_BASE_URL` are missing — this is intentional to avoid silently running with local mocks.
-- `services/mockBackend.ts` remains in the codebase as a development convenience but is **not** imported by production code. Do not rely on it for production data.
+Backend .env:
 
-## Local development
+GEMINI_API_KEY=your_gemini_key
+PORT=8080
 
-- For fast local development you may keep a local server and Supabase configured. If you prefer to prototype without a backend, a mock service file exists at `services/mockBackend.ts`, but ensure production configuration is set before deploying.
+▶️ Run Locally
+
+Frontend:
+
+npm install
+npm run dev
+
+
+Backend:
+
+cd server
+npm install
+npm run dev
+
+🧭 Roadmap (Next)
+
+Wire Blog & SEO rendering
+
+Replace repurpose placeholders with real data
+
+Add research-backed monetization engine
+
+External market & sponsor intelligence
+
+🧑‍💻 Author
+
+Built by Ganell Tubbs
+Founder, The Elite Automation Agency
