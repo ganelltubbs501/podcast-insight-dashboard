@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getUsageMetrics } from '../services/mockBackend';
+import { getUsageMetrics } from '../services/transcripts';
 import { downloadAnalyticsReport } from '../services/downloadService';
 import { UsageMetrics } from '../types';
 import { PieChart, Download, Clock, Zap, TrendingUp, BarChart2, DollarSign, RefreshCw, FileText, CheckCircle, XCircle } from 'lucide-react';

@@ -15,7 +15,7 @@ import {
   updateTranscriptStatus,
   saveTranscriptResult,
 } from "../services/transcripts";
-import { schedulePost } from "../services/mockBackend";
+
 
 import { getStoredUser } from '../services/auth';
 
@@ -68,7 +68,59 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const [activeRepurposeView, setActiveRepurposeView] = useState<'hub' | 'email' | 'calendar' | 'article' | 'images'>('hub');
   const [isRepurposing, setIsRepurposing] = useState(false);
 
+  // Speaker analytics state
+  const [speakerEstimates, setSpeakerEstimates] = useState<Record<string, number> | null>(null);
+  const [isEstimatingSpeakers, setIsEstimatingSpeakers] = useState(false);
+  const [isSavingEstimates, setIsSavingEstimates] = useState(false);
+
   const navigate = useNavigate();
+
+  // Estimate speaking times using a simple heuristic (uniform distribution)
+  const estimateSpeakers = () => {
+    if (!result?.speakers || result.speakers.length === 0) return;
+    setIsEstimatingSpeakers(true);
+
+    try {
+      const speakers = result.speakers;
+      const n = speakers.length;
+      const base = Math.floor(100 / n);
+      let remainder = 100 - base * n;
+      const estimates: Record<string, number> = {};
+      for (let i = 0; i < n; i++) {
+        const add = remainder > 0 ? 1 : 0;
+        estimates[speakers[i].name] = base + add;
+        if (remainder > 0) remainder -= 1;
+      }
+      setSpeakerEstimates(estimates);
+    } catch (err) {
+      console.error('Failed to estimate speakers', err);
+      setSpeakerEstimates(null);
+    } finally {
+      setIsEstimatingSpeakers(false);
+    }
+  };
+
+  // Persist estimates into the transcript result.speakers.speakingTimePercent via saveTranscriptResult
+  const saveSpeakerEstimates = async () => {
+    if (!transcript || !speakerEstimates) return;
+    setIsSavingEstimates(true);
+    try {
+      const updatedSpeakers = (transcript.result?.speakers || []).map(s => ({
+        ...s,
+        speakingTimePercent: speakerEstimates[s.name] ?? s.speakingTimePercent ?? 0,
+      }));
+
+      await saveTranscriptResult(transcript.id, { speakers: updatedSpeakers });
+      await loadData();
+      setSpeakerEstimates(null);
+      alert('Speaker estimates saved.');
+    } catch (err) {
+      console.error('Failed to save speaker estimates', err);
+      alert('Failed to save speaker estimates.');
+    } finally {
+      setIsSavingEstimates(false);
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -191,8 +243,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   };
 
   const handleSchedulePost = async () => {
-    // This feature was backed by mockBackend previously.
-    // Keeping UI intact, but making it non-blocking until you add a real table for scheduling.
+    // Scheduling requires a production backend. The UI remains but scheduling will call the configured API when available.
     if (!scheduleDate || !scheduleTime || !transcript || !transcript.result) return;
 
     setIsScheduling(true);
@@ -258,8 +309,9 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
       if (type === 'linkedin_article') setActiveRepurposeView('article');
       if (type === 'image_prompts') setActiveRepurposeView('images');
     } catch (e) {
-      console.error(e);
-      alert("Failed to repurpose content.");
+      console.error('Repurpose failed', e);
+      const msg = (e as any)?.message ?? (typeof e === 'string' ? e : 'Unknown error');
+      alert(`Failed to repurpose content: ${msg}`);
     } finally {
       setIsRepurposing(false);
     }
@@ -464,13 +516,185 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   };
 
   const renderRepurposingTab = () => {
-    // unchanged UI — it stores repurposed content into result.repurposed via saveTranscriptResult
-    // (same logic you had, just wired to Supabase now)
-    // For brevity, this section stays as-is in behavior.
-    // (Your original content blocks are large; they are still valid.)
+    const repurposed: Partial<RepurposedContent> = result.repurposed || {};
+
     return (
-      <div className="p-8 text-center bg-white rounded-xl border border-gray-200">
-        Repurposing view is wired. Use the buttons to generate.
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Repurposing</h3>
+            <p className="text-sm text-gray-500">Generate email series, social calendar, LinkedIn drafts, or image prompts from this episode.</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={() => handleRepurpose('email_series')} disabled={isRepurposing} className="px-3 py-1 text-sm rounded-md bg-white border border-gray-200 hover:bg-gray-50">Email Series</button>
+            <button onClick={() => handleRepurpose('social_calendar')} disabled={isRepurposing} className="px-3 py-1 text-sm rounded-md bg-white border border-gray-200 hover:bg-gray-50">Social Calendar</button>
+            <button onClick={() => handleRepurpose('linkedin_article')} disabled={isRepurposing} className="px-3 py-1 text-sm rounded-md bg-white border border-gray-200 hover:bg-gray-50">LinkedIn Article</button>
+            <button onClick={() => handleRepurpose('image_prompts')} disabled={isRepurposing} className="px-3 py-1 text-sm rounded-md bg-white border border-gray-200 hover:bg-gray-50">Image Prompts</button>
+          </div>
+        </div>
+
+        <div>
+          {/* Hub view */}
+          {activeRepurposeView === 'hub' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                <h4 className="font-semibold text-gray-900">Email Series</h4>
+                <p className="text-sm text-gray-600 mt-2">Short automated email sequences to onboard listeners or promote the episode.</p>
+                <div className="mt-4">
+                  <button onClick={() => { setActiveRepurposeView('email'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm">Open</button>
+                </div>
+                <div className="mt-4 text-xs text-gray-500">{repurposed.emailSeries ? `${repurposed.emailSeries.length} emails generated` : 'No emails generated yet'}</div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                <h4 className="font-semibold text-gray-900">Social Calendar</h4>
+                <p className="text-sm text-gray-600 mt-2">A multi-week calendar of posts for LinkedIn, Twitter, and more.</p>
+                <div className="mt-4">
+                  <button onClick={() => { setActiveRepurposeView('calendar'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm">Open</button>
+                </div>
+                <div className="mt-4 text-xs text-gray-500">{repurposed.socialCalendar ? `${repurposed.socialCalendar.length} items` : 'No social content generated'}</div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                <h4 className="font-semibold text-gray-900">LinkedIn Article</h4>
+                <p className="text-sm text-gray-600 mt-2">A draft article adapted for LinkedIn based on the episode's insights.</p>
+                <div className="mt-4">
+                  <button onClick={() => { setActiveRepurposeView('article'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm">Open</button>
+                </div>
+                <div className="mt-4 text-xs text-gray-500">{repurposed.linkedinArticle ? 'Draft available' : 'No draft yet'}</div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                <h4 className="font-semibold text-gray-900">Image Prompts</h4>
+                <p className="text-sm text-gray-600 mt-2">AI image prompts for social graphics or quote cards.</p>
+                <div className="mt-4">
+                  <button onClick={() => { setActiveRepurposeView('images'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm">Open</button>
+                </div>
+                <div className="mt-4 text-xs text-gray-500">{repurposed.imagePrompts ? `${repurposed.imagePrompts.length} prompts` : 'No prompts yet'}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Email Series View */}
+          {activeRepurposeView === 'email' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-gray-900">Email Series</h4>
+                <div className="flex gap-2">
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => { repurposed.emailSeries ? navigator.clipboard.writeText(JSON.stringify(repurposed.emailSeries, null, 2)) : null; }} className="px-3 py-1 bg-white border rounded-md text-sm">Copy JSON</button>
+                </div>
+              </div>
+
+              {!repurposed.emailSeries ? (
+                <div className="p-6 text-center text-gray-500">No email series generated. Click “Email Series” above to generate.</div>
+              ) : (
+                <div className="space-y-4">
+                  {repurposed.emailSeries.map((e: any, i: number) => (
+                    <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-gray-900">Day {e.day}: {e.subject}</div>
+                          <div className="text-sm text-gray-700 mt-1 whitespace-pre-line">{e.body}</div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <button onClick={() => navigator.clipboard.writeText(e.body)} className="px-3 py-1 bg-white border rounded-md text-sm">Copy</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Social Calendar View */}
+          {activeRepurposeView === 'calendar' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-gray-900">Social Calendar</h4>
+                <div className="flex gap-2">
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => { repurposed.socialCalendar ? navigator.clipboard.writeText(JSON.stringify(repurposed.socialCalendar, null, 2)) : null; }} className="px-3 py-1 bg-white border rounded-md">Copy JSON</button>
+                </div>
+              </div>
+
+              {!repurposed.socialCalendar ? (
+                <div className="p-6 text-center text-gray-500">No social calendar generated. Click “Social Calendar” above to generate.</div>
+              ) : (
+                <div className="space-y-4">
+                  {repurposed.socialCalendar.map((s: any, i: number) => (
+                    <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center">
+                      <div>
+                        <div className="font-semibold text-gray-900">Day {s.day} • {s.platform}</div>
+                        <div className="text-sm text-gray-700">{s.content}</div>
+                      </div>
+                      <div>
+                        <button onClick={() => navigator.clipboard.writeText(s.content)} className="px-3 py-1 bg-white border rounded-md text-sm">Copy</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* LinkedIn Article View */}
+          {activeRepurposeView === 'article' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-gray-900">LinkedIn Article</h4>
+                <div className="flex gap-2">
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => { repurposed.linkedinArticle ? navigator.clipboard.writeText(repurposed.linkedinArticle) : null; }} className="px-3 py-1 bg-white border rounded-md">Copy</button>
+                </div>
+              </div>
+
+              {!repurposed.linkedinArticle ? (
+                <div className="p-6 text-center text-gray-500">No LinkedIn draft generated. Click “LinkedIn Article” above to generate.</div>
+              ) : (
+                <div className="prose max-w-none text-sm text-gray-700">
+                  <h2 className="text-lg font-bold mb-2">{transcript.title}</h2>
+                  <div className="mt-2 whitespace-pre-line">{repurposed.linkedinArticle}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Image Prompts View */}
+          {activeRepurposeView === 'images' && (
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-semibold text-gray-900">Image Prompts</h4>
+                <div className="flex gap-2">
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => { repurposed.imagePrompts ? navigator.clipboard.writeText(JSON.stringify(repurposed.imagePrompts, null, 2)) : null; }} className="px-3 py-1 bg-white border rounded-md">Copy JSON</button>
+                </div>
+              </div>
+
+              {!repurposed.imagePrompts ? (
+                <div className="p-6 text-center text-gray-500">No image prompts generated. Click “Image Prompts” above to generate.</div>
+              ) : (
+                <div className="space-y-4">
+                  {repurposed.imagePrompts.map((p: any, i: number) => (
+                    <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-gray-900">{p.quote}</div>
+                          <div className="text-sm text-gray-700 mt-1">{p.prompt}</div>
+                        </div>
+                        <div>
+                          <button onClick={() => navigator.clipboard.writeText(p.prompt)} className="px-3 py-1 bg-white border rounded-md text-sm">Copy</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -753,8 +977,193 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     </div>
   );
 
-  const renderBlogTab = () => (<div className="p-8 text-center bg-white rounded-xl border border-gray-200">Blog & SEO view</div>);
-  const renderSpeakersTab = () => (<div className="p-8 text-center bg-white rounded-xl border border-gray-200">Speaker Analytics view</div>);
+  const renderBlogTab = () => {
+    const post = result.blogPost || null;
+    const seoData = result.seo || null;
+
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-bold text-gray-900">Blog & SEO</h3>
+            <p className="text-sm text-gray-500">Drafts and SEO suggestions generated from the episode</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveBlogTab('article')}
+              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'article' ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Article
+            </button>
+            <button
+              onClick={() => setActiveBlogTab('shownotes')}
+              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'shownotes' ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              Show Notes
+            </button>
+            <button
+              onClick={() => setActiveBlogTab('seo')}
+              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'seo' ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+              SEO
+            </button>
+          </div>
+        </div>
+
+        <div>
+          {activeBlogTab === 'article' && (
+            <div className="space-y-4">
+              <h2 className="text-2xl font-bold text-gray-900">{post?.title || 'Draft Title'}</h2>
+              <p className="text-sm text-gray-600">{post?.intro || 'No intro available.'}</p>
+
+              {post?.sections?.map((s, i) => (
+                <div key={i} className="pt-4 border-t border-gray-100">
+                  <h4 className="font-semibold text-gray-900 mb-2">{s.heading}</h4>
+                  <p className="text-sm text-gray-700 leading-relaxed">{s.content}</p>
+                </div>
+              ))}
+
+              {post?.conclusion && (
+                <div className="pt-4 border-t border-gray-100">
+                  <h4 className="font-semibold text-gray-900 mb-2">Conclusion</h4>
+                  <p className="text-sm text-gray-700">{post.conclusion}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => navigator.clipboard.writeText(`${post?.title}\n\n${post?.intro}\n\n${post?.sections?.map(s => `${s.heading}\n${s.content}`).join('\n\n') || ''}\n\n${post?.conclusion || ''}`)}
+                  className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Copy Article
+                </button>
+                <button onClick={() => downloadDOCX({ title: post?.title || 'Draft', intro: post?.intro || '', sections: post?.sections || [], conclusion: post?.conclusion || '' } as any as Transcript)} className="px-4 py-2 bg-primary text-white rounded-md text-sm hover:brightness-95">Export</button>
+              </div>
+            </div>
+          )}
+
+          {activeBlogTab === 'shownotes' && (
+            <div className="space-y-4">
+              <h3 className="font-bold text-gray-900">Show Notes</h3>
+              <p className="text-sm text-gray-600">{result.showNotes || post?.intro || 'No show notes available.'}</p>
+
+              <div className="mt-4 grid gap-3">
+                {post?.sections?.map((s, i) => (
+                  <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <h4 className="font-semibold text-gray-900">{s.heading}</h4>
+                    <p className="text-sm text-gray-700">{s.content}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end mt-4">
+                <button onClick={() => navigator.clipboard.writeText(result.showNotes || post?.intro || '')} className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50">Copy Notes</button>
+              </div>
+            </div>
+          )}
+
+          {activeBlogTab === 'seo' && (
+            <div className="space-y-4">
+              <h3 className="font-bold text-gray-900">SEO Suggestions</h3>
+
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <p className="text-sm text-gray-700"><span className="font-medium">Meta Description:</span> {seoData?.metaDescription || 'No meta description generated.'}</p>
+                <p className="text-sm text-gray-700 mt-2"><span className="font-medium">Keywords:</span> {seoData?.keywords?.join(', ') || 'No keywords generated.'}</p>
+                <p className="text-sm text-gray-700 mt-2"><span className="font-medium">Title Variations:</span> {seoData?.titleVariations?.join(' • ') || 'No title variations.'}</p>
+                <p className="text-sm text-gray-700 mt-2"><span className="font-medium">Readability:</span> {seoData?.readability?.score ?? 'N/A'} ({seoData?.readability?.level ?? 'N/A'})</p>
+              </div>
+
+              <div className="flex justify-end mt-2">
+                <button onClick={() => navigator.clipboard.writeText(JSON.stringify(seoData, null, 2))} className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50">Copy SEO JSON</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+  const renderSpeakersTab = () => {
+    const speakers = result.speakers || [];
+    const hasPercent = speakers.some(s => typeof s.speakingTimePercent === 'number');
+
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Speaker Analytics</h3>
+            <p className="text-sm text-gray-500">Contributions and speaking time estimates</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!hasPercent && speakers.length > 0 && (
+              <button
+                onClick={estimateSpeakers}
+                className={`px-3 py-1 text-sm rounded-md ${isEstimatingSpeakers ? 'bg-gray-100' : 'bg-white border border-gray-200'}`}
+              >
+                {isEstimatingSpeakers ? 'Estimating...' : 'Estimate Speaking Times'}
+              </button>
+            )}
+
+            {speakerEstimates && (
+              <button
+                onClick={saveSpeakerEstimates}
+                disabled={isSavingEstimates}
+                className="px-3 py-1 text-sm rounded-md bg-primary text-white"
+              >
+                {isSavingEstimates ? 'Saving...' : 'Save Estimates'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {speakers.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">No speaker analytics available for this transcript.</div>
+        ) : (
+          <div className="space-y-4">
+            {speakers.map((s, i) => {
+              const percent = speakerEstimates?.[s.name] ?? s.speakingTimePercent ?? 0;
+              return (
+                <div key={i} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center font-bold text-indigo-700">{(s.name || 'U').charAt(0).toUpperCase()}</div>
+                    <div>
+                      <div className="font-semibold text-gray-900">{s.name} <span className="text-xs text-gray-500 ml-2">{s.role}</span></div>
+                      <p className="text-sm text-gray-600">{s.contribution}</p>
+                      {s.topics && s.topics.length > 0 && (
+                        <div className="flex gap-2 mt-2">
+                          {s.topics.map((t: string) => (
+                            <span key={t} className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded">{t}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="w-40 text-right">
+                    <div className="text-xs text-gray-500 mb-1">Speaking Time</div>
+                    <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                      <div className="h-2 bg-indigo-600" style={{ width: `${percent}%` }} />
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">{percent}%</div>
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => navigator.clipboard.writeText(speakers.map(s => `${s.name}: ${speakerEstimates?.[s.name] ?? s.speakingTimePercent ?? 0}%`).join('\n'))}
+                className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Copy Summary
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div

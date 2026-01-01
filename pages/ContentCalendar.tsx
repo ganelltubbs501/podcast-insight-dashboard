@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getScheduledPosts, deleteScheduledPost } from '../services/mockBackend';
+import { getScheduledPosts, deleteScheduledPost } from '../services/backend';
 import { ScheduledPost, Platform } from '../types';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Linkedin, Twitter, Video, Mail, FileType, Plus, Trash2, BarChart2, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 

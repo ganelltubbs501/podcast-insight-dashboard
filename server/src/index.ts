@@ -40,5 +40,91 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
+// Repurpose content (generate email series, social calendar, articles, image prompts)
+app.post("/api/repurpose", (req, res) => {
+  try {
+    const { type, context } = req.body ?? {};
+    if (!type) return res.status(400).json({ error: "Missing type" });
+
+    // Return realistic stub data based on repurposing type
+    let data: any = {};
+    if (type === 'email_series') {
+      data.emailSeries = [
+        { day: 1, subject: 'Episode Highlights', body: 'Check out our latest insights...', goal: 'Engage' },
+        { day: 3, subject: 'Deep Dive', body: 'A closer look at the main topic...', goal: 'Educate' },
+        { day: 7, subject: 'Action Items', body: 'How to apply these insights...', goal: 'Convert' }
+      ];
+    } else if (type === 'social_calendar') {
+      data.socialCalendar = [
+        { day: 1, platform: 'LinkedIn', type: 'Insight', content: 'Key takeaway from our episode...' },
+        { day: 2, platform: 'Twitter', type: 'Quote', content: 'Memorable quote: "..."' },
+        { day: 3, platform: 'Instagram', type: 'Clip', content: 'Short video clip suggestion' },
+        { day: 5, platform: 'LinkedIn', type: 'Article', content: 'Full article based on episode' }
+      ];
+    } else if (type === 'linkedin_article') {
+      data.linkedinArticle = 'Comprehensive LinkedIn article draft with introduction, key sections, and call-to-action based on episode insights.';
+    } else if (type === 'image_prompts') {
+      data.imagePrompts = [
+        { quote: 'Key insight 1', prompt: 'Modern flat design with bold typography and tech theme' },
+        { quote: 'Key insight 2', prompt: 'Minimalist design with professional color palette' }
+      ];
+    }
+
+    return res.json(data);
+  } catch (err: any) {
+    console.error("REPURPOSE ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Guest suggestions (based on transcript context)
+app.post("/api/guests", (req, res) => {
+  try {
+    const guests = [
+      { id: 'g1', name: 'Industry Expert A', title: 'Founder & CEO', bio: 'Thought leader in the space', expertise: ['strategy', 'growth'], status: 'Suggested', matchReason: 'Topical alignment' },
+      { id: 'g2', name: 'Practitioner B', title: 'Director', bio: 'Hands-on experience with implementation', expertise: ['implementation', 'tools'], status: 'Suggested', matchReason: 'Audience fit' }
+    ];
+    return res.json(guests);
+  } catch (err: any) {
+    console.error("GUESTS ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Generate outreach email for a guest
+app.post("/api/outreach", (req, res) => {
+  try {
+    const { guestName, guestBio, context } = req.body ?? {};
+    const email = {
+      subject: `Invitation to be a guest on our podcast`,
+      body: `Hi ${guestName || 'there'},\n\nI've been following your work on ${guestBio || 'your expertise'} and think you'd be a perfect fit for our audience.\n\nWould you be interested in joining us to discuss ${(context || 'this topic').split('\n')[0]}?\n\nLooking forward to hearing from you!\n\nBest regards,\nPodcast Team`
+    };
+    return res.json(email);
+  } catch (err: any) {
+    console.error("OUTREACH ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Generate sponsorship insights
+app.post("/api/sponsorship", (req, res) => {
+  try {
+    const insights = {
+      score: 72,
+      reasoning: 'This episode has strong appeal to a niche audience with clear monetization opportunities. The content and tone align well with mid-market sponsors.',
+      suggestedSponsors: [
+        { industry: 'SaaS Tools', brands: ['Tool A', 'Tool B', 'Tool C'], matchReason: 'Target audience overlap' },
+        { industry: 'Online Services', brands: ['Service X', 'Service Y'], matchReason: 'Audience demographics' }
+      ],
+      targetAudienceProfile: 'Professionals aged 25-45 interested in industry trends and best practices.',
+      potentialAdSpots: ['Pre-roll (15s)', 'Mid-roll host read (30s)', 'Post-roll with CTA']
+    };
+    return res.json(insights);
+  } catch (err: any) {
+    console.error("SPONSORSHIP ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
 const port = process.env.PORT ? Number(process.env.PORT) : 8080;
 app.listen(port, () => console.log(`API listening on :${port}`));

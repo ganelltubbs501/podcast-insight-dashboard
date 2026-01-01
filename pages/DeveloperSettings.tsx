@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getApiKeys, generateApiKey, revokeApiKey, getWebhooks, addWebhook, deleteWebhook, testWebhook } from '../services/mockBackend';
+import { getApiKeys, generateApiKey, revokeApiKey, getWebhooks, addWebhook, deleteWebhook, testWebhook } from '../services/backend';
 import { ApiKey, Webhook } from '../types';
 import { Terminal, Webhook as WebhookIcon, Zap, FileJson, Plus, Copy, Trash2, Check, RefreshCw, AlertCircle, Play } from 'lucide-react';
 

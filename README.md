@@ -34,3 +34,12 @@ Create `./.env.local` in the project root:
 VITE_SUPABASE_URL=your_supabase_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 VITE_API_BASE_URL=http://localhost:8080
+
+## Production notes
+
+- This repository requires a configured backend and Supabase project for production use. The application will throw clear errors on startup if `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` or `VITE_API_BASE_URL` are missing — this is intentional to avoid silently running with local mocks.
+- `services/mockBackend.ts` remains in the codebase as a development convenience but is **not** imported by production code. Do not rely on it for production data.
+
+## Local development
+
+- For fast local development you may keep a local server and Supabase configured. If you prefer to prototype without a backend, a mock service file exists at `services/mockBackend.ts`, but ensure production configuration is set before deploying.

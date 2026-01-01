@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, BookOpen, PlayCircle, MessageCircle, ChevronDown, ChevronRight, Mail, ExternalLink, Send, Check } from 'lucide-react';
-import { getHelpArticles, getTutorials, sendSupportTicket } from '../services/mockBackend';
+import { getHelpArticles, getTutorials, sendSupportTicket } from '../services/backend';
 import { HelpArticle, Tutorial } from '../types';
 
 interface HelpPanelProps {

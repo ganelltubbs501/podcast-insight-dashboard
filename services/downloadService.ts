@@ -1,5 +1,5 @@
 import { Transcript, UsageMetrics } from "../types";
-import { getStoredUser } from "./mockBackend";
+import { getStoredUser } from "./auth";
 
 export const downloadPDF = async (transcript: Transcript) => {
   const { result, title, date } = transcript;

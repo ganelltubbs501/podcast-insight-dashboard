@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getTeamMembers, inviteTeamMember, removeTeamMember, getActivityLog } from '../services/mockBackend';
+import { getTeamMembers, inviteTeamMember, removeTeamMember, getActivityLog } from '../services/backend';
 import { TeamMember, ActivityLog } from '../types';
 import { Users, UserPlus, Trash2, Clock, Mail, Shield, CheckCircle } from 'lucide-react';
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getStoredUser, updateBrandingSettings } from '../services/mockBackend';
+import { getStoredUser } from '../services/auth';
+import { updateBrandingSettings } from '../services/backend';
 import { BrandingSettings } from '../types';
 import { Palette, Upload, Globe, Mail, Save, Layout, Smartphone, Check } from 'lucide-react';
 

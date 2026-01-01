@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { getGuests, addGuest, updateGuest, deleteGuest, getTranscripts } from '../services/mockBackend';
+import { getGuests, addGuest, updateGuest, deleteGuest } from '../services/backend';
+import { getTranscripts } from '../services/transcripts';
 import { suggestGuests, generateOutreachEmail } from '../services/geminiService';
 import { Guest, Transcript } from '../types';
 import { Users, Mail, Search, Plus, UserCheck, Trash2, ExternalLink, Loader2, Sparkles, X, Copy, Check } from 'lucide-react';

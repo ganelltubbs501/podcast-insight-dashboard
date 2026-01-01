@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getTranscripts } from '../services/mockBackend';
+import { getTranscripts } from '../services/transcripts';
 import { Transcript } from '../types';
 import { BarChart3, TrendingUp, Users, Clock, Calendar, ArrowUpRight, ArrowDownRight, FileText } from 'lucide-react';
 
