@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Podcast</title>
+    <description>Test podcast feed. Sponsored by Acme Corp.</description>
+    <link>http://example.com/podcast</link>
+
+    <item>
+      <title>Episode 1: Intro</title>
+      <link>http://example.com/ep1</link>
+      <description>Welcome to episode 1. This episode is sponsored by Acme Corp. Use code ACME10 for 10% off.</description>
+      <pubDate>Fri, 01 Jan 2026 00:00:00 GMT</pubDate>
+    </item>
+
+    <item>
+      <title>Episode 2: Deep Dive</title>
+      <link>http://example.com/ep2</link>
+      <description>Deep dive into testing. Brought to you by ExampleCo.</description>
+      <pubDate>Fri, 08 Jan 2026 00:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

@@ -44,8 +44,8 @@ export const generateOutreachEmail = async (
   return postJSON('/api/outreach', { guestName: _guestName, guestBio: _guestBio, context: _context });
 };
 
-export const generateSponsorshipInsights = async (_context: string): Promise<SponsorshipInsights> => {
-  return postJSON<SponsorshipInsights>('/api/sponsorship', { context: _context });
+export const generateSponsorshipInsights = async (_context: string, useLiveData: boolean = false): Promise<SponsorshipInsights> => {
+  return postJSON<SponsorshipInsights>('/api/sponsorship', { context: _context, useLiveData });
 };
 
 export const generateRepurposedContent = async (

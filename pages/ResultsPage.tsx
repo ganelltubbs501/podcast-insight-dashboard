@@ -143,6 +143,34 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     setTimeout(() => setCopiedSection(null), 2000);
   };
 
+  const handleCopyJSON = async (obj: any, label: string = 'copy-json') => {
+    const json = JSON.stringify(obj ?? {}, null, 2);
+
+    try {
+      await navigator.clipboard.writeText(json);
+      setCopiedSection(label);
+      setTimeout(() => setCopiedSection(null), 2000);
+    } catch (err) {
+      // Fallback for browsers/settings that block clipboard
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = json;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+
+        setCopiedSection(label);
+        setTimeout(() => setCopiedSection(null), 2000);
+      } catch (e) {
+        console.error("Copy JSON failed:", err);
+        alert("Copy failed. Your browser blocked clipboard access.");
+      }
+    }
+  };
+
   const handleDownload = async (type: 'pdf' | 'docx' | 'md' | 'kit' | 'json' | 'sheets' | 'email') => {
     if (!transcript) return;
     setShowDownloadMenu(false);
@@ -271,17 +299,19 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     try {
       const context = `
         Title: ${transcript.title}
+        Content: ${transcript.content || ''}
         Key Takeaways: ${transcript.result.keyTakeaways?.join('\n') || ''}
         Topics: ${transcript.result.seo?.keywords?.join(', ') || ''}
       `;
-      const insights = await generateSponsorshipInsights(context);
+      const insights = await generateSponsorshipInsights(context, true);
 
       // merge into result
       await saveTranscriptResult(transcript.id, { sponsorship: insights });
       await loadData();
     } catch (e) {
-      console.error(e);
-      alert("Failed to generate sponsorship insights.");
+      console.error("Sponsorship generation failed:", e);
+      const msg = (e as any)?.message ?? String(e);
+      alert(`Failed to generate sponsorship insights: ${msg}`);
     } finally {
       setIsGeneratingMonetization(false);
     }
@@ -403,14 +433,47 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
               </div>
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Sponsorship Readiness</h3>
-              <p className="text-gray-600 text-sm leading-relaxed mb-4">{sponsorship.reasoning}</p>
-              <div className="flex flex-wrap gap-2">
-                {sponsorship.potentialAdSpots?.map((spot: string, i: number) => (
-                  <span key={i} className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-100 font-medium">
-                    {spot}
-                  </span>
-                ))}
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">Sponsorship Readiness</h3>
+                    {sponsorship.enrichment?.sources && (
+                      <div className="text-xs text-gray-500 mb-2">Live data: {sponsorship.enrichment.sources.join(', ')}</div>
+                    )}
+
+                    {sponsorship.enrichmentAttempted && sponsorship.enrichmentNote === 'noSponsorCandidates' && (
+                      <div className="text-xs text-gray-400 mt-1">Live data was checked but no sponsor mentions were found in show notes / feed.</div>
+                    )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCopyJSON(sponsorship, 'copy-sponsorship');
+                    }}
+                    className="px-3 py-1 bg-white border rounded-md text-sm"
+                  >
+                    {copiedSection === 'copy-sponsorship' ? 'Copied' : 'Copy JSON'}
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      generateMonetization();
+                    }}
+                    disabled={isGeneratingMonetization}
+                    className="px-3 py-1 bg-white border rounded-md text-sm disabled:opacity-70"
+                  >
+                    {isGeneratingMonetization ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Regenerate'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <div className="flex flex-wrap gap-2">
+                  {sponsorship.potentialAdSpots?.map((spot: string, i: number) => (
+                    <span key={i} className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-100 font-medium">
+                      {spot}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -426,10 +489,22 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
                 <div key={i} className="p-6 hover:bg-gray-50 transition">
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-bold text-gray-900 text-lg">{rec.industry}</h4>
-                    <div className="flex gap-2">
-                      {rec.brands?.map((brand: string) => (
-                        <span key={brand} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-medium">{brand}</span>
-                      ))}
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-2">
+                        {rec.brands?.map((brand: string) => (
+                          <span key={brand} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-medium">{brand}</span>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopyJSON(rec, `copy-sponsor-${i}`);
+                        }}
+                        className="px-2 py-1 bg-white border rounded-md text-xs"
+                      >
+                        {copiedSection === `copy-sponsor-${i}` ? 'Copied' : 'Copy'}
+                      </button>
                     </div>
                   </div>
                   <p className="text-sm text-gray-600">{rec.matchReason}</p>
@@ -489,12 +564,26 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
 
           <div className="bg-white rounded-xl border border-gray-200 p-6">
             <h3 className="font-bold text-gray-900 mb-4">Actions</h3>
-            <button
-              onClick={() => handleDownload('kit')}
-              className="w-full flex items-center justify-center gap-2 bg-indigo-50 text-primary border border-indigo-100 px-4 py-3 rounded-lg font-bold hover:bg-indigo-100 transition mb-3"
-            >
-              <FileText className="h-5 w-5" /> Download Media Kit
-            </button>
+
+            <div className="flex flex-col gap-3 mb-4">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyJSON(result.sponsorship, 'copy-sponsorship');
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white text-gray-700 border border-gray-200 px-4 py-3 rounded-lg hover:bg-gray-50 transition"
+              >
+                <FileJson className="h-4 w-4" /> {copiedSection === 'copy-sponsorship' ? 'Copied' : 'Copy Sponsorship JSON'}
+              </button>
+
+              <button
+                onClick={() => handleDownload('kit')}
+                className="w-full flex items-center justify-center gap-2 bg-indigo-50 text-primary border border-indigo-100 px-4 py-3 rounded-lg font-bold hover:bg-indigo-100 transition"
+              >
+                <FileText className="h-5 w-5" /> Download Media Kit
+              </button>
+            </div>
+
             <p className="text-xs text-center text-gray-500 mb-6">Generates a PDF one-sheet with your stats and audience profile.</p>
 
             <h4 className="font-bold text-gray-900 text-sm mb-3">Recommended Ad Networks</h4>
@@ -583,7 +672,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
                 <h4 className="font-semibold text-gray-900">Email Series</h4>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
-                  <button onClick={() => { repurposed.emailSeries ? navigator.clipboard.writeText(JSON.stringify(repurposed.emailSeries, null, 2)) : null; }} className="px-3 py-1 bg-white border rounded-md text-sm">Copy JSON</button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (repurposed.emailSeries) handleCopyJSON(repurposed.emailSeries, 'copy-json');
+                    }}
+                    className="px-3 py-1 bg-white border rounded-md text-sm"
+                  >
+                    {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
+                  </button>
                 </div>
               </div>
 
@@ -616,7 +713,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
                 <h4 className="font-semibold text-gray-900">Social Calendar</h4>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
-                  <button onClick={() => { repurposed.socialCalendar ? navigator.clipboard.writeText(JSON.stringify(repurposed.socialCalendar, null, 2)) : null; }} className="px-3 py-1 bg-white border rounded-md">Copy JSON</button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (repurposed.socialCalendar) handleCopyJSON(repurposed.socialCalendar, 'copy-json');
+                    }}
+                    className="px-3 py-1 bg-white border rounded-md"
+                  >
+                    {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
+                  </button>
                 </div>
               </div>
 
@@ -647,7 +752,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
                 <h4 className="font-semibold text-gray-900">LinkedIn Article</h4>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
-                  <button onClick={() => { repurposed.linkedinArticle ? navigator.clipboard.writeText(repurposed.linkedinArticle) : null; }} className="px-3 py-1 bg-white border rounded-md">Copy</button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (repurposed.linkedinArticle) handleCopy(repurposed.linkedinArticle, 'copy-linkedin');
+                    }}
+                    className="px-3 py-1 bg-white border rounded-md"
+                  >
+                    {copiedSection === 'copy-linkedin' ? 'Copied' : 'Copy'}
+                  </button>
                 </div>
               </div>
 
@@ -669,7 +782,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
                 <h4 className="font-semibold text-gray-900">Image Prompts</h4>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
-                  <button onClick={() => { repurposed.imagePrompts ? navigator.clipboard.writeText(JSON.stringify(repurposed.imagePrompts, null, 2)) : null; }} className="px-3 py-1 bg-white border rounded-md">Copy JSON</button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (repurposed.imagePrompts) handleCopyJSON(repurposed.imagePrompts, 'copy-json');
+                    }}
+                    className="px-3 py-1 bg-white border rounded-md"
+                  >
+                    {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
+                  </button>
                 </div>
               </div>
 
@@ -1075,7 +1196,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
               </div>
 
               <div className="flex justify-end mt-2">
-                <button onClick={() => navigator.clipboard.writeText(JSON.stringify(seoData, null, 2))} className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50">Copy SEO JSON</button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyJSON(seoData, 'copy-seo-json');
+                  }}
+                  className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  {copiedSection === 'copy-seo-json' ? 'Copied' : 'Copy SEO JSON'}
+                </button>
               </div>
             </div>
           )}

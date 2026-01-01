@@ -267,3 +267,71 @@ export async function analyzeWithGemini(payload: {
     throw e;
   }
 }
+
+export async function repurposeWithGemini(payload: { type: string; context: string }) {
+  const ai = getClient();
+  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const systemInstruction = `You are an expert content repurposer. Given a transcript and analysis context, generate platform-optimized repurposed content. Return ONLY JSON matching the responseSchema.`;
+
+  const parts: any[] = [{ text: `Repurpose Type: ${payload.type}` }, { text: `Context:\n${payload.context.substring(0, 45000)}` }];
+
+  const response = await ai.models.generateContent({
+    model: modelId,
+    contents: [{ role: "user", parts }],
+    config: {
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          emailSeries: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                day: { type: Type.NUMBER },
+                subject: { type: Type.STRING },
+                body: { type: Type.STRING },
+                goal: { type: Type.STRING },
+              },
+            },
+          },
+          socialCalendar: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                day: { type: Type.NUMBER },
+                platform: { type: Type.STRING },
+                type: { type: Type.STRING },
+                content: { type: Type.STRING },
+              },
+            },
+          },
+          linkedinArticle: { type: Type.STRING },
+          imagePrompts: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                quote: { type: Type.STRING },
+                prompt: { type: Type.STRING },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No response from Gemini.");
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("FAILED TO PARSE REPURPOSE JSON. RAW OUTPUT:", text);
+    throw e;
+  }
+}

@@ -232,6 +232,8 @@ export interface SponsorshipInsights {
   suggestedSponsors: SponsorRecommendation[];
   targetAudienceProfile: string;
   potentialAdSpots: string[]; // e.g., "Pre-roll: Discussing X", "Mid-roll: Transition to Y"
+  // Optional enrichment object with provenance and raw signals from external sources
+  enrichment?: any;
 }
 
 export interface AnalysisSettings {
