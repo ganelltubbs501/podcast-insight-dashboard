@@ -1,166 +1,216 @@
 import { supabase } from "../lib/supabaseClient";
-import { Transcript, WorkflowStatus } from "../types";
+import { Transcript, Comment, WorkflowStatus, UsageMetrics } from "../types";
 
 /**
- * Supabase returns json/jsonb correctly, but if your column is TEXT
- * (or older rows were saved as strings), this makes it safe.
+ * Helpers
  */
-function safeParseJSON<T>(value: any, fallback: T): T {
-  if (value == null) return fallback;
-  if (typeof value === "object") return value as T;
+function getWorkflowStatus(row: any): WorkflowStatus {
+  // Prefer real column if you add it later
+  if (row.workflowStatus) return row.workflowStatus as WorkflowStatus;
+  if (row.workflow_status) return row.workflow_status as WorkflowStatus;
 
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return fallback;
-    }
-  }
-  return fallback;
+  // Fallback: stored inside JSON
+  const fromResult = row.result?.workflowStatus;
+  if (fromResult) return fromResult as WorkflowStatus;
+
+  const fromSettings = row.settings?.workflowStatus;
+  if (fromSettings) return fromSettings as WorkflowStatus;
+
+  return "Draft";
 }
 
-function normalizeTranscript(row: any): Transcript {
+function getComments(row: any): Comment[] {
+  // If you add comments column later, this supports it
+  if (Array.isArray(row.comments)) return row.comments as Comment[];
+
+  // Fallback: store comments inside result JSON
+  if (Array.isArray(row.result?.comments)) return row.result.comments as Comment[];
+
+  return [];
+}
+
+function mapRowToTranscript(row: any): Transcript {
   return {
-    ...row,
-    // Ensure these are objects, not strings
-    result: safeParseJSON(row.result, null),
-    settings: safeParseJSON(row.settings, null),
+    id: row.id,
+    title: row.title ?? "Untitled Episode",
+    content: row.content ?? "",
+    status: row.status ?? "Completed",
+    date: row.created_at ?? new Date().toISOString(),
+    settings: row.settings ?? null,
+    result: row.result ?? null,
 
-    // Some UIs expect "date"
-    date: row.date ?? row.created_at ?? new Date().toISOString(),
-
-    // Your UI sometimes references workflowStatus — if you don’t have that column,
-    // keep it harmlessly derived from "status"
-    workflowStatus: row.workflowStatus ?? row.workflow_status ?? row.status ?? "Draft",
+    // These are NOT DB columns right now. We synthesize them.
+    comments: getComments(row),
+    workflowStatus: getWorkflowStatus(row),
   } as Transcript;
 }
 
-async function requireUserId(): Promise<string> {
-  const userRes = await supabase.auth.getUser();
-  const userId = userRes.data.user?.id;
-  if (!userId) throw new Error("Not authenticated");
-  return userId;
-}
-
 /**
- * Insert a transcript row.
- * IMPORTANT: Do NOT include columns that do not exist (ex: comments).
+ * Save a new transcript row.
+ * IMPORTANT: Do NOT insert columns that aren't in your Supabase schema (like "comments").
+ * We'll embed workflowStatus/comments inside `result` JSON until you add real columns.
  */
 export async function saveTranscript(transcript: Transcript): Promise<void> {
-  console.log("SAVE → transcripts.ts called");
-  const userId = await requireUserId();
-  console.log("SAVE → user id:", userId);
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not authenticated");
 
-  const payload = {
+  // Embed missing fields inside result JSON so UI can still use them
+  const resultWithMeta = {
+    ...(transcript.result ?? {}),
+    workflowStatus: transcript.workflowStatus ?? "Draft",
+    comments: transcript.comments ?? [],
+  };
+
+  const { error } = await supabase.from("transcripts").insert({
     id: transcript.id,
-    user_id: userId,
+    user_id: auth.user.id,
     title: transcript.title,
     content: transcript.content,
     status: transcript.status,
-    result: transcript.result ?? null,
-    settings: transcript.settings ?? null,
-  };
+    result: resultWithMeta,
+    settings: transcript.settings,
+  });
 
-  const { error } = await supabase.from("transcripts").insert(payload);
   if (error) throw error;
 }
 
+/**
+ * Load transcripts for the current logged-in user only.
+ */
 export async function getTranscripts(): Promise<Transcript[]> {
-  const userId = await requireUserId();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not authenticated");
 
   const { data, error } = await supabase
     .from("transcripts")
     .select("*")
-    .eq("user_id", userId)
+    .eq("user_id", auth.user.id)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []).map(normalizeTranscript);
+
+  return (data ?? []).map(mapRowToTranscript);
 }
 
 export async function getTranscriptById(id: string): Promise<Transcript | null> {
-  const userId = await requireUserId();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not authenticated");
 
   const { data, error } = await supabase
     .from("transcripts")
     .select("*")
     .eq("id", id)
-    .eq("user_id", userId)
+    .eq("user_id", auth.user.id)
     .single();
 
   if (error) {
-    // If it's just "no rows", return null instead of crashing
+    // If the row doesn't exist for this user, treat as null
     if ((error as any).code === "PGRST116") return null;
     throw error;
   }
 
-  return data ? normalizeTranscript(data) : null;
+  return mapRowToTranscript(data);
 }
 
-/**
- * Keep this simple: update the existing "status" column (since we know it exists).
- */
-export async function updateTranscriptStatus(id: string, status: WorkflowStatus): Promise<void> {
-  const userId = await requireUserId();
+export async function deleteTranscript(id: string): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not authenticated");
 
   const { error } = await supabase
     .from("transcripts")
-    .update({ status })
+    .delete()
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("user_id", auth.user.id);
 
   if (error) throw error;
 }
 
 /**
- * Merge new result fields into the existing result JSON.
- * This is how we safely store comments without needing a "comments" column.
+ * Update "workflowStatus" (stored inside result JSON for now).
  */
-export async function saveTranscriptResult(id: string, patch: Record<string, any>): Promise<void> {
-  const existing = await getTranscriptById(id);
-  if (!existing) throw new Error("Transcript not found");
+export async function updateTranscriptStatus(id: string, workflowStatus: WorkflowStatus): Promise<void> {
+  const transcript = await getTranscriptById(id);
+  if (!transcript) throw new Error("Transcript not found");
 
-  const merged = {
-    ...(existing.result ?? {}),
-    ...(patch ?? {}),
+  const updatedResult = {
+    ...(transcript.result ?? {}),
+    workflowStatus,
+    comments: transcript.comments ?? [],
   };
 
-  const userId = await requireUserId();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not authenticated");
 
   const { error } = await supabase
     .from("transcripts")
-    .update({ result: merged })
+    .update({ result: updatedResult })
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("user_id", auth.user.id);
 
   if (error) throw error;
 }
 
 /**
- * Comments are stored INSIDE result.comments[] (NOT a transcripts.comments column).
+ * Save partial result updates (ex: repurposed, sponsorship, etc).
+ */
+export async function saveTranscriptResult(id: string, patch: Record<string, any>): Promise<void> {
+  const transcript = await getTranscriptById(id);
+  if (!transcript) throw new Error("Transcript not found");
+
+  const updatedResult = {
+    ...(transcript.result ?? {}),
+    ...patch,
+    workflowStatus: transcript.workflowStatus ?? "Draft",
+    comments: transcript.comments ?? [],
+  };
+
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("transcripts")
+    .update({ result: updatedResult })
+    .eq("id", id)
+    .eq("user_id", auth.user.id);
+
+  if (error) throw error;
+}
+
+/**
+ * Add a comment (stored inside result.comments for now).
  */
 export async function addCommentToTranscript(
   id: string,
   text: string,
-  user: { name?: string; email?: string }
+  user: { id: string; name: string }
 ): Promise<void> {
-  const existing = await getTranscriptById(id);
-  if (!existing) throw new Error("Transcript not found");
+  const transcript = await getTranscriptById(id);
+  if (!transcript) throw new Error("Transcript not found");
 
-  const resultObj = existing.result ?? {};
-  const currentComments = Array.isArray(resultObj.comments) ? resultObj.comments : [];
-
-  const newComment = {
-    id: crypto?.randomUUID?.() ?? `${Date.now()}`,
-    userName: user.name || user.email || "User",
-    timestamp: new Date().toISOString(),
+  const newComment: Comment = {
+    id: crypto.randomUUID(),
     text,
+    userId: user.id,
+    userName: user.name,
+    timestamp: new Date().toISOString(),
   };
 
-  const updated = {
-    ...resultObj,
-    comments: [...currentComments, newComment],
-  };
+  const comments = [...(transcript.comments ?? []), newComment];
 
-  await saveTranscriptResult(id, updated);
+  await saveTranscriptResult(id, { comments });
+}
+
+/**
+ * Basic usage metrics (client-side). You can make this smarter later.
+ */
+export async function getUsageMetrics(): Promise<UsageMetrics> {
+  const list = await getTranscripts();
+  const used = list.length;
+
+  return {
+    transcriptsUsed: used,
+    transcriptQuota: 100,
+    quotaResetDate: "Next month",
+    hoursSaved: Math.round(used * 0.5),
+  } as UsageMetrics;
 }

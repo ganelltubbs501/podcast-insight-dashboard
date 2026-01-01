@@ -354,7 +354,8 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
              <button 
                onClick={handleSubmit} 
                disabled={isProcessing}
-               className={`w-full sm:w-auto flex justify-center items-center px-6 py-3 rounded-lg text-white font-medium shadow-md transition ${isProcessing ? 'bg-indigo-400 cursor-not-allowed' : 'bg-primary hover:bg-indigo-700'}`}
+               style={{ backgroundColor: isProcessing ? undefined : 'var(--color-primary)' }}
+               className={`w-full sm:w-auto flex justify-center items-center px-6 py-3 rounded-lg text-white font-medium shadow-md transition ${isProcessing ? 'bg-indigo-400 cursor-not-allowed' : 'hover:brightness-95'}`}
              >
                {isProcessing ? (
                  <>

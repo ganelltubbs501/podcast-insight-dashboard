@@ -6,21 +6,24 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', (event) => {
+  // Attempt to cache core resources but don't fail install if an entry can't be fetched (e.g., cross-origin icons)
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.allSettled(urlsToCache.map((url) => cache.add(url))).then(() => self.skipWaiting())
+    )
   );
 });
 
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      })
+    caches.match(event.request).then((response) => {
+      if (response) return response;
+      return fetch(event.request).catch((err) => {
+        // If network fetch fails (offline or blocked), return index.html fallback if available
+        console.warn('ServiceWorker fetch failed for', event.request.url, err);
+        return caches.match('/index.html');
+      });
+    })
   );
 });
 

@@ -44,14 +44,19 @@ const AppContent: React.FC = () => {
 
   const handleLogin = async () => {
     // Simulate login flow
-const newUser = await loginUser('test@test.com', 'Kaleb2022!');
-    setUser(newUser);
-    // Apply branding on login if exists
-    if (newUser.branding) {
-      document.documentElement.style.setProperty('--color-primary', newUser.branding.primaryColor);
-      document.documentElement.style.setProperty('--color-secondary', newUser.branding.secondaryColor);
+    try {
+      const newUser = await loginUser('test@test.com', 'Kaleb2022!');
+      setUser(newUser);
+      // Apply branding on login if exists
+      if (newUser.branding) {
+        document.documentElement.style.setProperty('--color-primary', newUser.branding.primaryColor);
+        document.documentElement.style.setProperty('--color-secondary', newUser.branding.secondaryColor);
+      }
+      navigate('/dashboard');
+    } catch (err) {
+      console.error('Login failed:', err);
+      alert('Login failed. If you are developing locally, ensure Supabase env vars are set or use a configured test account.');
     }
-    navigate('/dashboard');
   };
 
   const handleLogout = async () => {
@@ -130,9 +135,19 @@ const newUser = await loginUser('test@test.com', 'Kaleb2022!');
             </div>
 
             <div className="flex items-center gap-4">
+                 <button
+                   onClick={() => navigate('/analysis')}
+                   aria-label="Create new analysis"
+                   style={{ backgroundColor: 'var(--color-primary)' }}
+                   className="hidden md:inline-flex text-white px-4 py-2 rounded-lg shadow-sm hover:brightness-95 transition font-medium items-center gap-2"
+                 >
+                   <Plus className="h-4 w-4" />
+                   New Analysis
+                 </button>
                  <button 
                    onClick={() => navigate('/analysis')}
-                   className="md:hidden bg-primary text-white p-2 rounded-full shadow-lg"
+                   style={{ backgroundColor: 'var(--color-primary)' }}
+                   className="md:hidden text-white p-2 rounded-full shadow-lg"
                  >
                    <Plus className="h-5 w-5" />
                  </button>

@@ -14,7 +14,8 @@ import {
   addCommentToTranscript,
   updateTranscriptStatus,
   saveTranscriptResult,
-} from '../services/transcripts';
+} from "../services/transcripts";
+import { schedulePost } from "../services/mockBackend";
 
 import { getStoredUser } from '../services/auth';
 
@@ -150,8 +151,8 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     try {
       const user = await getStoredUser();
       await addCommentToTranscript(id, newComment, {
-        name: user?.name,
-        email: user?.email,
+        id: user?.id ?? 'unknown',
+        name: user?.name ?? 'Anonymous',
       });
       setNewComment('');
       await loadData();
