@@ -483,31 +483,45 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <Briefcase className="h-5 w-5 text-gray-500" /> Suggested Sponsors
               </h3>
+              {sponsorship.researchMetadata && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {sponsorship.researchMetadata.totalSponsorBrands} brands analyzed • {sponsorship.researchMetadata.categoriesMatched} categories matched
+                  {sponsorship.researchMetadata.liveDataUsed && ' • Live data included'}
+                </p>
+              )}
             </div>
             <div className="divide-y divide-gray-100">
               {sponsorship.suggestedSponsors?.map((rec: any, i: number) => (
                 <div key={i} className="p-6 hover:bg-gray-50 transition">
                   <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-bold text-gray-900 text-lg">{rec.industry}</h4>
-                    <div className="flex items-center gap-2">
-                      <div className="flex gap-2">
-                        {rec.brands?.map((brand: string) => (
-                          <span key={brand} className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-medium">{brand}</span>
-                        ))}
-                      </div>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleCopyJSON(rec, `copy-sponsor-${i}`);
-                        }}
-                        className="px-2 py-1 bg-white border rounded-md text-xs"
-                      >
-                        {copiedSection === `copy-sponsor-${i}` ? 'Copied' : 'Copy'}
-                      </button>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-gray-900 text-lg">{rec.category || rec.industry}</h4>
+                      {rec.estimatedCPM && (
+                        <p className="text-xs text-green-600 font-semibold mt-1">Est. {rec.estimatedCPM}</p>
+                      )}
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCopyJSON(rec, `copy-sponsor-${i}`);
+                      }}
+                      className="px-2 py-1 bg-white border rounded-md text-xs flex-shrink-0 ml-3"
+                    >
+                      {copiedSection === `copy-sponsor-${i}` ? 'Copied' : 'Copy'}
+                    </button>
                   </div>
-                  <p className="text-sm text-gray-600">{rec.matchReason}</p>
+
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {rec.brands?.slice(0, 8).map((brand: string) => (
+                      <span key={brand} className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-md border border-indigo-100 font-medium">{brand}</span>
+                    ))}
+                  </div>
+
+                  <p className="text-sm text-gray-600 mb-2">{rec.matchReason}</p>
+
+                  {rec.typicalDeal && (
+                    <p className="text-xs text-gray-500 italic">Typical deal: {rec.typicalDeal}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -521,6 +535,57 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
               {sponsorship.targetAudienceProfile}
             </p>
           </div>
+
+          {sponsorship.actionableNextSteps && sponsorship.actionableNextSteps.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 className="font-bold text-gray-900 mb-4">Next Steps to Land Sponsors</h3>
+              <ol className="space-y-3">
+                {sponsorship.actionableNextSteps.map((step: string, i: number) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
+                    <span className="text-sm text-gray-700 pt-0.5">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {sponsorship.platformRecommendations && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 className="font-bold text-gray-900 mb-4">Platform Monetization Opportunities</h3>
+              <div className="grid gap-4">
+                {Object.entries(sponsorship.platformRecommendations).map(([platform, data]: [string, any]) => (
+                  <div key={platform} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className={`px-2 py-1 rounded text-xs font-bold ${
+                      data.priority === 'High' ? 'bg-green-100 text-green-700' :
+                      data.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {data.priority}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-900 text-sm capitalize">{platform}</div>
+                      <div className="text-xs text-green-600 font-mono mt-0.5">{data.cpmRange}</div>
+                      <div className="text-xs text-gray-600 mt-1">{data.notes}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {sponsorship.dataSources && sponsorship.dataSources.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 className="font-bold text-gray-900 mb-3 text-sm">Data Sources</h3>
+              <div className="flex flex-wrap gap-2">
+                {sponsorship.dataSources.map((source: string, i: number) => (
+                  <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">
+                    {source}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="lg:col-span-1 space-y-8">

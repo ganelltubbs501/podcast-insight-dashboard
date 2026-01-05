@@ -86,64 +86,68 @@ app.post("/api/outreach", (req, res) => {
   }
 });
 
-// Generate sponsorship insights
+// Generate sponsorship insights with research layer
 app.post("/api/sponsorship", async (req, res) => {
   try {
     const { context, useLiveData } = req.body ?? {};
+    if (!context) return res.status(400).json({ error: "Missing context" });
 
-    // Basic stub insights (kept for deterministic behavior)
-    const insights: any = {
-      score: 72,
-      reasoning: 'This episode has strong appeal to a niche audience with clear monetization opportunities. The content and tone align well with mid-market sponsors.',
-      suggestedSponsors: [
-        { industry: 'SaaS Tools', brands: ['Tool A', 'Tool B', 'Tool C'], matchReason: 'Target audience overlap' },
-        { industry: 'Online Services', brands: ['Service X', 'Service Y'], matchReason: 'Audience demographics' }
-      ],
-      targetAudienceProfile: 'Professionals aged 25-45 interested in industry trends and best practices.',
-      potentialAdSpots: ['Pre-roll (15s)', 'Mid-roll host read (30s)', 'Post-roll with CTA']
-    };
+    // Step 1: Build research pack (market data, sponsor database, CPM benchmarks)
+    const { buildResearchPack, matchSponsorCategories } = await import("./research.js");
+    const researchPack = await buildResearchPack();
 
-    if (useLiveData && context) {
+    // Step 2: Optionally enrich with live podcast-specific data
+    let enrichment = null;
+    if (useLiveData) {
       try {
         const { enrichForSponsorship } = await import("./enrichment.js");
-        const enrichment: any = await enrichForSponsorship(context, { youtubeApiKey: process.env.YOUTUBE_API_KEY });
-        insights.enrichment = enrichment;
-        insights.enrichmentAttempted = true;
+        enrichment = await enrichForSponsorship(context, { youtubeApiKey: process.env.YOUTUBE_API_KEY });
 
-        // Debug logging to help diagnose missing sponsor data
-        try {
-          console.log('SPONSORSHIP: enrichment sources=', enrichment?.sources || enrichment?.enrichment?.sources || enrichment?.rss?.sources, 'rssCandidates=', (enrichment?.rss?.sponsorCandidates || []).length);
-          if ((enrichment?.rss?.sponsorCandidates || []).length > 0) {
-            console.log('SPONSORSHIP: sponsorCandidates sample=', (enrichment?.rss?.sponsorCandidates || []).slice(0, 6));
-          }
-        } catch (e) {
-          console.warn('SPONSORSHIP logging failed', e);
-        }
+        console.log('SPONSORSHIP: enrichment sources=', enrichment?.sources || [], 'rssCandidates=', (enrichment?.rss?.sponsorCandidates || []).length);
 
-        // Use sponsorCandidates from enrichment, if present, to produce actual suggested brands
-        if (enrichment?.rss?.sponsorCandidates?.length) {
-          const brands = enrichment.rss.sponsorCandidates.map((s: any) => s.name || s).slice(0, 6);
-          insights.suggestedSponsors = [
-            { industry: 'Mentioned Sponsors', brands, matchReason: 'Found sponsor mentions or links in show notes / episodes.' },
-          ];
-        } else {
-          // indicate we checked live data but didn't find explicit sponsor mentions
-          insights.enrichmentNote = 'noSponsorCandidates';
-        }
-
-        // Optionally tweak the score a bit when enrichment exists
-        if (enrichment.youtube?.subscribers) {
-          if (enrichment.youtube.subscribers > 100000) insights.score = Math.min(95, insights.score + 10);
-          else if (enrichment.youtube.subscribers > 20000) insights.score = Math.min(90, insights.score + 6);
+        if (enrichment?.rss?.sponsorCandidates?.length > 0) {
+          console.log('SPONSORSHIP: sponsorCandidates sample=', enrichment.rss.sponsorCandidates.slice(0, 6));
         }
       } catch (e) {
-        console.error('Enrichment failed', e);
+        console.error('Live enrichment failed (continuing with research pack only)', e);
       }
+    }
+
+    // Step 3: Extract keywords/topics from context for category matching
+    const keywords = context.toLowerCase().match(/\b\w{4,}\b/g)?.slice(0, 30) || [];
+    const matchedCategories = matchSponsorCategories(keywords, keywords);
+
+    // Combine research pack with any live enrichment data
+    const enhancedResearchPack = {
+      ...researchPack,
+      liveEnrichment: enrichment,
+      preMatchedCategories: matchedCategories.map(c => c.name)
+    };
+
+    // Step 4: Generate sponsorship insights using Gemini + research pack
+    const { generateSponsorshipWithGemini } = await import("./gemini.js");
+    const insights = await generateSponsorshipWithGemini({
+      transcriptContext: context,
+      researchPack: enhancedResearchPack
+    });
+
+    // Step 5: Attach metadata for transparency
+    insights.researchMetadata = {
+      researchPackVersion: researchPack.timestamp,
+      totalSponsorBrands: researchPack.sponsorDatabase.totalBrands,
+      marketDataSources: researchPack.sources,
+      liveDataUsed: !!enrichment,
+      categoriesMatched: matchedCategories.length
+    };
+
+    if (enrichment) {
+      insights.enrichment = enrichment;
     }
 
     return res.json(insights);
   } catch (err: any) {
     console.error("SPONSORSHIP ERROR:", err?.message);
+    console.error("SPONSORSHIP STACK:", err?.stack);
     return res.status(500).json({ error: err?.message ?? "Server error" });
   }
 });

@@ -335,3 +335,151 @@ export async function repurposeWithGemini(payload: { type: string; context: stri
     throw e;
   }
 }
+
+export async function generateSponsorshipWithGemini(payload: {
+  transcriptContext: string;
+  researchPack: any;
+}) {
+  const ai = getClient();
+  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const systemInstruction = `You are an expert podcast monetization strategist with deep knowledge of the creator economy, ad market dynamics, and brand partnerships.
+
+Your role is to analyze podcast content and match it with relevant sponsors based on:
+- Actual market data (CPM benchmarks, sponsor databases, platform trends)
+- Episode content, audience insights, and topical alignment
+- Current ad market conditions and creator economy trends
+
+CRITICAL: Base your recommendations on the provided RESEARCH PACK data, not generic knowledge. The research pack contains:
+- Real sponsor brands actively investing in podcasts (with target audiences and typical deals)
+- Current CPM benchmarks from IAB and industry reports
+- Market conditions and ad spend trends
+- Platform-specific monetization insights
+
+Return ONLY valid JSON matching the responseSchema. Be specific about WHY each sponsor matches and cite data sources.`;
+
+  const parts: any[] = [
+    { text: `RESEARCH PACK (Market Data - Use this as your primary source):\n${JSON.stringify(payload.researchPack, null, 2).substring(0, 20000)}` },
+    { text: `\n\nTRANSCRIPT CONTEXT:\n${payload.transcriptContext.substring(0, 25000)}` },
+    { text: `\n\nBased on the research pack and transcript, generate monetization recommendations. Include specific sponsor brands from the research pack, realistic CPM estimates, and cite your sources.` }
+  ];
+
+  const response = await ai.models.generateContent({
+    model: modelId,
+    contents: [{ role: "user", parts }],
+    config: {
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          score: {
+            type: Type.NUMBER,
+            description: "Sponsorship readiness score 0-100 based on content quality, niche clarity, and market demand"
+          },
+          reasoning: {
+            type: Type.STRING,
+            description: "2-3 sentence explanation of the score, citing market conditions from research pack"
+          },
+          suggestedSponsors: {
+            type: Type.ARRAY,
+            description: "3-5 sponsor categories with specific brand recommendations from the research pack",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                category: { type: Type.STRING, description: "Sponsor category (must match research pack categories)" },
+                brands: {
+                  type: Type.ARRAY,
+                  description: "3-6 specific brand names from the research pack sponsor database",
+                  items: { type: Type.STRING }
+                },
+                matchReason: {
+                  type: Type.STRING,
+                  description: "Why this category/brands match the episode content and audience. Be specific about alignment."
+                },
+                estimatedCPM: {
+                  type: Type.STRING,
+                  description: "CPM range based on research pack benchmarks (e.g. '$20-35 CPM')"
+                },
+                typicalDeal: {
+                  type: Type.STRING,
+                  description: "Expected deal structure from research pack (e.g. '60s host-read, multi-episode commitment')"
+                }
+              },
+              required: ["category", "brands", "matchReason", "estimatedCPM"]
+            }
+          },
+          targetAudienceProfile: {
+            type: Type.STRING,
+            description: "Detailed audience profile (demographics, psychographics, interests) that makes this content sponsor-ready"
+          },
+          potentialAdSpots: {
+            type: Type.ARRAY,
+            description: "3-5 specific timestamp suggestions for ad placement with context",
+            items: { type: Type.STRING }
+          },
+          platformRecommendations: {
+            type: Type.OBJECT,
+            description: "Monetization opportunities by platform based on research pack insights",
+            properties: {
+              podcast: {
+                type: Type.OBJECT,
+                properties: {
+                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+                  cpmRange: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              },
+              youtube: {
+                type: Type.OBJECT,
+                properties: {
+                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+                  cpmRange: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              },
+              newsletter: {
+                type: Type.OBJECT,
+                properties: {
+                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+                  cpmRange: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              }
+            }
+          },
+          actionableNextSteps: {
+            type: Type.ARRAY,
+            description: "3-5 specific action items to land sponsors (e.g. 'Create media kit', 'Reach out to X via Y')",
+            items: { type: Type.STRING }
+          },
+          dataSources: {
+            type: Type.ARRAY,
+            description: "List all data sources used from the research pack",
+            items: { type: Type.STRING }
+          }
+        },
+        required: [
+          "score",
+          "reasoning",
+          "suggestedSponsors",
+          "targetAudienceProfile",
+          "potentialAdSpots",
+          "platformRecommendations",
+          "actionableNextSteps",
+          "dataSources"
+        ]
+      }
+    }
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No response from Gemini for sponsorship generation.");
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("FAILED TO PARSE SPONSORSHIP JSON. RAW OUTPUT:", text);
+    throw e;
+  }
+}

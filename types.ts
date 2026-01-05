@@ -221,9 +221,19 @@ export interface SentimentData {
 
 // Monetization Types
 export interface SponsorRecommendation {
-  industry: string;
+  category: string;
   brands: string[];
   matchReason: string;
+  estimatedCPM?: string;
+  typicalDeal?: string;
+  // Legacy support
+  industry?: string;
+}
+
+export interface PlatformMonetization {
+  priority: 'High' | 'Medium' | 'Low';
+  cpmRange: string;
+  notes: string;
 }
 
 export interface SponsorshipInsights {
@@ -231,9 +241,30 @@ export interface SponsorshipInsights {
   reasoning: string;
   suggestedSponsors: SponsorRecommendation[];
   targetAudienceProfile: string;
-  potentialAdSpots: string[]; // e.g., "Pre-roll: Discussing X", "Mid-roll: Transition to Y"
+  potentialAdSpots: string[];
+
+  // New research-backed fields
+  platformRecommendations?: {
+    podcast: PlatformMonetization;
+    youtube: PlatformMonetization;
+    newsletter: PlatformMonetization;
+  };
+  actionableNextSteps?: string[];
+  dataSources?: string[];
+
+  // Metadata for transparency
+  researchMetadata?: {
+    researchPackVersion: string;
+    totalSponsorBrands: number;
+    marketDataSources: string[];
+    liveDataUsed: boolean;
+    categoriesMatched: number;
+  };
+
   // Optional enrichment object with provenance and raw signals from external sources
   enrichment?: any;
+  enrichmentAttempted?: boolean;
+  enrichmentNote?: string;
 }
 
 export interface AnalysisSettings {
