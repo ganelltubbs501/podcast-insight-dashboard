@@ -57,7 +57,6 @@ export async function getTutorials() { return getJSON('/api/help/tutorials'); }
 export async function sendSupportTicket(subject: string, message: string) { return postJSON('/api/help/ticket', { subject, message }); }
 
 // Branding / Account
-export async function updateBrandingSettings(settings: any) { return postJSON('/api/account/branding', settings); }
 
 // Team
 export async function getTeamMembers() { return getJSON('/api/team/members'); }
@@ -71,6 +70,5 @@ export default {
   getApiKeys, generateApiKey, revokeApiKey, getWebhooks, addWebhook, deleteWebhook, testWebhook,
   getScheduledPosts, schedulePost, deleteScheduledPost,
   getHelpArticles, getTutorials, sendSupportTicket,
-  updateBrandingSettings,
   getTeamMembers, inviteTeamMember, removeTeamMember, getActivityLog,
 };

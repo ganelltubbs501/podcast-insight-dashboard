@@ -131,7 +131,7 @@ const GuestOutreach: React.FC = () => {
         </div>
         <button 
           onClick={() => setShowFindModal(true)}
-          className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg hover:bg-indigo-700 transition font-medium shadow-sm"
+          className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-lg hover:bg-primary transition font-medium shadow-sm"
         >
           <Sparkles className="h-5 w-5" />
           Find Potential Guests
@@ -145,7 +145,7 @@ const GuestOutreach: React.FC = () => {
              <p className="text-sm font-medium text-gray-500">Total Suggested</p>
              <p className="text-3xl font-bold text-gray-900">{guests.length}</p>
            </div>
-           <Users className="h-8 w-8 text-indigo-100 text-primary" />
+           <Users className="h-8 w-8 text-primary text-primary" />
         </div>
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
            <div>
@@ -159,7 +159,7 @@ const GuestOutreach: React.FC = () => {
              <p className="text-sm font-medium text-gray-500">Booked</p>
              <p className="text-3xl font-bold text-gray-900">{guests.filter(g => g.status === 'Booked').length}</p>
            </div>
-           <UserCheck className="h-8 w-8 text-green-100 text-green-600" />
+           <UserCheck className="h-8 w-8 text-green-100 text-accent-emerald" />
         </div>
       </div>
 
@@ -192,7 +192,7 @@ const GuestOutreach: React.FC = () => {
                   <tr key={guest.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center">
-                        <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-primary font-bold mr-4">
+                        <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary font-bold mr-4">
                           {guest.name.charAt(0)}
                         </div>
                         <div>
@@ -209,7 +209,7 @@ const GuestOutreach: React.FC = () => {
                          value={guest.status}
                          onChange={(e) => handleStatusChange(guest.id, e.target.value as any)}
                          className={`text-xs font-semibold px-2 py-1 rounded-full border-none outline-none cursor-pointer ${
-                           guest.status === 'Booked' ? 'bg-green-100 text-green-800' :
+                           guest.status === 'Booked' ? 'bg-accent-soft text-accent-emerald' :
                            guest.status === 'Contacted' ? 'bg-yellow-100 text-yellow-800' :
                            guest.status === 'Rejected' ? 'bg-red-100 text-red-800' :
                            'bg-gray-100 text-gray-800'
@@ -225,7 +225,7 @@ const GuestOutreach: React.FC = () => {
                        <div className="flex items-center justify-end gap-2">
                          <button 
                            onClick={() => handleDraftEmail(guest)}
-                           className="text-primary hover:text-indigo-900 bg-indigo-50 p-2 rounded-lg"
+                           className="text-primary hover:text-primary bg-accent-soft p-2 rounded-lg"
                            title="Draft Outreach Email"
                          >
                            <Mail className="h-4 w-4" />
@@ -276,7 +276,7 @@ const GuestOutreach: React.FC = () => {
                       <button 
                         onClick={handleFindGuests}
                         disabled={!selectedTranscriptId}
-                        className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+                        className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary disabled:opacity-50 flex items-center gap-2"
                       >
                         <Search className="h-4 w-4" /> Analyze & Find Guests
                       </button>
@@ -299,7 +299,7 @@ const GuestOutreach: React.FC = () => {
                     </h3>
                     <div className="space-y-4 mb-6">
                        {foundGuests.map(guest => (
-                         <div key={guest.id} className="border border-gray-200 rounded-lg p-4 hover:border-indigo-200 transition bg-gray-50">
+                         <div key={guest.id} className="border border-gray-200 rounded-lg p-4 hover:border-primary transition bg-gray-50">
                             <div className="flex justify-between items-start">
                                <div>
                                   <h4 className="font-bold text-gray-900">{guest.name}</h4>
@@ -359,7 +359,7 @@ const GuestOutreach: React.FC = () => {
                      <div className="flex justify-end gap-3 pt-2">
                         <button 
                            onClick={handleCopyEmail}
-                           className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium"
+                           className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition font-medium"
                         >
                            {copiedEmail ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                            {copiedEmail ? "Copied!" : "Copy to Clipboard"}

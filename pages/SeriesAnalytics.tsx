@@ -22,7 +22,7 @@ const SeriesAnalytics: React.FC = () => {
   if (transcripts.length < 2) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-12 text-center">
-        <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+        <div className="w-20 h-20 bg-accent-soft rounded-full flex items-center justify-center mx-auto mb-6">
           <BarChart3 className="h-10 w-10 text-primary" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Not Enough Data</h2>
@@ -77,7 +77,7 @@ const SeriesAnalytics: React.FC = () => {
             <span className="text-3xl font-bold text-gray-900">{avgSentiment}</span>
             <span className="text-sm text-gray-400">/ 100</span>
           </div>
-          <div className={`text-xs mt-2 flex items-center ${growth > 0 ? 'text-green-600' : 'text-red-500'}`}>
+          <div className={`text-xs mt-2 flex items-center ${growth > 0 ? 'text-accent-emerald' : 'text-red-500'}`}>
             {growth > 0 ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownRight className="h-3 w-3 mr-1" />}
             {Math.abs(growth)} pts since first ep
           </div>
@@ -98,7 +98,7 @@ const SeriesAnalytics: React.FC = () => {
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <span className="text-gray-500 text-sm font-medium">Total Episodes</span>
-            <FileText className="h-5 w-5 text-purple-500" />
+            <FileText className="h-5 w-5 text-accent-violet" />
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold text-gray-900">{transcripts.length}</span>
@@ -109,7 +109,7 @@ const SeriesAnalytics: React.FC = () => {
         <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <span className="text-gray-500 text-sm font-medium">Top Topic</span>
-            <Hash className="h-5 w-5 text-pink-500" />
+            <Hash className="h-5 w-5 text-secondary" />
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-xl font-bold text-gray-900 truncate">{topTopics[0]?.[0] || "N/A"}</span>
@@ -207,7 +207,7 @@ const SeriesAnalytics: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                       (t.result?.sentiment?.score || 0) > 60 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                       (t.result?.sentiment?.score || 0) > 60 ? 'bg-accent-soft text-accent-emerald' : 'bg-yellow-100 text-yellow-800'
                      }`}>
                        {t.result?.sentiment?.score || "N/A"}
                      </span>

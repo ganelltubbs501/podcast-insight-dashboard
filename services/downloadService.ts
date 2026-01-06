@@ -5,13 +5,24 @@ export const downloadPDF = async (transcript: Transcript) => {
   const { result, title, date } = transcript;
   if (!result) return;
 
-  const user = getStoredUser();
-  const branding = user?.branding;
+
+  // Helper to convert hex to RGB
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? [
+      parseInt(result[1], 16),
+      parseInt(result[2], 16),
+      parseInt(result[3], 16)
+    ] : [0, 0, 0];
+  };
+
+  const primaryColor = [40, 75, 99]; // #284b63 // #284b63
+  const secondaryColor = [172, 118, 133]; // #ac7685 // #ac7685
 
   try {
     // Dynamic import to prevent page load blocking/errors
     const { jsPDF } = await import("jspdf");
-    
+
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 20;
@@ -49,16 +60,6 @@ export const downloadPDF = async (transcript: Transcript) => {
       }
     };
 
-    // Custom Branding Header
-    if (branding?.logoUrl) {
-       try {
-           doc.addImage(branding.logoUrl, 'PNG', margin, yPos, 30, 30);
-           yPos += 35;
-       } catch (e) {
-           console.warn("Failed to add logo to PDF", e);
-       }
-    }
-
     // Title Page
     addText(title, 24, "bold", [31, 41, 55]);
     addText(`Analyzed on: ${new Date(date).toLocaleDateString()}`, 10, "normal", [107, 114, 128]);
@@ -77,14 +78,14 @@ export const downloadPDF = async (transcript: Transcript) => {
     }
 
     // Key Takeaways
-    addText("Key Takeaways", 16, "bold", [99, 102, 241]); 
+    addText("Key Takeaways", 16, "bold", primaryColor);
     result.keyTakeaways.forEach(item => {
       addText(`• ${item}`, 11);
     });
     addSpacing();
 
     // Speakers
-    addText("Speaker Analytics", 16, "bold", [99, 102, 241]);
+    addText("Speaker Analytics", 16, "bold", primaryColor);
     result.speakers.forEach(speaker => {
       checkPageBreak(30);
       addText(`${speaker.name} (${speaker.role})`, 12, "bold");
@@ -96,9 +97,9 @@ export const downloadPDF = async (transcript: Transcript) => {
 
     // Social Content
     if (result.socialContent) {
-      doc.addPage(); 
+      doc.addPage();
       yPos = margin;
-      addText("Social Media Content", 18, "bold", [236, 72, 153]); 
+      addText("Social Media Content", 18, "bold", secondaryColor); 
       addSpacing(5);
 
       addText("LinkedIn Post", 14, "bold");
@@ -120,7 +121,7 @@ export const downloadPDF = async (transcript: Transcript) => {
     if (result.seo) {
       doc.addPage();
       yPos = margin;
-      addText("SEO Strategy", 18, "bold", [37, 99, 235]);
+      addText("SEO Strategy", 18, "bold", primaryColor);
       addSpacing(5);
       
       addText("Target Keywords", 12, "bold");
@@ -147,12 +148,6 @@ export const downloadPDF = async (transcript: Transcript) => {
     addText(result.blogPost.conclusion, 11);
 
     // Footer Branding
-    if (branding?.emailFooter) {
-        yPos = doc.internal.pageSize.getHeight() - 20;
-        doc.setFontSize(9);
-        doc.setTextColor(150, 150, 150);
-        doc.text(branding.emailFooter, margin, yPos);
-    }
 
     doc.save(`${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.pdf`);
   } catch (error) {

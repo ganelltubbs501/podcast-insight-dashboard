@@ -1,4 +1,4 @@
-import { Transcript, User, Comment, WorkflowStatus, TeamMember, ActivityLog, ScheduledPost, Guest, AnalysisResult, UsageMetrics, BrandingSettings, ApiKey, Webhook, HelpArticle, Tutorial } from "../types";
+import { Transcript, User, Comment, WorkflowStatus, TeamMember, ActivityLog, ScheduledPost, Guest, AnalysisResult, UsageMetrics, ApiKey, Webhook, HelpArticle, Tutorial } from "../types";
 
 // Mock Data Keys
 const STORAGE_KEY_TRANSCRIPTS = 'pid_transcripts';
@@ -33,14 +33,6 @@ export const logoutUser = async () => {
    localStorage.removeItem(STORAGE_KEY_USER);
 };
 
-export const updateBrandingSettings = async (settings: BrandingSettings): Promise<User> => {
-  const user = getStoredUser();
-  if (!user) throw new Error("User not found");
-
-  const updatedUser = {
-    ...user,
-    branding: settings
-  };
   
   localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
   return updatedUser;
@@ -66,7 +58,7 @@ export const getHelpArticles = async (): Promise<HelpArticle[]> => {
       id: '3',
       title: 'Exporting to PDF and DOCX',
       category: 'Features',
-      content: 'On the results page, click the "Export" button in the top right corner. Select your desired format from the dropdown menu. PDF reports include your custom branding if configured.'
+      content: 'On the results page, click the "Export" button in the top right corner. Select your desired format from the dropdown menu. PDF reports include all analysis data.
     },
     {
       id: '4',

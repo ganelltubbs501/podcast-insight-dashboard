@@ -105,8 +105,8 @@ const ContentCalendar: React.FC = () => {
                const isToday = new Date().toDateString() === dateStr;
 
                return (
-                 <div key={day} className={`border-b border-r border-gray-100 p-2 min-h-[100px] relative hover:bg-gray-50 transition group ${isToday ? 'bg-indigo-50/30' : ''}`}>
-                    <span className={`text-sm font-medium block mb-2 ${isToday ? 'text-primary bg-indigo-100 w-6 h-6 rounded-full flex items-center justify-center' : 'text-gray-700'}`}>{day}</span>
+                 <div key={day} className={`border-b border-r border-gray-100 p-2 min-h-[100px] relative hover:bg-gray-50 transition group ${isToday ? 'bg-accent-soft/30' : ''}`}>
+                    <span className={`text-sm font-medium block mb-2 ${isToday ? 'text-primary bg-primary w-6 h-6 rounded-full flex items-center justify-center' : 'text-gray-700'}`}>{day}</span>
                     
                     <div className="space-y-1">
                        {dayPosts.map(post => (
@@ -141,7 +141,7 @@ const ContentCalendar: React.FC = () => {
                </div>
 
                <div className="mb-6">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mb-3 ${selectedPost.status === 'Published' ? 'bg-green-100 text-green-700' : selectedPost.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mb-3 ${selectedPost.status === 'Published' ? 'bg-accent-soft text-green-700' : selectedPost.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
                     {selectedPost.status === 'Published' ? <CheckCircle className="h-3 w-3" /> : selectedPost.status === 'Scheduled' ? <Clock className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
                     {selectedPost.status}
                   </span>
@@ -165,26 +165,26 @@ const ContentCalendar: React.FC = () => {
                </div>
 
                {selectedPost.metrics && (
-                 <div className="mb-6 bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-                    <h3 className="font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                 <div className="mb-6 bg-accent-soft p-4 rounded-lg border border-primary">
+                    <h3 className="font-bold text-primary mb-3 flex items-center gap-2">
                       <BarChart2 className="h-4 w-4" /> Performance
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                        <div>
-                         <div className="text-xs text-indigo-400 uppercase">Impressions</div>
-                         <div className="text-lg font-bold text-indigo-700">{selectedPost.metrics.impressions}</div>
+                         <div className="text-xs text-primary uppercase">Impressions</div>
+                         <div className="text-lg font-bold text-primary">{selectedPost.metrics.impressions}</div>
                        </div>
                        <div>
-                         <div className="text-xs text-indigo-400 uppercase">Clicks</div>
-                         <div className="text-lg font-bold text-indigo-700">{selectedPost.metrics.clicks}</div>
+                         <div className="text-xs text-primary uppercase">Clicks</div>
+                         <div className="text-lg font-bold text-primary">{selectedPost.metrics.clicks}</div>
                        </div>
                        <div>
-                         <div className="text-xs text-indigo-400 uppercase">Likes</div>
-                         <div className="text-lg font-bold text-indigo-700">{selectedPost.metrics.likes}</div>
+                         <div className="text-xs text-primary uppercase">Likes</div>
+                         <div className="text-lg font-bold text-primary">{selectedPost.metrics.likes}</div>
                        </div>
                        <div>
-                         <div className="text-xs text-indigo-400 uppercase">Shares</div>
-                         <div className="text-lg font-bold text-indigo-700">{selectedPost.metrics.shares}</div>
+                         <div className="text-xs text-primary uppercase">Shares</div>
+                         <div className="text-lg font-bold text-primary">{selectedPost.metrics.shares}</div>
                        </div>
                     </div>
                  </div>

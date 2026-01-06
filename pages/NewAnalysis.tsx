@@ -267,7 +267,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                  <span className="text-sm font-medium text-gray-700">Click to upload transcript</span>
                  <span className="text-xs text-gray-500 mt-1">.txt files only</span>
               </label>
-              {content && <p className="mt-4 text-sm text-green-600 font-medium truncate max-w-xs px-4">File loaded successfully!</p>}
+              {content && <p className="mt-4 text-sm text-accent-emerald font-medium truncate max-w-xs px-4">File loaded successfully!</p>}
             </div>
           )}
 
@@ -307,8 +307,8 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
              <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 transition">
                  {mediaPreview === 'AUDIO_RECORDED' ? (
                      <div className="text-center">
-                         <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                             <Check className="h-8 w-8 text-green-600" />
+                         <div className="h-16 w-16 bg-accent-soft rounded-full flex items-center justify-center mx-auto mb-4">
+                             <Check className="h-8 w-8 text-accent-emerald" />
                          </div>
                          <p className="font-bold text-gray-900">Audio Recorded!</p>
                          <button onClick={() => { setMediaData(null); setMediaPreview(null); }} className="text-sm text-red-500 hover:underline mt-2">Delete & Retake</button>
@@ -355,7 +355,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                onClick={handleSubmit} 
                disabled={isProcessing}
                style={{ backgroundColor: isProcessing ? undefined : 'var(--color-primary)' }}
-               className={`w-full sm:w-auto flex justify-center items-center px-6 py-3 rounded-lg text-white font-medium shadow-md transition ${isProcessing ? 'bg-indigo-400 cursor-not-allowed' : 'hover:brightness-95'}`}
+               className={`w-full sm:w-auto flex justify-center items-center px-6 py-3 rounded-lg text-white font-medium shadow-md transition ${isProcessing ? 'bg-primary cursor-not-allowed' : 'hover:brightness-95'}`}
              >
                {isProcessing ? (
                  <>
@@ -472,7 +472,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                      </div>
                      <div className="flex flex-wrap gap-2">
                         {settings.customKeywords.map((kw, i) => (
-                           <span key={i} className="bg-indigo-50 text-primary px-2 py-1 rounded text-sm flex items-center gap-1">
+                           <span key={i} className="bg-accent-soft text-primary px-2 py-1 rounded text-sm flex items-center gap-1">
                               {kw} <button onClick={() => handleRemoveKeyword(i)} className="hover:text-red-500"><X className="h-3 w-3"/></button>
                            </span>
                         ))}
@@ -500,7 +500,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                <div className="flex justify-end pt-6 border-t border-gray-100 mt-6">
                   <button 
                      onClick={() => setShowSettings(false)}
-                     className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700"
+                     className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary"
                   >
                      Save Settings
                   </button>

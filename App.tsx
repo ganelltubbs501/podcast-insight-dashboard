@@ -9,13 +9,12 @@ import TeamWorkspace from './pages/TeamWorkspace';
 import ContentCalendar from './pages/ContentCalendar';
 import GuestOutreach from './pages/GuestOutreach';
 import UsageAnalytics from './pages/UsageAnalytics';
-import BrandingSettingsPage from './pages/BrandingSettings';
 import DeveloperSettings from './pages/DeveloperSettings';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { getStoredUser, loginUser, logoutUser } from './services/auth';
 import { User } from './types';
-import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Palette, Terminal, CircleHelp } from 'lucide-react';
+import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp } from 'lucide-react';
 
 // Wrapper to provide navigation props to pages
 const AppContent: React.FC = () => {
@@ -31,11 +30,6 @@ const AppContent: React.FC = () => {
     const storedUser = await getStoredUser();
     if (storedUser) {
       setUser(storedUser);
-      // Apply branding if exists
-      if ((storedUser as any).branding) {
-        document.documentElement.style.setProperty('--color-primary', (storedUser as any).branding.primaryColor);
-        document.documentElement.style.setProperty('--color-secondary', (storedUser as any).branding.secondaryColor);
-      }
     }
     setLoading(false);
   })();
@@ -47,11 +41,6 @@ const AppContent: React.FC = () => {
     try {
       const newUser = await loginUser('test@test.com', 'Kaleb2022!');
       setUser(newUser);
-      // Apply branding on login if exists
-      if (newUser.branding) {
-        document.documentElement.style.setProperty('--color-primary', newUser.branding.primaryColor);
-        document.documentElement.style.setProperty('--color-secondary', newUser.branding.secondaryColor);
-      }
       navigate('/dashboard');
     } catch (err) {
       console.error('Login failed:', err);
@@ -62,9 +51,6 @@ const AppContent: React.FC = () => {
   const handleLogout = async () => {
     await logoutUser();
     setUser(null);
-    // Reset branding to default
-    document.documentElement.style.setProperty('--color-primary', '#6366F1');
-    document.documentElement.style.setProperty('--color-secondary', '#EC4899');
     navigate('/');
     setMobileMenuOpen(false);
   };
@@ -91,11 +77,7 @@ const AppContent: React.FC = () => {
                     <Menu className="h-6 w-6" />
                 </button>
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/dashboard')}>
-                    {user.branding?.logoUrl ? (
-                        <img src={user.branding.logoUrl} alt="Logo" className="h-8 w-auto object-contain" />
-                    ) : (
-                        <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg">PI</div>
-                    )}
+                    <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg">PI</div>
                     <span className="font-bold text-gray-900 text-lg hidden sm:block">Podcast Insight</span>
                 </div>
                 
@@ -159,14 +141,7 @@ const AppContent: React.FC = () => {
                  >
                    <Terminal className="h-5 w-5" />
                  </button>
-                 <button
-                   onClick={() => navigate('/branding')}
-                   className={`transition hidden md:block ${isActive('/branding') ? 'text-primary' : 'text-gray-500 hover:text-primary'}`}
-                   title="Branding Settings"
-                 >
-                   <Palette className="h-5 w-5" />
-                 </button>
-                 
+
                  {/* Help Button */}
                  <button
                    onClick={() => setHelpPanelOpen(true)}
@@ -218,9 +193,6 @@ const AppContent: React.FC = () => {
                      </button>
                      <button onClick={() => handleNav('/team')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
                          <Users className="h-5 w-5" /> Team Workspace
-                     </button>
-                     <button onClick={() => handleNav('/branding')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/branding') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
-                         <Palette className="h-5 w-5" /> Branding
                      </button>
                      <button onClick={() => handleNav('/developer')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/developer') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
                          <Terminal className="h-5 w-5" /> Developer
@@ -288,9 +260,6 @@ const AppContent: React.FC = () => {
           user ? <TeamWorkspace /> : <Navigate to="/" />
         } />
 
-        <Route path="/branding" element={
-          user ? <BrandingSettingsPage /> : <Navigate to="/" />
-        } />
 
         <Route path="/developer" element={
           user ? <DeveloperSettings /> : <Navigate to="/" />

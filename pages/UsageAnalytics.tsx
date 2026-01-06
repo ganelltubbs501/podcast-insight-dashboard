@@ -101,7 +101,7 @@ const UsageAnalytics: React.FC = () => {
           </div>
 
           {/* ROI Calculator */}
-          <div className="bg-gradient-to-br from-indigo-600 to-purple-700 text-white p-8 rounded-xl shadow-lg">
+          <div className="bg-primary text-white p-8 rounded-xl shadow-lg">
               <div className="flex items-center gap-2 mb-6">
                   <DollarSign className="h-6 w-6 text-yellow-300" />
                   <h3 className="text-lg font-bold">ROI Calculator</h3>
@@ -109,7 +109,7 @@ const UsageAnalytics: React.FC = () => {
               
               <div className="space-y-6">
                   <div>
-                      <label className="block text-xs font-bold text-indigo-200 uppercase mb-2">Your Hourly Rate ($)</label>
+                      <label className="block text-xs font-bold text-primary uppercase mb-2">Your Hourly Rate ($)</label>
                       <input 
                         type="number" 
                         value={hourlyRate} 
@@ -120,16 +120,16 @@ const UsageAnalytics: React.FC = () => {
 
                   <div className="pt-4 border-t border-white/20">
                       <div className="flex justify-between items-end mb-2">
-                          <span className="text-indigo-200 font-medium">Time Saved</span>
+                          <span className="text-primary font-medium">Time Saved</span>
                           <span className="text-2xl font-bold">{metrics.hoursSaved} hrs</span>
                       </div>
                       <div className="flex justify-between items-end">
-                          <span className="text-indigo-200 font-medium">Value Generated</span>
+                          <span className="text-primary font-medium">Value Generated</span>
                           <span className="text-3xl font-bold text-yellow-300">${estimatedSavings.toLocaleString()}</span>
                       </div>
                   </div>
                   
-                  <p className="text-xs text-indigo-200 mt-2 italic opacity-80">
+                  <p className="text-xs text-primary mt-2 italic opacity-80">
                       *Based on estimated manual effort of ~3.5hrs per episode analysis & content creation.
                   </p>
               </div>
@@ -167,7 +167,7 @@ const UsageAnalytics: React.FC = () => {
                  {metrics.dailyUsage.map((day, i) => (
                      <div key={i} className="flex flex-col items-center flex-1 group">
                          <div 
-                            className="w-full bg-indigo-50 rounded-t-lg group-hover:bg-indigo-100 transition relative"
+                            className="w-full bg-accent-soft rounded-t-lg group-hover:bg-primary transition relative"
                             style={{ height: `${day.count > 0 ? (day.count / Math.max(...metrics.dailyUsage.map(d => d.count))) * 100 : 0}%` }}
                          >
                              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap">

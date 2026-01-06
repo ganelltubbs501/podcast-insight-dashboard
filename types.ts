@@ -1,10 +1,3 @@
-export interface BrandingSettings {
-  logoUrl?: string;
-  primaryColor: string;
-  secondaryColor: string;
-  customDomain?: string;
-  emailFooter?: string;
-}
 
 export interface ApiKey {
   id: string;
@@ -32,7 +25,6 @@ export interface User {
   plan: 'Free' | 'Pro' | 'Business';
   role?: 'Owner' | 'Editor' | 'Viewer';
   avatar?: string;
-  branding?: BrandingSettings;
 }
 
 export interface TeamMember {

@@ -72,7 +72,7 @@ const LiveChatWidget: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-sm">Support Agent</h3>
-                <p className="text-xs text-indigo-100">Typically replies instantly</p>
+                <p className="text-xs text-primary">Typically replies instantly</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -94,7 +94,7 @@ const LiveChatWidget: React.FC = () => {
                   }`}
                 >
                   <p>{msg.text}</p>
-                  <p className={`text-[10px] mt-1 ${msg.sender === 'user' ? 'text-indigo-200 text-right' : 'text-gray-400'}`}>
+                  <p className={`text-[10px] mt-1 ${msg.sender === 'user' ? 'text-primary text-right' : 'text-gray-400'}`}>
                     {msg.time}
                   </p>
                 </div>
@@ -124,7 +124,7 @@ const LiveChatWidget: React.FC = () => {
             <button 
               type="submit" 
               disabled={!inputText.trim()}
-              className="bg-primary text-white p-2 rounded-full hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-primary text-white p-2 rounded-full hover:bg-primary transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -135,7 +135,7 @@ const LiveChatWidget: React.FC = () => {
       {/* Floating Button */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="h-14 w-14 bg-primary text-white rounded-full shadow-lg hover:bg-indigo-700 hover:scale-105 transition flex items-center justify-center z-50"
+        className="h-14 w-14 bg-primary text-white rounded-full shadow-lg hover:bg-primary hover:scale-105 transition flex items-center justify-center z-50"
       >
         {isOpen ? <X className="h-6 w-6" /> : <MessageCircle className="h-7 w-7" />}
       </button>

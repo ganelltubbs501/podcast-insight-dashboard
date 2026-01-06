@@ -75,19 +75,19 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
       <div className="flex border-b border-gray-200">
         <button 
           onClick={() => setActiveTab('knowledge')}
-          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'knowledge' ? 'text-primary border-b-2 border-primary bg-indigo-50/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'knowledge' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
         >
           <BookOpen className="h-4 w-4" /> FAQ
         </button>
         <button 
           onClick={() => setActiveTab('tutorials')}
-          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'tutorials' ? 'text-primary border-b-2 border-primary bg-indigo-50/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'tutorials' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
         >
           <PlayCircle className="h-4 w-4" /> Academy
         </button>
         <button 
           onClick={() => setActiveTab('support')}
-          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'support' ? 'text-primary border-b-2 border-primary bg-indigo-50/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'support' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
         >
           <MessageCircle className="h-4 w-4" /> Contact
         </button>
@@ -115,13 +115,13 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                 <div className="text-center py-8 text-gray-500">No articles found matching "{searchQuery}"</div>
               ) : (
                 filteredArticles.map(article => (
-                  <div key={article.id} className="border border-gray-200 rounded-lg overflow-hidden transition-all hover:border-indigo-100">
+                  <div key={article.id} className="border border-gray-200 rounded-lg overflow-hidden transition-all hover:border-primary">
                     <button 
                       onClick={() => setExpandedArticleId(expandedArticleId === article.id ? null : article.id)}
                       className="w-full flex items-center justify-between p-4 text-left bg-white hover:bg-gray-50 transition"
                     >
                       <div>
-                        <span className="text-xs font-bold text-primary bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wide mb-1 inline-block">{article.category}</span>
+                        <span className="text-xs font-bold text-primary bg-accent-soft px-2 py-0.5 rounded uppercase tracking-wide mb-1 inline-block">{article.category}</span>
                         <h3 className="font-bold text-gray-800 text-sm">{article.title}</h3>
                       </div>
                       {expandedArticleId === article.id ? <ChevronDown className="h-5 w-5 text-gray-400" /> : <ChevronRight className="h-5 w-5 text-gray-400" />}
@@ -140,7 +140,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                 <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                     <ExternalLink className="h-4 w-4" /> Best Practices Guide
                 </h4>
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-lg border border-indigo-100">
+                <div className="bg-accent-soft p-4 rounded-lg border border-primary">
                     <p className="text-sm text-gray-700 mb-2">Want to create viral-worthy content? Learn the secrets of top podcasters.</p>
                     <a href="#" className="text-sm font-bold text-primary hover:underline">Read the Full Guide &rarr;</a>
                 </div>
@@ -190,11 +190,11 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                   <Mail className="h-5 w-5 text-gray-500" /> Email Support
                </h3>
                {sentSuccess ? (
-                   <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-                       <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                           <Check className="h-6 w-6 text-green-600" />
+                   <div className="bg-accent-soft border border-green-200 rounded-lg p-6 text-center">
+                       <div className="w-12 h-12 bg-accent-soft rounded-full flex items-center justify-center mx-auto mb-4">
+                           <Check className="h-6 w-6 text-accent-emerald" />
                        </div>
-                       <h4 className="font-bold text-green-800 mb-2">Message Sent!</h4>
+                       <h4 className="font-bold text-accent-emerald mb-2">Message Sent!</h4>
                        <p className="text-sm text-green-700">We'll get back to you within 24 hours.</p>
                    </div>
                ) : (
@@ -227,7 +227,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                       <button 
                          type="submit" 
                          disabled={isSending}
-                         className="w-full bg-primary text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition flex items-center justify-center gap-2 disabled:opacity-70"
+                         className="w-full bg-primary text-white py-2.5 rounded-lg font-bold hover:bg-primary transition flex items-center justify-center gap-2 disabled:opacity-70"
                       >
                          {isSending ? "Sending..." : <>Send Message <Send className="h-4 w-4" /></>}
                       </button>

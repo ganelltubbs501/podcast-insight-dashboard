@@ -121,7 +121,7 @@ const DeveloperSettings: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-900">Your API Keys</h2>
               <button 
                 onClick={() => setShowKeyModal(true)}
-                className="bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2 text-sm"
+                className="bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary transition flex items-center gap-2 text-sm"
               >
                 <Plus className="h-4 w-4" /> Generate New Key
               </button>
@@ -174,7 +174,7 @@ const DeveloperSettings: React.FC = () => {
               <h2 className="text-lg font-bold text-gray-900">Webhook Endpoints</h2>
               <button 
                 onClick={() => setShowWebhookModal(true)}
-                className="bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition flex items-center gap-2 text-sm"
+                className="bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary transition flex items-center gap-2 text-sm"
               >
                 <Plus className="h-4 w-4" /> Add Endpoint
               </button>
@@ -192,7 +192,7 @@ const DeveloperSettings: React.FC = () => {
                       <div className="flex items-center gap-3 mb-1">
                         <span className="font-mono font-medium text-gray-900">{hook.url}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                          hook.status === 'Healthy' ? 'bg-green-100 text-green-700' :
+                          hook.status === 'Healthy' ? 'bg-accent-soft text-green-700' :
                           hook.status === 'Failing' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
                         }`}>
                           {hook.status}
@@ -313,7 +313,7 @@ const DeveloperSettings: React.FC = () => {
 
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                        <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center gap-3">
-                          <span className="bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded text-xs">POST</span>
+                          <span className="bg-accent-soft text-green-700 font-bold px-2 py-0.5 rounded text-xs">POST</span>
                           <span className="font-mono text-sm">/transcripts/analyze</span>
                        </div>
                        <div className="p-4 text-sm text-gray-600">Submit a new text or file for analysis.</div>
@@ -344,8 +344,8 @@ const DeveloperSettings: React.FC = () => {
            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
               {generatedKey ? (
                  <div className="text-center">
-                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                       <Check className="h-6 w-6 text-green-600" />
+                    <div className="w-12 h-12 bg-accent-soft rounded-full flex items-center justify-center mx-auto mb-4">
+                       <Check className="h-6 w-6 text-accent-emerald" />
                     </div>
                     <h3 className="text-lg font-bold text-gray-900 mb-2">API Key Generated</h3>
                     <p className="text-sm text-gray-500 mb-4">Copy this key now. You won't be able to see it again.</p>
@@ -362,7 +362,7 @@ const DeveloperSettings: React.FC = () => {
 
                     <button 
                        onClick={() => { setShowKeyModal(false); setGeneratedKey(null); }}
-                       className="w-full bg-primary text-white py-2 rounded-lg font-medium hover:bg-indigo-700"
+                       className="w-full bg-primary text-white py-2 rounded-lg font-medium hover:bg-primary"
                     >
                        Done
                     </button>
@@ -390,7 +390,7 @@ const DeveloperSettings: React.FC = () => {
                        <button 
                           onClick={handleCreateKey}
                           disabled={!newKeyName}
-                          className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                          className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary disabled:opacity-50"
                        >
                           Create Key
                        </button>
@@ -442,7 +442,7 @@ const DeveloperSettings: React.FC = () => {
                   <button 
                      onClick={handleAddWebhook}
                      disabled={!newWebhookUrl}
-                     className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+                     className="px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary disabled:opacity-50"
                   >
                      Add Endpoint
                   </button>

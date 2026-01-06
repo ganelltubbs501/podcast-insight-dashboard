@@ -45,7 +45,7 @@ const TeamWorkspace: React.FC = () => {
         </div>
         <button 
           onClick={() => setShowInviteModal(true)}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
+          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition"
         >
           <UserPlus className="h-4 w-4" />
           Invite Member
@@ -66,14 +66,14 @@ const TeamWorkspace: React.FC = () => {
               {members.map(member => (
                 <li key={member.id} className="p-6 flex items-center justify-between">
                    <div className="flex items-center gap-4">
-                     <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-primary font-bold text-lg">
+                     <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary font-bold text-lg">
                        {member.name.charAt(0).toUpperCase()}
                      </div>
                      <div>
                        <div className="flex items-center gap-2">
                          <h3 className="font-bold text-gray-900">{member.name}</h3>
                          {member.status === 'Pending' && <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 rounded-full">Pending</span>}
-                         {member.role === 'Owner' && <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded-full">Owner</span>}
+                         {member.role === 'Owner' && <span className="bg-accent-soft text-accent-violet text-xs px-2 py-0.5 rounded-full">Owner</span>}
                        </div>
                        <div className="flex items-center text-sm text-gray-500 gap-4 mt-0.5">
                          <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {member.email}</span>
@@ -109,9 +109,9 @@ const TeamWorkspace: React.FC = () => {
             <div className="space-y-6 relative before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-100">
               {activities.map(activity => (
                 <div key={activity.id} className="relative pl-8">
-                  <div className="absolute left-0 top-1 w-4 h-4 rounded-full bg-white border-2 border-indigo-200"></div>
+                  <div className="absolute left-0 top-1 w-4 h-4 rounded-full bg-white border-2 border-primary"></div>
                   <p className="text-sm text-gray-900">
-                    <span className="font-bold">{activity.user}</span> {activity.action} <span className="font-medium text-indigo-600">{activity.target}</span>
+                    <span className="font-bold">{activity.user}</span> {activity.action} <span className="font-medium text-primary">{activity.target}</span>
                   </p>
                   <p className="text-xs text-gray-400 mt-1">{activity.timestamp}</p>
                 </div>
@@ -160,7 +160,7 @@ const TeamWorkspace: React.FC = () => {
                 </button>
                 <button 
                   onClick={handleInvite}
-                  className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-indigo-700"
+                  className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary"
                 >
                   Send Invitation
                 </button>

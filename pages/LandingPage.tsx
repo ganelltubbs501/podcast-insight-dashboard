@@ -18,7 +18,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             </div>
             <div className="flex items-center space-x-4">
               <button onClick={onLogin} className="text-gray-600 hover:text-gray-900 font-medium">Log in</button>
-              <button onClick={onLogin} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium">
+              <button onClick={onLogin} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition font-medium">
                 Get Started
               </button>
             </div>
@@ -37,7 +37,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               Automatically generate summaries, quotes, social media clips, and blog posts from your episodes in seconds using advanced AI.
             </p>
             <div className="flex justify-center gap-4">
-              <button onClick={onLogin} className="px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-indigo-700 hover:-translate-y-1 transition transform">
+              <button onClick={onLogin} className="px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary hover:-translate-y-1 transition transform">
                 Start for Free
               </button>
               <a href="#features" className="px-8 py-4 bg-white text-gray-700 border border-gray-200 rounded-xl text-lg font-bold shadow-sm hover:bg-gray-50 transition">
@@ -60,15 +60,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
-                <Zap className="h-6 w-6 text-primary" />
+              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-4">
+                <Zap className="h-6 w-6 text-white" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Instant Summaries</h3>
               <p className="text-gray-600">Get the key takeaways and highlights from an hour-long episode in seconds.</p>
             </div>
             
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center mb-4">
+              <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
                 <Share2 className="h-6 w-6 text-secondary" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Social Clips</h3>
@@ -76,16 +76,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             </div>
 
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                <FileText className="h-6 w-6 text-green-600" />
+              <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
+                <FileText className="h-6 w-6 text-accent-violet" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">SEO Blog Posts</h3>
               <p className="text-gray-600">Turn audio into searchable text content with structured blog outlines.</p>
             </div>
 
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:shadow-lg transition">
-               <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                <Mic className="h-6 w-6 text-purple-600" />
+               <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
+                <Mic className="h-6 w-6 text-accent-violet" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-2">Speaker Identification</h3>
               <p className="text-gray-600">Automatically highlight key contributions from each speaker.</p>
@@ -122,7 +122,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                  <li className="flex items-center text-gray-600"><CheckCircle className="h-5 w-5 text-primary mr-2"/> All AI Features</li>
                  <li className="flex items-center text-gray-600"><CheckCircle className="h-5 w-5 text-primary mr-2"/> Blog Generation</li>
                </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-indigo-700 transition">Start Free Trial</button>
+               <button onClick={onLogin} className="mt-8 w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary transition">Start Free Trial</button>
              </div>
 
              {/* Business Tier */}

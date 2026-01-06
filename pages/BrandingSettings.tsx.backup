@@ -1,0 +1,266 @@
+import React, { useState, useEffect } from 'react';
+import { getStoredUser } from '../services/auth';
+import { updateBrandingSettings } from '../services/auth';
+import { BrandingSettings } from '../types';
+import { Palette, Upload, Globe, Mail, Save, Layout, Smartphone, Check } from 'lucide-react';
+
+const BrandingSettingsPage: React.FC = () => {
+  const [settings, setSettings] = useState<BrandingSettings>({
+    primaryColor: '#284b63',
+    secondaryColor: '#ac7685',
+    customDomain: '',
+    emailFooter: '',
+    logoUrl: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const user = await getStoredUser();
+      console.log('Loaded user:', user);
+      console.log('Loaded branding:', user?.branding);
+      if (user?.branding) {
+        setSettings(user.branding);
+      }
+    })();
+  }, []);
+
+  const handleChange = (field: keyof BrandingSettings, value: string) => {
+    setSettings(prev => ({ ...prev, [field]: value }));
+    // Live preview of colors
+    if (field === 'primaryColor') {
+      document.documentElement.style.setProperty('--color-primary', value);
+    }
+    if (field === 'secondaryColor') {
+      document.documentElement.style.setProperty('--color-secondary', value);
+    }
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const url = event.target?.result as string;
+        handleChange('logoUrl', url);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const updatedUser = await updateBrandingSettings(settings);
+      console.log('Branding saved successfully:', updatedUser);
+
+      // Ensure CSS vars are set globally
+      document.documentElement.style.setProperty('--color-primary', settings.primaryColor);
+      document.documentElement.style.setProperty('--color-secondary', settings.secondaryColor);
+
+      setIsSaving(false);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to save branding:', error);
+      setIsSaving(false);
+      alert('Failed to save branding settings. Please check console for details.');
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+        <div>
+          <h1 className="text-display flex items-center gap-3">
+            <Palette className="h-8 w-8" style={{ color: 'var(--accent-indigo)' }} />
+            Custom Branding
+          </h1>
+          <p className="text-body mt-2">Customize the look and feel of your dashboard and reports.</p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="btn btn-primary disabled:opacity-50"
+        >
+          {savedSuccess ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+          {isSaving ? "Saving..." : savedSuccess ? "Saved!" : "Save Changes"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Settings Form */}
+        <div className="space-y-8">
+
+          {/* Visual Identity */}
+          <div className="insight-frame">
+            <h2 className="text-heading-1 mb-6 flex items-center gap-2">
+              <Layout className="h-5 w-5" style={{ color: 'var(--ink-tertiary)' }} /> Visual Identity
+            </h2>
+
+            <div className="space-y-6">
+              <div>
+                <label className="text-caption mb-3 block">Company Logo</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 border-2 border-dashed rounded-xl flex items-center justify-center overflow-hidden surface-card" style={{ borderColor: 'var(--ink-border)' }}>
+                    {settings.logoUrl ? (
+                      <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                    ) : (
+                      <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>No Logo</span>
+                    )}
+                  </div>
+                  <label className="cursor-pointer btn">
+                    <Upload className="h-4 w-4" />
+                    Upload Image
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  </label>
+                </div>
+                <p className="text-body-sm mt-2" style={{ color: 'var(--ink-muted)' }}>Recommended: Square PNG or SVG, 512x512px minimum</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-caption mb-3 block">Primary Color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settings.primaryColor}
+                      onChange={(e) => handleChange('primaryColor', e.target.value)}
+                      className="h-12 w-12 p-1 rounded-xl border cursor-pointer"
+                      style={{ borderColor: 'var(--ink-border)' }}
+                    />
+                    <input
+                      type="text"
+                      value={settings.primaryColor}
+                      onChange={(e) => handleChange('primaryColor', e.target.value)}
+                      className="input flex-1 uppercase font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-caption mb-3 block">Secondary Color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settings.secondaryColor}
+                      onChange={(e) => handleChange('secondaryColor', e.target.value)}
+                      className="h-12 w-12 p-1 rounded-xl border cursor-pointer"
+                      style={{ borderColor: 'var(--ink-border)' }}
+                    />
+                    <input
+                      type="text"
+                      value={settings.secondaryColor}
+                      onChange={(e) => handleChange('secondaryColor', e.target.value)}
+                      className="input flex-1 uppercase font-mono text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* White Labeling */}
+          <div className="insight-frame">
+            <h2 className="text-heading-1 mb-6 flex items-center gap-2">
+              <Globe className="h-5 w-5" style={{ color: 'var(--ink-tertiary)' }} /> White-Labeling
+            </h2>
+
+            <div className="space-y-6">
+              <div>
+                <label className="text-caption mb-3 block">Custom Domain</label>
+                <div className="flex">
+                  <span className="inline-flex items-center px-4 rounded-l-xl border border-r-0 text-body-sm" style={{ backgroundColor: 'var(--surface-inset)', borderColor: 'var(--ink-border)', color: 'var(--ink-tertiary)' }}>
+                    https://
+                  </span>
+                  <input
+                    type="text"
+                    value={settings.customDomain || ''}
+                    onChange={(e) => handleChange('customDomain', e.target.value)}
+                    placeholder="insights.yourcompany.com"
+                    className="input flex-1 rounded-l-none"
+                  />
+                </div>
+                <p className="text-body-sm mt-2" style={{ color: 'var(--ink-muted)' }}>Requires CNAME configuration.</p>
+              </div>
+
+              <div>
+                <label className="text-caption mb-3 block">Email Footer Text</label>
+                <textarea
+                  value={settings.emailFooter || ''}
+                  onChange={(e) => handleChange('emailFooter', e.target.value)}
+                  rows={3}
+                  className="input"
+                  placeholder="e.g. Generated by Your Company for internal use only."
+                ></textarea>
+                <p className="text-body-sm mt-2" style={{ color: 'var(--ink-muted)' }}>Added to the bottom of PDF reports and newsletters.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Live Preview */}
+        <div className="space-y-6">
+           <h2 className="text-heading-1 flex items-center gap-2">
+              <Smartphone className="h-5 w-5" style={{ color: 'var(--ink-tertiary)' }} /> Live Preview
+           </h2>
+
+           <div className="p-8 rounded-xl flex justify-center" style={{ backgroundColor: 'var(--surface-inset)' }}>
+              {/* Mock Dashboard Card */}
+              <div className="insight-frame w-full max-w-sm transform transition hover:scale-[1.02]">
+                 <div
+                   className="h-32 -mx-6 -mt-6 mb-6 flex items-center justify-center rounded-t-xl"
+                   style={{ background: `linear-gradient(135deg, ${settings.primaryColor} 0%, ${settings.secondaryColor} 100%)` }}
+                 >
+                    {settings.logoUrl ? (
+                      <img src={settings.logoUrl} alt="Logo" className="h-16 w-auto object-contain bg-white/20 p-2 rounded-lg backdrop-blur-sm" />
+                    ) : (
+                      <div className="text-white font-bold text-2xl opacity-50">Your Logo</div>
+                    )}
+                 </div>
+
+                 <div>
+                    <div className="flex items-center gap-2 mb-4">
+                       <span className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: settings.primaryColor }}>A</span>
+                       <div>
+                          <div className="text-body font-bold">Analysis Ready</div>
+                          <div className="text-body-sm" style={{ color: 'var(--ink-muted)' }}>Just now</div>
+                       </div>
+                    </div>
+
+                    <h3 className="text-heading-2 mb-2">Q3 Marketing Trends</h3>
+                    <p className="text-body mb-4">
+                       Here are the key takeaways from your latest upload. The sentiment is predominantly positive.
+                    </p>
+
+                    <button
+                      className="btn btn-primary w-full justify-center"
+                      style={{ background: `linear-gradient(135deg, ${settings.primaryColor}, ${settings.secondaryColor})` }}
+                    >
+                       View Report
+                    </button>
+                 </div>
+
+                 {settings.emailFooter && (
+                    <div className="px-3 py-4 -mx-6 -mb-6 text-[10px] text-center border-t rounded-b-xl" style={{ backgroundColor: 'var(--surface-inset)', color: 'var(--ink-muted)', borderColor: 'var(--ink-border)' }}>
+                       {settings.emailFooter}
+                    </div>
+                 )}
+              </div>
+           </div>
+
+           <div className="insight-frame-compact" style={{ backgroundColor: 'rgba(245, 158, 11, 0.08)', borderColor: 'rgba(245, 158, 11, 0.3)' }}>
+              <h4 className="text-heading-3 mb-2" style={{ color: 'var(--status-warning)' }}>Note on White-Labeling</h4>
+              <p className="text-body-sm" style={{ color: 'rgba(120, 53, 15, 0.85)' }}>
+                 Custom branding applies to your dashboard, all generated PDF reports, and the shared view for clients.
+                 Color changes are applied immediately across the application.
+              </p>
+           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BrandingSettingsPage;
