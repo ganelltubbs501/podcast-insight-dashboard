@@ -171,7 +171,25 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
 
     } catch (err: any) {
       console.error(err);
-      setError("Analysis failed. Please check your API key or try again.");
+
+      // Extract error message from response
+      let errorMessage = "Analysis failed. Please try again.";
+
+      if (err.message) {
+        const match = err.message.match(/API \d+: (.+)/);
+        if (match) {
+          try {
+            const errorData = JSON.parse(match[1]);
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            errorMessage = match[1];
+          }
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
     } finally {
       setIsProcessing(false);
     }

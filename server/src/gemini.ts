@@ -7,6 +7,48 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+/**
+ * Retry helper with exponential backoff for transient errors
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<T> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      // Check if error is retryable (503, 429, or network errors)
+      const errorMessage = error?.message || JSON.stringify(error);
+      const isRetryable =
+        errorMessage.includes("503") ||
+        errorMessage.includes("overloaded") ||
+        errorMessage.includes("UNAVAILABLE") ||
+        errorMessage.includes("429") ||
+        errorMessage.includes("rate limit") ||
+        errorMessage.includes("RESOURCE_EXHAUSTED");
+
+      // Don't retry on last attempt or non-retryable errors
+      if (attempt === maxRetries || !isRetryable) {
+        throw error;
+      }
+
+      // Calculate delay with exponential backoff + jitter
+      const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+      console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms due to: ${errorMessage.substring(0, 100)}`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
 export async function analyzeWithGemini(payload: {
   contentInput: string | { inlineData: { mimeType: string; data: string } };
   settings?: any;
@@ -57,13 +99,14 @@ export async function analyzeWithGemini(payload: {
     parts.push({ inlineData: payload.contentInput.inlineData });
   }
 
-  const response: GenerateContentResponse = await ai.models.generateContent({
-    model: modelId,
-    contents: [{ role: "user", parts }],
-    config: {
-      systemInstruction,
-      responseMimeType: "application/json",
-      responseSchema: {
+  const response: GenerateContentResponse = await retryWithBackoff(() =>
+    ai.models.generateContent({
+      model: modelId,
+      contents: [{ role: "user", parts }],
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
         type: Type.OBJECT,
         properties: {
           keyTakeaways: {
@@ -117,6 +160,7 @@ export async function analyzeWithGemini(payload: {
                   subject: { type: Type.STRING },
                   body: { type: Type.STRING, description: "Newsletter body text" },
                 },
+                required: ["subject", "body"],
               },
               mediumArticle: {
                 type: Type.STRING,
@@ -129,8 +173,18 @@ export async function analyzeWithGemini(payload: {
                   subject: { type: Type.STRING },
                   body: { type: Type.STRING },
                 },
+                required: ["subject", "body"],
               },
             },
+            required: [
+              "linkedinPost",
+              "twitterThread",
+              "tiktokScript",
+              "youtubeDescription",
+              "emailNewsletter",
+              "mediumArticle",
+              "newsletterTeaser",
+            ],
           },
           blogPost: {
             type: Type.OBJECT,
@@ -255,7 +309,7 @@ export async function analyzeWithGemini(payload: {
         ],
       },
     },
-  });
+  }));
 
   const text = response.text;
   if (!text) throw new Error("No response from Gemini.");
@@ -276,7 +330,8 @@ export async function repurposeWithGemini(payload: { type: string; context: stri
 
   const parts: any[] = [{ text: `Repurpose Type: ${payload.type}` }, { text: `Context:\n${payload.context.substring(0, 45000)}` }];
 
-  const response = await ai.models.generateContent({
+  const response = await retryWithBackoff(() =>
+    ai.models.generateContent({
     model: modelId,
     contents: [{ role: "user", parts }],
     config: {
@@ -323,7 +378,7 @@ export async function repurposeWithGemini(payload: { type: string; context: stri
         },
       },
     },
-  });
+  }));
 
   const text = response.text;
   if (!text) throw new Error("No response from Gemini.");
@@ -346,25 +401,40 @@ export async function generateSponsorshipWithGemini(payload: {
   const systemInstruction = `You are an expert podcast monetization strategist with deep knowledge of the creator economy, ad market dynamics, and brand partnerships.
 
 Your role is to analyze podcast content and match it with relevant sponsors based on:
-- Actual market data (CPM benchmarks, sponsor databases, platform trends)
-- Episode content, audience insights, and topical alignment
-- Current ad market conditions and creator economy trends
+- PRIMARILY: The specific episode content, topics, audience insights, and unique value proposition
+- SECONDARILY: General market data from the research pack (CPM benchmarks, sponsor categories, platform trends)
 
-CRITICAL: Base your recommendations on the provided RESEARCH PACK data, not generic knowledge. The research pack contains:
-- Real sponsor brands actively investing in podcasts (with target audiences and typical deals)
-- Current CPM benchmarks from IAB and industry reports
-- Market conditions and ad spend trends
-- Platform-specific monetization insights
+CRITICAL INSTRUCTIONS:
+1. Analyze the TRANSCRIPT CONTEXT carefully to understand the specific niche, topics, and audience
+2. Match sponsors based on TOPICAL RELEVANCE to this specific episode, not just generic categories
+3. Consider what sponsors would authentically fit this show's content and audience
+4. Use the research pack as a reference for sponsor categories and market rates, but CUSTOMIZE recommendations to this specific content
+5. Different episodes should get DIFFERENT sponsor recommendations based on their unique content
+6. Provide specific reasoning for each sponsor match based on the actual episode topics discussed
 
-Return ONLY valid JSON matching the responseSchema. Be specific about WHY each sponsor matches and cite data sources.`;
+Return ONLY valid JSON matching the responseSchema. Be highly specific about WHY each sponsor matches THIS particular episode's content.`;
+
+  // Extract live metrics if available
+  const liveMetrics = payload.researchPack?.liveEnrichment?.metrics;
+  const metricsContext = liveMetrics
+    ? `\n\nLIVE PODCAST METRICS (Use these realistic estimates in your recommendations):
+- Estimated Downloads per Episode: ${liveMetrics.estimatedDownloads.toLocaleString()}
+- Realistic CPM Rate: $${liveMetrics.estimatedCPM}
+- Confidence: ${liveMetrics.confidence}
+- Based on: ${liveMetrics.reasoning}
+
+IMPORTANT: Use these metrics in your estimatedMetrics response. Do NOT use generic 10,000 download assumptions.`
+    : '\n\nNOTE: No live metrics available. Use conservative estimates (1,000-3,000 downloads, $18-25 CPM for new shows).';
 
   const parts: any[] = [
-    { text: `RESEARCH PACK (Market Data - Use this as your primary source):\n${JSON.stringify(payload.researchPack, null, 2).substring(0, 20000)}` },
-    { text: `\n\nTRANSCRIPT CONTEXT:\n${payload.transcriptContext.substring(0, 25000)}` },
-    { text: `\n\nBased on the research pack and transcript, generate monetization recommendations. Include specific sponsor brands from the research pack, realistic CPM estimates, and cite your sources.` }
+    { text: `EPISODE-SPECIFIC CONTEXT (Analyze this FIRST to understand what this episode is about):\n${payload.transcriptContext.substring(0, 30000)}` },
+    { text: metricsContext },
+    { text: `\n\nREFERENCE DATA - Sponsor Categories & Market Rates (Use ONLY as a reference for available sponsors and pricing):\n${JSON.stringify(payload.researchPack, null, 2).substring(0, 15000)}` },
+    { text: `\n\nTASK: Based on the SPECIFIC topics, themes, and audience of THIS episode, recommend sponsors that would be a natural, authentic fit. Match sponsors to the actual content discussed, not just generic categories. Explain WHY each sponsor fits THIS particular episode's content. Use the LIVE METRICS provided above for realistic revenue estimates. Different episodes with different topics should get different sponsor recommendations.` }
   ];
 
-  const response = await ai.models.generateContent({
+  const response = await retryWithBackoff(() =>
+    ai.models.generateContent({
     model: modelId,
     contents: [{ role: "user", parts }],
     config: {
@@ -380,6 +450,30 @@ Return ONLY valid JSON matching the responseSchema. Be specific about WHY each s
           reasoning: {
             type: Type.STRING,
             description: "2-3 sentence explanation of the score, citing market conditions from research pack"
+          },
+          estimatedMetrics: {
+            type: Type.OBJECT,
+            description: "Realistic estimates for this show based on available data",
+            properties: {
+              downloadsPerEpisode: {
+                type: Type.NUMBER,
+                description: "Estimated downloads per episode based on similar shows and available data"
+              },
+              realisticCPM: {
+                type: Type.NUMBER,
+                description: "Realistic CPM rate for this show's niche and audience size"
+              },
+              confidence: {
+                type: Type.STRING,
+                enum: ["low", "medium", "high"],
+                description: "Confidence level in these estimates"
+              },
+              basedOn: {
+                type: Type.STRING,
+                description: "Brief explanation of what data these estimates are based on"
+              }
+            },
+            required: ["downloadsPerEpisode", "realisticCPM", "confidence", "basedOn"]
           },
           suggestedSponsors: {
             type: Type.ARRAY,
@@ -462,6 +556,7 @@ Return ONLY valid JSON matching the responseSchema. Be specific about WHY each s
         required: [
           "score",
           "reasoning",
+          "estimatedMetrics",
           "suggestedSponsors",
           "targetAudienceProfile",
           "potentialAdSpots",
@@ -471,7 +566,7 @@ Return ONLY valid JSON matching the responseSchema. Be specific about WHY each s
         ]
       }
     }
-  });
+  }));
 
   const text = response.text;
   if (!text) throw new Error("No response from Gemini for sponsorship generation.");

@@ -7,7 +7,13 @@
       "Bash(cat:*)",
       "Bash(git mv:*)",
       "Bash(npm install)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(npm run build:*)",
+      "Bash(lsof:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm start)"
     ]
   }
 }

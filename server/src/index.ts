@@ -31,14 +31,36 @@ app.post("/api/analyze", async (req, res) => {
     const result = await analyzeWithGemini({ contentInput, settings });
     return res.json(result);
   } catch (err: any) {
-  console.error("ANALYZE ERROR:", err);
-  console.error("ANALYZE ERROR message:", err?.message);
-  console.error("ANALYZE ERROR stack:", err?.stack);
-  console.error("ANALYZE ERROR cause:", err?.cause);
-  console.error("ANALYZE ERROR response:", err?.response);
-  console.error("ANALYZE ERROR details:", err?.details);
+    console.error("ANALYZE ERROR:", err);
+    console.error("ANALYZE ERROR message:", err?.message);
+    console.error("ANALYZE ERROR stack:", err?.stack);
+    console.error("ANALYZE ERROR cause:", err?.cause);
+    console.error("ANALYZE ERROR response:", err?.response);
+    console.error("ANALYZE ERROR details:", err?.details);
 
-  return res.status(500).json({ error: err?.message ?? "Server error" });
+    // Extract user-friendly error message
+    const errorMessage = err?.message || "";
+    let userMessage = "Analysis failed. Please try again.";
+    let statusCode = 500;
+
+    if (errorMessage.includes("503") || errorMessage.includes("overloaded") || errorMessage.includes("UNAVAILABLE")) {
+      userMessage = "The AI service is currently overloaded. We've retried multiple times but couldn't complete the analysis. Please try again in a few minutes.";
+      statusCode = 503;
+    } else if (errorMessage.includes("429") || errorMessage.includes("rate limit") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
+      userMessage = "Rate limit exceeded. Please wait a moment and try again.";
+      statusCode = 429;
+    } else if (errorMessage.includes("Missing GEMINI_API_KEY")) {
+      userMessage = "API configuration error. Please check your API key.";
+      statusCode = 500;
+    } else if (errorMessage.includes("No response from Gemini")) {
+      userMessage = "No response received from the AI service. Please try again.";
+      statusCode = 500;
+    }
+
+    return res.status(statusCode).json({
+      error: userMessage,
+      details: err?.message
+    });
   }
 });
 

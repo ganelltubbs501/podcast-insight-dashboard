@@ -327,6 +327,86 @@ export async function getGoogleTrends(query: string): Promise<any> {
   }
 }
 
+/**
+ * Estimate realistic podcast metrics based on available data
+ * Returns estimates for downloads per episode and appropriate CPM rates
+ */
+export function estimatePodcastMetrics(enrichmentData: any): {
+  estimatedDownloads: number;
+  estimatedCPM: number;
+  confidence: 'low' | 'medium' | 'high';
+  reasoning: string;
+} {
+  let downloads = 1000; // Conservative default
+  let cpm = 18; // Lower end of podcast CPM range
+  let confidence: 'low' | 'medium' | 'high' = 'low';
+  const reasons: string[] = [];
+
+  // Check Spotify data for episode count (indicator of show maturity)
+  if (enrichmentData?.spotify?.total_episodes) {
+    const episodes = enrichmentData.spotify.total_episodes;
+    if (episodes > 100) {
+      downloads = 3000;
+      reasons.push('Established show (100+ episodes)');
+      confidence = 'medium';
+    } else if (episodes > 50) {
+      downloads = 2000;
+      reasons.push('Growing show (50+ episodes)');
+    } else {
+      downloads = 1200;
+      reasons.push('Newer show (<50 episodes)');
+    }
+  }
+
+  // Check YouTube stats if available
+  if (enrichmentData?.youtube?.subscriberCount) {
+    const subs = enrichmentData.youtube.subscriberCount;
+    // Rough conversion: 10-20% of YouTube subscribers listen to podcast
+    const estimatedFromYT = Math.floor(subs * 0.15);
+    if (estimatedFromYT > downloads) {
+      downloads = Math.min(estimatedFromYT, 50000); // Cap at 50k for realism
+      reasons.push(`YouTube audience: ${subs.toLocaleString()} subscribers`);
+      confidence = 'high';
+    }
+  }
+
+  // Check for sponsor presence (indicates monetization tier)
+  if (enrichmentData?.rss?.sponsorCandidates?.length > 0) {
+    // Shows with active sponsors typically have decent audience
+    if (downloads < 2500) downloads = 2500;
+    cpm = 25; // Mid-tier CPM
+    reasons.push('Has active sponsors');
+    confidence = 'medium';
+  }
+
+  // Check iTunes/RSS feed data
+  if (enrichmentData?.rss?.itemCount > 50) {
+    if (downloads < 2000) downloads = 2000;
+    reasons.push('Consistent publishing (50+ episodes in feed)');
+  }
+
+  // Adjust CPM based on niche indicators
+  if (enrichmentData?.contextBrands?.length > 0) {
+    // SaaS/Tech brands mentioned = likely tech/business niche
+    cpm = 30; // Tech/business podcasts command premium CPM
+    reasons.push('Tech/business niche (premium CPM)');
+  }
+
+  // Reddit mentions indicate community engagement
+  if (enrichmentData?.reddit?.totalResults > 5) {
+    if (downloads < 3000) downloads = 3000;
+    reasons.push('Active community discussion');
+    confidence = 'medium';
+  }
+
+  return {
+    estimatedDownloads: downloads,
+    estimatedCPM: cpm,
+    confidence,
+    reasoning: reasons.join('; ') || 'Using conservative baseline estimates'
+  };
+}
+
 /** High-level enrichment pipeline for sponsorship candidate generation */
 export async function enrichForSponsorship(context: string, options: { youtubeApiKey?: string } = {}): Promise<any> {
   // Derive a short term to search for shows/hosts
@@ -363,7 +443,7 @@ export async function enrichForSponsorship(context: string, options: { youtubeAp
   if (spotify) sources.push('spotify');
   if (trends) sources.push('trends');
 
-  return {
+  const enrichmentData = {
     term,
     itunes,
     rss,
@@ -372,6 +452,15 @@ export async function enrichForSponsorship(context: string, options: { youtubeAp
     wayback,
     spotify,
     trends,
+    contextBrands,
     sources,
+  };
+
+  // Calculate realistic metrics based on available data
+  const metrics = estimatePodcastMetrics(enrichmentData);
+
+  return {
+    ...enrichmentData,
+    metrics,
   };
 }
