@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand Colors */
+  --color-primary: #FF2D8D;
+  --color-secondary: #5B2EFF;
+  --color-success: #22C55E;
+  --color-error: #EF4444;
+
+  /* Text Colors */
+  --color-textPrimary: #FFFFFF;
+  --color-textBody: #E6E6F0;
+  --color-textSecondary: #B9B9CC;
+  --color-textMuted: #8B8BA6;
+
+  /* Dark Mode Gray Scale */
+  --color-gray-50: #0B0B10;
+  --color-gray-100: #11111A;
+  --color-gray-200: #1A1A26;
+  --color-gray-300: #242438;
+  --color-gray-400: #3A3A55;
+  --color-gray-500: #5B5B78;
+  --color-gray-600: #8B8BA6;
+  --color-gray-700: #B9B9CC;
+  --color-gray-800: #E6E6F0;
+  --color-gray-900: #FFFFFF;
+
+  /* Font */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* DEFAULT = DARK MODE */
+:root {
+  --color-primary: #FF2D8D;
+  --color-secondary: #5B2EFF;
+
+  --text-primary: #FFFFFF;
+  --text-body: #E6E6F0;
+  --text-secondary: #B9B9CC;
+  --text-muted: #8B8BA6;
+  --text-link: #FF2D8D;
+  --text-link-hover: #E60074;
+
+  --theme-meta: #0D0616;
+}
+
+/* LIGHT MODE (when .light is applied) */
+.light {
+  --color-primary: #FF2D8D;
+  --color-secondary: #5B2EFF;
+
+  --text-primary: #0D0616;
+  --text-body: #1E1E33;
+  --text-secondary: #55556F;
+  --text-muted: #7B7B94;
+  --text-link: #E60074;
+  --text-link-hover: #B8005B;
+
+  --theme-meta: #5B2EFF;
+}
+
+/* Light mode overrides - must override Tailwind classes */
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Light mode overrides for all gray and text classes */
+html.light .bg-gray-50 { background-color: #FFFFFF !important; }
+html.light .bg-gray-100 { background-color: #F9FAFB !important; }
+html.light .bg-gray-200 { background-color: #F3F4F6 !important; }
+html.light .bg-gray-300 { background-color: #E5E7EB !important; }
+html.light .bg-gray-400 { background-color: #D1D5DB !important; }
+html.light .bg-gray-500 { background-color: #9CA3AF !important; }
+
+html.light .text-gray-50 { color: #F9FAFB !important; }
+html.light .text-gray-100 { color: #F3F4F6 !important; }
+html.light .text-gray-200 { color: #E5E7EB !important; }
+html.light .text-gray-300 { color: #D1D5DB !important; }
+html.light .text-gray-400 { color: #9CA3AF !important; }
+html.light .text-gray-500 { color: #6B7280 !important; }
+html.light .text-gray-600 { color: #4B5563 !important; }
+html.light .text-gray-700 { color: #374151 !important; }
+html.light .text-gray-800 { color: #1F2937 !important; }
+html.light .text-gray-900 { color: #111827 !important; }
+
+html.light .text-textPrimary { color: #0D0616 !important; }
+html.light .text-textBody { color: #1E1E33 !important; }
+html.light .text-textSecondary { color: #55556F !important; }
+html.light .text-textMuted { color: #7B7B94 !important; }
+
+html.light .border-gray-100 { border-color: #F3F4F6 !important; }
+html.light .border-gray-200 { border-color: #E5E7EB !important; }
+html.light .border-gray-300 { border-color: #D1D5DB !important; }
+html.light .border-gray-400 { border-color: #9CA3AF !important; }
+
+html.light .hover\:bg-gray-200:hover { background-color: #E5E7EB !important; }
+html.light .hover\:bg-gray-300:hover { background-color: #D1D5DB !important; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #0B0B10;
+  color: #E6E6F0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+html.light body {
+  background-color: #FFFFFF;
+  color: #1E1E33;
+}

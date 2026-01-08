@@ -33,11 +33,6 @@ export const logoutUser = async () => {
    localStorage.removeItem(STORAGE_KEY_USER);
 };
 
-  
-  localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
-  return updatedUser;
-};
-
 // --- Help System ---
 
 export const getHelpArticles = async (): Promise<HelpArticle[]> => {
@@ -58,7 +53,7 @@ export const getHelpArticles = async (): Promise<HelpArticle[]> => {
       id: '3',
       title: 'Exporting to PDF and DOCX',
       category: 'Features',
-      content: 'On the results page, click the "Export" button in the top right corner. Select your desired format from the dropdown menu. PDF reports include all analysis data.
+      content: 'On the results page, click the "Export" button in the top right corner. Select your desired format from the dropdown menu. PDF reports include all analysis data.'
     },
     {
       id: '4',

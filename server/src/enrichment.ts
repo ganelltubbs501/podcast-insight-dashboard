@@ -116,7 +116,19 @@ export async function fetchRSSSummary(feedUrl: string): Promise<any> {
         console.warn('Sponsor extraction heuristics failed', e);
       }
 
-      const summary = { feedUrl, title: parsed.title, description: parsed.description, itemCount: parsed.items?.length || items.length, recent: items, sponsorMentions: sponsorMatches, sponsorCandidates };
+      // Calculate publishing consistency
+      const consistencyData = calculatePublishingConsistency(parsed.items || []);
+
+      const summary = {
+        feedUrl,
+        title: parsed.title,
+        description: parsed.description,
+        itemCount: parsed.items?.length || items.length,
+        recent: items,
+        sponsorMentions: sponsorMatches,
+        sponsorCandidates,
+        publishingConsistency: consistencyData
+      };
       setCached(key, summary);
       return summary;
     } catch (e) {
@@ -151,7 +163,15 @@ export async function fetchRSSSummary(feedUrl: string): Promise<any> {
         console.warn('Sponsor extraction heuristics failed', e);
       }
 
-      const summary = { feedUrl, itemCount: itemMatches.length, recent: items, sponsorMentions: sponsorMatches, sponsorCandidates };
+      // Can't calculate consistency in fallback mode (no publish dates)
+      const summary = {
+        feedUrl,
+        itemCount: itemMatches.length,
+        recent: items,
+        sponsorMentions: sponsorMatches,
+        sponsorCandidates,
+        publishingConsistency: { score: 0, episodesPerMonth: 0, pattern: 'unknown' as const, gaps: [], averageGap: 0, reasoning: 'Fallback parser - no date information' }
+      };
       setCached(key, summary);
       return summary;
     }
@@ -159,6 +179,139 @@ export async function fetchRSSSummary(feedUrl: string): Promise<any> {
     console.error('RSS fetch failed', e);
     return null;
   }
+}
+
+/**
+ * Calculate publishing consistency from RSS feed items
+ * Returns a score (0-100) and analysis of publishing patterns
+ */
+function calculatePublishingConsistency(items: any[]): {
+  score: number;
+  episodesPerMonth: number;
+  pattern: 'consistent' | 'irregular' | 'declining' | 'new' | 'unknown';
+  gaps: number[];
+  averageGap: number;
+  reasoning: string;
+} {
+  if (!items || items.length < 3) {
+    return {
+      score: 0,
+      episodesPerMonth: 0,
+      pattern: 'new',
+      gaps: [],
+      averageGap: 0,
+      reasoning: 'Not enough episodes to determine consistency'
+    };
+  }
+
+  // Extract publish dates
+  const dates: Date[] = [];
+  for (const item of items) {
+    const pubDate = item.pubDate || item.isoDate;
+    if (pubDate) {
+      const date = new Date(pubDate);
+      if (!isNaN(date.getTime())) {
+        dates.push(date);
+      }
+    }
+  }
+
+  if (dates.length < 3) {
+    return {
+      score: 0,
+      episodesPerMonth: 0,
+      pattern: 'unknown',
+      gaps: [],
+      averageGap: 0,
+      reasoning: 'No valid publish dates found in RSS feed'
+    };
+  }
+
+  // Sort dates (most recent first)
+  dates.sort((a, b) => b.getTime() - a.getTime());
+
+  // Calculate gaps between episodes (in days)
+  const gaps: number[] = [];
+  for (let i = 0; i < dates.length - 1; i++) {
+    const gap = (dates[i].getTime() - dates[i + 1].getTime()) / (1000 * 60 * 60 * 24);
+    gaps.push(Math.round(gap));
+  }
+
+  if (gaps.length === 0) {
+    return {
+      score: 0,
+      episodesPerMonth: 0,
+      pattern: 'unknown',
+      gaps: [],
+      averageGap: 0,
+      reasoning: 'Could not calculate episode gaps'
+    };
+  }
+
+  const averageGap = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+
+  // Calculate standard deviation of gaps (consistency indicator)
+  const variance = gaps.reduce((sum, gap) => sum + Math.pow(gap - averageGap, 2), 0) / gaps.length;
+  const stdDev = Math.sqrt(variance);
+
+  // Calculate episodes per month based on average gap
+  const episodesPerMonth = averageGap > 0 ? 30 / averageGap : 0;
+
+  // Calculate consistency score (0-100)
+  let score = 0;
+  let pattern: 'consistent' | 'irregular' | 'declining' | 'new' | 'unknown' = 'unknown';
+  let reasoning = '';
+
+  // Perfect consistency: weekly or biweekly with low variation
+  const coefficientOfVariation = averageGap > 0 ? stdDev / averageGap : 1;
+
+  if (coefficientOfVariation < 0.2) {
+    // Very consistent (variation < 20% of average)
+    score = 100;
+    pattern = 'consistent';
+    reasoning = `Highly consistent: ${Math.round(episodesPerMonth)} episodes/month, ${Math.round(averageGap)} day average gap`;
+  } else if (coefficientOfVariation < 0.4) {
+    // Fairly consistent (variation < 40% of average)
+    score = 85;
+    pattern = 'consistent';
+    reasoning = `Fairly consistent: ${Math.round(episodesPerMonth)} episodes/month with some variation`;
+  } else if (coefficientOfVariation < 0.6) {
+    // Moderate consistency
+    score = 70;
+    pattern = 'irregular';
+    reasoning = `Moderately consistent: ${Math.round(episodesPerMonth)} episodes/month but irregular gaps`;
+  } else {
+    // Poor consistency
+    score = 50;
+    pattern = 'irregular';
+    reasoning = `Irregular publishing: ${Math.round(episodesPerMonth)} episodes/month with high variation`;
+  }
+
+  // Check for declining frequency (last 3 gaps > average)
+  if (gaps.length >= 3) {
+    const recentGaps = gaps.slice(0, 3);
+    const recentAverage = recentGaps.reduce((sum, gap) => sum + gap, 0) / recentGaps.length;
+
+    if (recentAverage > averageGap * 1.5) {
+      pattern = 'declining';
+      score = Math.min(score, 60);
+      reasoning += ' | Warning: Recent episode gaps are increasing';
+    }
+  }
+
+  // Bonus for high frequency
+  if (episodesPerMonth >= 4 && pattern === 'consistent') {
+    score = Math.min(100, score + 5);
+  }
+
+  return {
+    score: Math.round(score),
+    episodesPerMonth: Math.round(episodesPerMonth * 10) / 10,
+    pattern,
+    gaps: gaps.slice(0, 5), // Last 5 gaps for reference
+    averageGap: Math.round(averageGap * 10) / 10,
+    reasoning
+  };
 }
 
 /** Get YouTube channel stats using the YouTube Data API. Accepts channelId or search term */

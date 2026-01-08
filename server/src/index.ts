@@ -1,29 +1,48 @@
 import "dotenv/config";
-console.log("ENV FILE CHECK -> GEMINI_API_KEY exists?", !!process.env.GEMINI_API_KEY);
-console.log("ENV FILE CHECK -> PORT:", process.env.PORT);
 import express from "express";
 import cors from "cors";
-import { analyzeWithGemini, repurposeWithGemini } from "./gemini.js";
+import { analyzeWithGemini, repurposeWithGemini, chatWithGemini } from "./gemini.js";
+import { validateBackendEnv, backendEnv } from "./env.js";
+import {
+  generalLimiter,
+  aiAnalysisLimiter,
+  repurposingLimiter,
+  healthCheckLimiter
+} from "./middleware/rateLimiter.js";
+import {
+  initSentry,
+  errorHandler,
+  captureException
+} from "./utils/sentry.js";
+
+// Validate environment variables on startup
+validateBackendEnv();
+
+// Initialize error tracking
+initSentry();
 
 const app = express();
 
-// For local dev: allow your Vite dev server
+// Trust proxy - required for rate limiting behind proxies (Vercel, Railway, etc.)
+app.set('trust proxy', 1);
+
+// CORS - Use environment configuration
 app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://localhost:3002",
-    "http://192.168.1.197:3000"
-  ],
+  origin: backendEnv.cors.allowedOrigins,
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
 app.use(express.json({ limit: "25mb" }));
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+// Health check with lenient rate limit
+app.get("/health", healthCheckLimiter, (_req, res) => res.json({ ok: true }));
 
-app.post("/api/analyze", async (req, res) => {
+// Apply general rate limiter to all /api routes
+app.use("/api", generalLimiter);
+
+// AI Analysis endpoint with strict rate limiting
+app.post("/api/analyze", aiAnalysisLimiter, async (req, res) => {
   try {
     const { contentInput, settings } = req.body ?? {};
     if (!contentInput) return res.status(400).json({ error: "Missing contentInput" });
@@ -64,8 +83,8 @@ app.post("/api/analyze", async (req, res) => {
   }
 });
 
-// Repurpose content (generate email series, social calendar, articles, image prompts)
-app.post("/api/repurpose", async (req, res) => {
+// Repurpose content with moderate rate limiting
+app.post("/api/repurpose", repurposingLimiter, async (req, res) => {
   try {
     const { type, context } = req.body ?? {};
     if (!type) return res.status(400).json({ error: "Missing type" });
@@ -76,6 +95,24 @@ app.post("/api/repurpose", async (req, res) => {
   } catch (err: any) {
     console.error("REPURPOSE ERROR:", err);
     return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// AI Chat endpoint - Context-aware chat assistant
+app.post("/api/chat", generalLimiter, async (req, res) => {
+  try {
+    const { message, conversationHistory, pageContext } = req.body ?? {};
+    if (!message) return res.status(400).json({ error: "Missing message" });
+
+    const result = await chatWithGemini({
+      message,
+      conversationHistory: conversationHistory || [],
+      pageContext: pageContext || {}
+    });
+    return res.json(result);
+  } catch (err: any) {
+    console.error("CHAT ERROR:", err);
+    return res.status(500).json({ error: err?.message ?? "Chat service error" });
   }
 });
 
@@ -108,7 +145,38 @@ app.post("/api/outreach", (req, res) => {
   }
 });
 
-// Generate sponsorship insights with research layer
+// Generate sponsorship insights with manual input (status-based monetization)
+app.post("/api/monetization", async (req, res) => {
+  try {
+    const { context, monetizationInput } = req.body ?? {};
+    if (!context) return res.status(400).json({ error: "Missing context" });
+    if (!monetizationInput) return res.status(400).json({ error: "Missing monetizationInput" });
+
+    // Step 1: Build research pack (market data, sponsor database, CPM benchmarks)
+    const { buildResearchPack } = await import("./research.js");
+    const researchPack = await buildResearchPack();
+
+    // Step 2: Process manual input and build confidence-weighted metrics
+    const { processMonetizationInput } = await import("./monetization.js");
+    const processedData = await processMonetizationInput(monetizationInput, context);
+
+    // Step 3: Generate truth-based insights
+    const { generateTruthBasedMonetization } = await import("./gemini.js");
+    const insights = await generateTruthBasedMonetization({
+      transcriptContext: context,
+      processedMetrics: processedData,
+      researchPack
+    });
+
+    return res.json(insights);
+  } catch (err: any) {
+    console.error("MONETIZATION ERROR:", err?.message);
+    console.error("MONETIZATION STACK:", err?.stack);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Generate sponsorship insights with research layer (legacy endpoint)
 app.post("/api/sponsorship", async (req, res) => {
   try {
     const { context, useLiveData } = req.body ?? {};
@@ -174,5 +242,205 @@ app.post("/api/sponsorship", async (req, res) => {
   }
 });
 
-const port = process.env.PORT ? Number(process.env.PORT) : 8080;
-app.listen(port, () => console.log(`API listening on :${port}`));
+// ============================================================================
+// SPOTIFY OAUTH ENDPOINTS (Real Download Data)
+// ============================================================================
+
+app.get("/api/spotify/auth", (req, res) => {
+  try {
+    const { getSpotifyAuthUrl } = require('./spotify-oauth.js');
+
+    const config = {
+      clientId: process.env.SPOTIFY_CLIENT_ID || '',
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET || '',
+      redirectUri: process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3000/spotify/callback'
+    };
+
+    if (!config.clientId || !config.clientSecret) {
+      return res.status(500).json({ error: 'Spotify OAuth not configured' });
+    }
+
+    const authUrl = getSpotifyAuthUrl(config, req.query.state as string);
+    return res.json({ authUrl });
+  } catch (err: any) {
+    console.error('Spotify auth URL generation failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/spotify/callback", async (req, res) => {
+  try {
+    const { exchangeSpotifyCode, storeSpotifyConnection } = await import('./spotify-oauth.js');
+    const { code, userId, showId } = req.body;
+
+    if (!code || !userId) {
+      return res.status(400).json({ error: 'Missing code or userId' });
+    }
+
+    const config = {
+      clientId: process.env.SPOTIFY_CLIENT_ID || '',
+      clientSecret: process.env.SPOTIFY_CLIENT_SECRET || '',
+      redirectUri: process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3000/spotify/callback'
+    };
+
+    const tokens = await exchangeSpotifyCode(config, code);
+
+    const connection = {
+      userId,
+      showId: showId || '',
+      tokens,
+      connectedAt: Date.now()
+    };
+
+    storeSpotifyConnection(connection);
+
+    return res.json({ success: true, message: 'Spotify connected successfully' });
+  } catch (err: any) {
+    console.error('Spotify callback failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/spotify/analytics/:userId", async (req, res) => {
+  try {
+    const { getSpotifyConnection, getSpotifyPodcastAnalytics, extractVerifiedMetrics, refreshSpotifyToken, storeSpotifyConnection } = await import('./spotify-oauth.js');
+    const { userId } = req.params;
+
+    const connection = getSpotifyConnection(userId);
+    if (!connection) {
+      return res.status(404).json({ error: 'Spotify not connected for this user' });
+    }
+
+    let tokens = connection.tokens;
+    if (Date.now() >= tokens.expiresAt - 60000) {
+      const config = {
+        clientId: process.env.SPOTIFY_CLIENT_ID || '',
+        clientSecret: process.env.SPOTIFY_CLIENT_SECRET || '',
+        redirectUri: process.env.SPOTIFY_REDIRECT_URI || ''
+      };
+
+      tokens = await refreshSpotifyToken(config, tokens.refreshToken);
+      connection.tokens = tokens;
+      storeSpotifyConnection(connection);
+    }
+
+    const analytics = await getSpotifyPodcastAnalytics(tokens.accessToken, connection.showId);
+    const verifiedMetrics = extractVerifiedMetrics(analytics);
+
+    return res.json({
+      metrics: verifiedMetrics,
+      analytics,
+      dataSource: 'spotify',
+      lastSynced: Date.now()
+    });
+  } catch (err: any) {
+    console.error('Spotify analytics fetch failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/spotify/disconnect/:userId", (req, res) => {
+  try {
+    const { removeSpotifyConnection } = require('./spotify-oauth.js');
+    const { userId } = req.params;
+
+    removeSpotifyConnection(userId);
+
+    return res.json({ success: true, message: 'Spotify disconnected' });
+  } catch (err: any) {
+    console.error('Spotify disconnect failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// In-memory storage for scheduled posts (in production, use Supabase)
+const scheduledPosts: any[] = [];
+
+// Get all scheduled posts
+app.get("/api/schedule", (req, res) => {
+  try {
+    return res.json(scheduledPosts);
+  } catch (err: any) {
+    console.error("GET SCHEDULE ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Schedule a new post
+app.post("/api/schedule", (req, res) => {
+  try {
+    const { platform, content, scheduledDate, status, transcriptId } = req.body ?? {};
+
+    if (!platform || !content || !scheduledDate) {
+      return res.status(400).json({ error: "Missing required fields: platform, content, scheduledDate" });
+    }
+
+    const newPost = {
+      id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      platform,
+      content,
+      scheduledDate,
+      status: status || 'Scheduled',
+      transcriptId,
+      createdAt: new Date().toISOString(),
+      metrics: null // Populated after publishing
+    };
+
+    scheduledPosts.push(newPost);
+    console.log(`Scheduled ${platform} post for ${scheduledDate}`);
+
+    return res.json(newPost);
+  } catch (err: any) {
+    console.error("SCHEDULE POST ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Delete a scheduled post
+app.post("/api/schedule/:id/delete", (req, res) => {
+  try {
+    const { id } = req.params;
+    const index = scheduledPosts.findIndex(p => p.id === id);
+
+    if (index === -1) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    scheduledPosts.splice(index, 1);
+    console.log(`Deleted scheduled post ${id}`);
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("DELETE SCHEDULE ERROR:", err?.message);
+    return res.status(500).json({ error: err?.message ?? "Server error" });
+  }
+});
+
+// Sentry error handler - MUST be after all routes and before other error handlers
+app.use(errorHandler);
+
+// Global error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error('Unhandled error:', err);
+  captureException(err, {
+    url: req.url,
+    method: req.method,
+    body: req.body
+  });
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+const server = app.listen(backendEnv.port, () => {
+  console.log(`✅ Server running on port ${backendEnv.port}`);
+  console.log(`   Environment: ${backendEnv.nodeEnv}`);
+  console.log(`   CORS Origins: ${backendEnv.cors.allowedOrigins.join(', ')}`);
+});
+
+server.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${backendEnv.port} is already in use. Please kill the existing process or change the PORT in .env`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', err);
+  }
+});

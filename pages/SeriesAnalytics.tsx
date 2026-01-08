@@ -17,7 +17,7 @@ const SeriesAnalytics: React.FC = () => {
     loadData();
   }, []);
 
-  if (loading) return <div className="p-12 text-center text-gray-500">Loading analytics...</div>;
+  if (loading) return <div className="p-12 text-center text-textMuted">Loading analytics...</div>;
 
   if (transcripts.length < 2) {
     return (
@@ -25,8 +25,8 @@ const SeriesAnalytics: React.FC = () => {
         <div className="w-20 h-20 bg-accent-soft rounded-full flex items-center justify-center mx-auto mb-6">
           <BarChart3 className="h-10 w-10 text-primary" />
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Not Enough Data</h2>
-        <p className="text-gray-500 max-w-md mx-auto mb-6">
+        <h2 className="text-2xl font-bold text-textPrimary mb-2">Not Enough Data</h2>
+        <p className="text-textMuted max-w-md mx-auto mb-6">
           Upload at least 2 transcripts to unlock Series Analytics, showing trends in sentiment, growth, and topics over time.
         </p>
       </div>
@@ -62,20 +62,20 @@ const SeriesAnalytics: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Series Analytics</h1>
-        <p className="text-gray-500">Insights across {transcripts.length} episodes</p>
+        <h1 className="text-2xl font-bold text-textPrimary">Series Analytics</h1>
+        <p className="text-textMuted">Insights across {transcripts.length} episodes</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium">Avg Sentiment</span>
+            <span className="text-textMuted text-sm font-medium">Avg Sentiment</span>
             <TrendingUp className={`h-5 w-5 ${avgSentiment >= 60 ? 'text-green-500' : 'text-yellow-500'}`} />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-gray-900">{avgSentiment}</span>
-            <span className="text-sm text-gray-400">/ 100</span>
+            <span className="text-3xl font-bold text-textPrimary">{avgSentiment}</span>
+            <span className="text-sm text-textMuted">/ 100</span>
           </div>
           <div className={`text-xs mt-2 flex items-center ${growth > 0 ? 'text-accent-emerald' : 'text-red-500'}`}>
             {growth > 0 ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownRight className="h-3 w-3 mr-1" />}
@@ -83,45 +83,45 @@ const SeriesAnalytics: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium">Est. Avg Duration</span>
+            <span className="text-textMuted text-sm font-medium">Est. Avg Duration</span>
             <Clock className="h-5 w-5 text-blue-500" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-gray-900">{avgDuration}</span>
-            <span className="text-sm text-gray-400">mins</span>
+            <span className="text-3xl font-bold text-textPrimary">{avgDuration}</span>
+            <span className="text-sm text-textMuted">mins</span>
           </div>
-          <p className="text-xs text-gray-400 mt-2">Based on word count</p>
+          <p className="text-xs text-textMuted mt-2">Based on word count</p>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium">Total Episodes</span>
+            <span className="text-textMuted text-sm font-medium">Total Episodes</span>
             <FileText className="h-5 w-5 text-accent-violet" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-gray-900">{transcripts.length}</span>
+            <span className="text-3xl font-bold text-textPrimary">{transcripts.length}</span>
           </div>
-          <p className="text-xs text-gray-400 mt-2">Last uploaded: {sentimentTrend[sentimentTrend.length-1].date}</p>
+          <p className="text-xs text-textMuted mt-2">Last uploaded: {sentimentTrend[sentimentTrend.length-1].date}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-gray-500 text-sm font-medium">Top Topic</span>
+            <span className="text-textMuted text-sm font-medium">Top Topic</span>
             <Hash className="h-5 w-5 text-secondary" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-xl font-bold text-gray-900 truncate">{topTopics[0]?.[0] || "N/A"}</span>
+            <span className="text-xl font-bold text-textPrimary truncate">{topTopics[0]?.[0] || "N/A"}</span>
           </div>
-          <p className="text-xs text-gray-400 mt-2">Mentioned in {Math.round((topTopics[0]?.[1] || 0) / transcripts.length * 100)}% of eps</p>
+          <p className="text-xs text-textMuted mt-2">Mentioned in {Math.round((topTopics[0]?.[1] || 0) / transcripts.length * 100)}% of eps</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
         {/* Sentiment Chart */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-          <h3 className="font-bold text-gray-900 mb-6">Sentiment Trend</h3>
+        <div className="lg:col-span-2 bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
+          <h3 className="font-bold text-textPrimary mb-6">Sentiment Trend</h3>
           <div className="h-64 w-full relative">
             <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
                {/* Grid lines */}
@@ -154,7 +154,7 @@ const SeriesAnalytics: React.FC = () => {
             </svg>
             
             {/* X-Axis Labels */}
-            <div className="flex justify-between mt-4 text-xs text-gray-400">
+            <div className="flex justify-between mt-4 text-xs text-textMuted">
               {sentimentTrend.map((t, i) => (
                 <span key={i}>{t.date}</span>
               ))}
@@ -163,14 +163,14 @@ const SeriesAnalytics: React.FC = () => {
         </div>
 
         {/* Topic Consistency */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-           <h3 className="font-bold text-gray-900 mb-6">Topic Consistency</h3>
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
+           <h3 className="font-bold text-textPrimary mb-6">Topic Consistency</h3>
            <div className="space-y-4">
              {topTopics.map((topic, i) => (
                <div key={i}>
                  <div className="flex justify-between text-sm mb-1">
-                   <span className="font-medium text-gray-700 capitalize">{topic[0]}</span>
-                   <span className="text-gray-500">{topic[1]} eps</span>
+                   <span className="font-medium text-textSecondary capitalize">{topic[0]}</span>
+                   <span className="text-textMuted">{topic[1]} eps</span>
                  </div>
                  <div className="w-full bg-gray-100 rounded-full h-2">
                    <div 
@@ -185,26 +185,26 @@ const SeriesAnalytics: React.FC = () => {
       </div>
 
       {/* Comparison Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-          <h3 className="font-bold text-gray-900">Episode Comparison</h3>
+      <div className="bg-gray-100 rounded-xl border border-gray-300 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-300 bg-gray-50">
+          <h3 className="font-bold text-textPrimary">Episode Comparison</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Episode</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sentiment</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tone</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Speakers</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Episode</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Sentiment</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Tone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Speakers</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-gray-100 divide-y divide-gray-200">
               {sortedTranscripts.slice().reverse().map((t) => (
-                <tr key={t.id} className="hover:bg-gray-50">
+                <tr key={t.id} className="hover:bg-gray-200">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{t.title}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted">{new Date(t.date).toLocaleDateString()}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                        (t.result?.sentiment?.score || 0) > 60 ? 'bg-accent-soft text-accent-emerald' : 'bg-yellow-100 text-yellow-800'
@@ -212,8 +212,8 @@ const SeriesAnalytics: React.FC = () => {
                        {t.result?.sentiment?.score || "N/A"}
                      </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-xs truncate">{t.result?.sentiment?.tone || "-"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.result?.speakers.length || 0}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted max-w-xs truncate">{t.result?.sentiment?.tone || "-"}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted">{t.result?.speakers.length || 0}</td>
                 </tr>
               ))}
             </tbody>

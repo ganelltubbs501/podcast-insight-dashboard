@@ -126,8 +126,8 @@ const GuestOutreach: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Guest Outreach</h1>
-          <p className="text-gray-500">Discover and contact experts for your podcast.</p>
+          <h1 className="text-2xl font-bold text-textPrimary">Guest Outreach</h1>
+          <p className="text-textMuted">Discover and contact experts for your podcast.</p>
         </div>
         <button 
           onClick={() => setShowFindModal(true)}
@@ -140,39 +140,39 @@ const GuestOutreach: React.FC = () => {
 
       {/* Stats Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm flex items-center justify-between">
            <div>
-             <p className="text-sm font-medium text-gray-500">Total Suggested</p>
-             <p className="text-3xl font-bold text-gray-900">{guests.length}</p>
+             <p className="text-sm font-medium text-textMuted">Total Suggested</p>
+             <p className="text-3xl font-bold text-textPrimary">{guests.length}</p>
            </div>
-           <Users className="h-8 w-8 text-primary text-primary" />
+           <Users className="h-8 w-8 text-primary" />
         </div>
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm flex items-center justify-between">
            <div>
-             <p className="text-sm font-medium text-gray-500">Contacted</p>
-             <p className="text-3xl font-bold text-gray-900">{guests.filter(g => g.status === 'Contacted').length}</p>
+             <p className="text-sm font-medium text-textMuted">Contacted</p>
+             <p className="text-3xl font-bold text-textPrimary">{guests.filter(g => g.status === 'Contacted').length}</p>
            </div>
-           <Mail className="h-8 w-8 text-yellow-100 text-yellow-600" />
+           <Mail className="h-8 w-8 text-yellow-600" />
         </div>
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm flex items-center justify-between">
            <div>
-             <p className="text-sm font-medium text-gray-500">Booked</p>
-             <p className="text-3xl font-bold text-gray-900">{guests.filter(g => g.status === 'Booked').length}</p>
+             <p className="text-sm font-medium text-textMuted">Booked</p>
+             <p className="text-3xl font-bold text-textPrimary">{guests.filter(g => g.status === 'Booked').length}</p>
            </div>
-           <UserCheck className="h-8 w-8 text-green-100 text-accent-emerald" />
+           <UserCheck className="h-8 w-8 text-green-600" />
         </div>
       </div>
 
       {/* Guest List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-          <h2 className="font-semibold text-gray-800">Your Guest Pipeline</h2>
+      <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-300 bg-gray-50">
+          <h2 className="font-semibold text-textBody">Your Guest Pipeline</h2>
         </div>
         
         {loading ? (
-           <div className="p-12 text-center text-gray-500">Loading guests...</div>
+           <div className="p-12 text-center text-textMuted">Loading guests...</div>
         ) : guests.length === 0 ? (
-           <div className="p-12 text-center text-gray-500">
+           <div className="p-12 text-center text-textMuted">
              <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
              <p>No guests yet. Click "Find Potential Guests" to start.</p>
            </div>
@@ -181,28 +181,28 @@ const GuestOutreach: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name & Bio</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Match Reason</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Name & Bio</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Match Reason</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-textMuted uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-textMuted uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-gray-100 divide-y divide-gray-200">
                 {guests.map((guest) => (
-                  <tr key={guest.id} className="hover:bg-gray-50">
+                  <tr key={guest.id} className="hover:bg-gray-200">
                     <td className="px-6 py-4">
                       <div className="flex items-center">
                         <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center text-primary font-bold mr-4">
                           {guest.name.charAt(0)}
                         </div>
                         <div>
-                          <div className="text-sm font-bold text-gray-900">{guest.name}</div>
-                          <div className="text-xs text-gray-500">{guest.title}</div>
+                          <div className="text-sm font-bold text-textPrimary">{guest.name}</div>
+                          <div className="text-xs text-textMuted">{guest.title}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-gray-600 max-w-xs truncate" title={guest.matchReason}>{guest.matchReason || '-'}</p>
+                      <p className="text-sm text-textSecondary max-w-xs truncate" title={guest.matchReason}>{guest.matchReason || '-'}</p>
                     </td>
                     <td className="px-6 py-4">
                        <select 
@@ -212,7 +212,7 @@ const GuestOutreach: React.FC = () => {
                            guest.status === 'Booked' ? 'bg-accent-soft text-accent-emerald' :
                            guest.status === 'Contacted' ? 'bg-yellow-100 text-yellow-800' :
                            guest.status === 'Rejected' ? 'bg-red-100 text-red-800' :
-                           'bg-gray-100 text-gray-800'
+                           'bg-gray-100 text-textBody'
                          }`}
                        >
                          <option value="Suggested">Suggested</option>
@@ -232,7 +232,7 @@ const GuestOutreach: React.FC = () => {
                          </button>
                          <button 
                            onClick={() => handleDeleteGuest(guest.id)}
-                           className="text-gray-400 hover:text-red-600 p-2"
+                           className="text-textMuted hover:text-red-600 p-2"
                            title="Remove"
                          >
                            <Trash2 className="h-4 w-4" />
@@ -250,17 +250,17 @@ const GuestOutreach: React.FC = () => {
       {/* Find Guests Modal */}
       {showFindModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+           <div className="bg-gray-100 rounded-xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-xl font-bold text-gray-900">Find Potential Guests</h2>
-                 <button onClick={() => setShowFindModal(false)}><X className="h-6 w-6 text-gray-400 hover:text-gray-600" /></button>
+                 <h2 className="text-xl font-bold text-textPrimary">Find Potential Guests</h2>
+                 <button onClick={() => setShowFindModal(false)}><X className="h-6 w-6 text-textMuted hover:text-textSecondary" /></button>
               </div>
 
               {!isFinding && foundGuests.length === 0 && (
                 <div className="space-y-4">
-                   <p className="text-gray-600">Select a past episode transcript. AI will analyze the topics and suggest relevant experts.</p>
+                   <p className="text-textSecondary">Select a past episode transcript. AI will analyze the topics and suggest relevant experts.</p>
                    <div>
-                     <label className="block text-sm font-medium text-gray-700 mb-2">Source Transcript</label>
+                     <label className="block text-sm font-medium text-textSecondary mb-2">Source Transcript</label>
                      <select 
                        className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-primary"
                        value={selectedTranscriptId}
@@ -287,29 +287,29 @@ const GuestOutreach: React.FC = () => {
               {isFinding && (
                  <div className="py-12 text-center">
                     <Loader2 className="h-10 w-10 text-primary animate-spin mx-auto mb-4" />
-                    <p className="text-gray-600 font-medium">AI is researching experts based on your episode...</p>
+                    <p className="text-textSecondary font-medium">AI is researching experts based on your episode...</p>
                  </div>
               )}
 
               {foundGuests.length > 0 && (
                  <div>
-                    <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
                        <Sparkles className="h-4 w-4 text-primary" /> 
                        Suggested Guests
                     </h3>
                     <div className="space-y-4 mb-6">
                        {foundGuests.map(guest => (
-                         <div key={guest.id} className="border border-gray-200 rounded-lg p-4 hover:border-primary transition bg-gray-50">
+                         <div key={guest.id} className="border border-gray-300 rounded-lg p-4 hover:border-primary transition bg-gray-50">
                             <div className="flex justify-between items-start">
                                <div>
-                                  <h4 className="font-bold text-gray-900">{guest.name}</h4>
+                                  <h4 className="font-bold text-textPrimary">{guest.name}</h4>
                                   <p className="text-xs text-primary font-medium mb-1">{guest.title}</p>
-                                  <p className="text-sm text-gray-600 mb-2 line-clamp-2">{guest.bio}</p>
-                                  <p className="text-xs text-gray-500 italic">Match: {guest.matchReason}</p>
+                                  <p className="text-sm text-textSecondary mb-2 line-clamp-2">{guest.bio}</p>
+                                  <p className="text-xs text-textMuted italic">Match: {guest.matchReason}</p>
                                </div>
                                <button 
                                  onClick={() => handleSaveGuest(guest)}
-                                 className="ml-4 bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded text-sm font-medium hover:bg-gray-100 flex items-center gap-1"
+                                 className="ml-4 bg-gray-100 border border-gray-300 text-textSecondary px-3 py-1 rounded text-sm font-medium hover:bg-gray-100 flex items-center gap-1"
                                >
                                   <Plus className="h-3 w-3" /> Add
                                </button>
@@ -318,7 +318,7 @@ const GuestOutreach: React.FC = () => {
                        ))}
                     </div>
                     <div className="text-center">
-                       <button onClick={() => setFoundGuests([])} className="text-gray-500 text-sm hover:text-gray-900 underline">Start Over</button>
+                       <button onClick={() => setFoundGuests([])} className="text-textMuted text-sm hover:text-textPrimary underline">Start Over</button>
                     </div>
                  </div>
               )}
@@ -329,29 +329,29 @@ const GuestOutreach: React.FC = () => {
       {/* Email Draft Modal */}
       {showEmailModal && selectedGuest && (
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
+            <div className="bg-gray-100 rounded-xl shadow-xl max-w-2xl w-full p-6">
                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-textPrimary flex items-center gap-2">
                     <Mail className="h-5 w-5 text-primary" /> Outreach Email
                   </h2>
-                  <button onClick={() => setShowEmailModal(false)}><X className="h-6 w-6 text-gray-400 hover:text-gray-600" /></button>
+                  <button onClick={() => setShowEmailModal(false)}><X className="h-6 w-6 text-textMuted hover:text-textSecondary" /></button>
                </div>
                
                {isDrafting ? (
                   <div className="py-12 text-center">
                      <Loader2 className="h-8 w-8 text-primary animate-spin mx-auto mb-3" />
-                     <p className="text-gray-500">Writing personalized email for {selectedGuest.name}...</p>
+                     <p className="text-textMuted">Writing personalized email for {selectedGuest.name}...</p>
                   </div>
                ) : emailDraft ? (
                   <div className="space-y-4">
                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Subject</label>
-                        <div className="bg-gray-50 p-3 rounded border border-gray-200 text-gray-900 font-medium">{emailDraft.subject}</div>
+                        <label className="block text-xs font-bold text-textMuted uppercase mb-1">Subject</label>
+                        <div className="bg-gray-100 p-3 rounded border border-gray-300 text-textPrimary font-medium">{emailDraft.subject}</div>
                      </div>
                      <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Body</label>
+                        <label className="block text-xs font-bold text-textMuted uppercase mb-1">Body</label>
                         <textarea 
-                          className="w-full h-48 bg-gray-50 p-3 rounded border border-gray-200 text-gray-800 text-sm outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full h-48 bg-gray-100 p-3 rounded border border-gray-300 text-textBody text-sm outline-none focus:ring-1 focus:ring-primary"
                           value={emailDraft.body}
                           readOnly
                         ></textarea>

@@ -326,7 +326,20 @@ export async function repurposeWithGemini(payload: { type: string; context: stri
   const ai = getClient();
   const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-  const systemInstruction = `You are an expert content repurposer. Given a transcript and analysis context, generate platform-optimized repurposed content. Return ONLY JSON matching the responseSchema.`;
+  const systemInstruction = `You are an expert content repurposer. Given a transcript and analysis context, generate platform-optimized repurposed content.
+
+IMPORTANT FORMATTING RULES:
+- For emailSeries: Generate 5 emails with day values 1, 2, 3, 4, 5 (one email per day). Each email should be sent on a different day.
+- For socialCalendar: Generate 25 social media posts (5 posts per day for 5 days). Each day should have one post for each platform: Instagram, Facebook, LinkedIn, Twitter, and Instagram Stories. Structure:
+  * Day 1: Instagram (day: 1), Facebook (day: 1), LinkedIn (day: 1), Twitter (day: 1), Instagram Stories (day: 1)
+  * Day 2: Instagram (day: 2), Facebook (day: 2), LinkedIn (day: 2), Twitter (day: 2), Instagram Stories (day: 2)
+  * Day 3: Instagram (day: 3), Facebook (day: 3), LinkedIn (day: 3), Twitter (day: 3), Instagram Stories (day: 3)
+  * Day 4: Instagram (day: 4), Facebook (day: 4), LinkedIn (day: 4), Twitter (day: 4), Instagram Stories (day: 4)
+  * Day 5: Instagram (day: 5), Facebook (day: 5), LinkedIn (day: 5), Twitter (day: 5), Instagram Stories (day: 5)
+- The "day" field indicates which day the content should be scheduled (day 1 = first day, day 2 = second day, etc.)
+- Optimize each post for its specific platform (character limits, tone, hashtags, etc.)
+
+Return ONLY JSON matching the responseSchema.`;
 
   const parts: any[] = [{ text: `Repurpose Type: ${payload.type}` }, { text: `Context:\n${payload.context.substring(0, 45000)}` }];
 
@@ -577,4 +590,341 @@ IMPORTANT: Use these metrics in your estimatedMetrics response. Do NOT use gener
     console.error("FAILED TO PARSE SPONSORSHIP JSON. RAW OUTPUT:", text);
     throw e;
   }
+}
+
+// ============================================================================
+// TRUTH-BASED MONETIZATION GENERATION (with manual input + confidence)
+// ============================================================================
+
+export async function generateTruthBasedMonetization(payload: {
+  transcriptContext: string;
+  processedMetrics: any;
+  researchPack: any;
+}) {
+  const { transcriptContext, processedMetrics, researchPack } = payload;
+
+  const ai = getClient();
+  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const prompt = `You are a monetization strategist analyzing a podcast for revenue opportunities.
+
+You have REAL DATA with confidence levels. Use this to tell the creator the TRUTH about their monetization status.
+
+## PODCAST METRICS (Confidence-Weighted)
+
+${processedMetrics.dataConfidence.map((d: any) =>
+  `- ${d.label}: ${typeof d.value === 'number' && d.value > 1000 ? d.value.toLocaleString() : d.value} [${d.confidence === 'verified' ? '🟢 VERIFIED' : d.confidence === 'estimated' ? '🟡 ESTIMATED' : '🔴 UNKNOWN'}] (${d.source})`
+).join('\n')}
+
+Overall Confidence: ${processedMetrics.overallConfidence.toUpperCase()}
+
+## CURRENT STATUS
+
+- Current Monthly Revenue: $${processedMetrics.currentRevenue.toLocaleString()}
+- Monetization Methods: ${processedMetrics.monetizationMethods.join(', ') || 'None'}
+${processedMetrics.revenueGoal ? `- Revenue Goal: $${processedMetrics.revenueGoal.toLocaleString()}/month` : ''}
+${processedMetrics.timeline ? `- Timeline: ${processedMetrics.timeline}` : ''}
+
+## EPISODE CONTEXT (for sponsor matching)
+
+${transcriptContext.substring(0, 2000)}
+
+## MARKET DATA (Research Pack)
+
+CPM Benchmarks:
+- Podcast: $${researchPack.cpmBenchmarks.podcast.min}-${researchPack.cpmBenchmarks.podcast.max} (avg $${researchPack.cpmBenchmarks.podcast.average})
+- YouTube: $${researchPack.cpmBenchmarks.youtube.min}-${researchPack.cpmBenchmarks.youtube.max} (avg $${researchPack.cpmBenchmarks.youtube.average})
+- Newsletter: $${researchPack.cpmBenchmarks.newsletter.min}-${researchPack.cpmBenchmarks.newsletter.max} (avg $${researchPack.cpmBenchmarks.newsletter.average})
+
+Market Conditions: ${researchPack.marketConditions.summary}
+
+Sponsor Database: ${researchPack.sponsorDatabase.totalBrands} brands across ${researchPack.sponsorDatabase.categories.length} categories
+
+## YOUR TASK
+
+Generate a TRUTH-BASED monetization analysis. No motivational fluff. Just facts.
+
+1. **Calculate Under-Monetization**: Based on verified/estimated metrics, what SHOULD this podcast be making per episode? Compare to current revenue.
+
+2. **Readiness Score**: Use the calculated readiness analysis. The system has already analyzed their execution capability:
+
+Overall Readiness: ${processedMetrics.readinessAnalysis?.score || 0}/100
+Strengths: ${processedMetrics.readinessAnalysis?.strengths?.join('; ') || 'None identified'}
+Blockers: ${processedMetrics.readinessAnalysis?.blockers?.join('; ') || 'None identified'}
+
+Strategy-Specific Readiness:
+- Sponsorship: ${processedMetrics.strategyReadiness?.sponsorship || 0}/100
+- Product: ${processedMetrics.strategyReadiness?.product || 0}/100
+- Affiliate: ${processedMetrics.strategyReadiness?.affiliate || 0}/100
+- Membership: ${processedMetrics.strategyReadiness?.membership || 0}/100
+
+Use the OVERALL score for the main readiness field, and use strategy-specific scores for each recommendation's readiness.
+
+3. **Episode-Specific Sponsor Matches**: Based on THIS episode's content, match 3-6 specific brands from the research pack. Be topically relevant, not generic.
+
+4. **Truth Statement**: One sentence that cuts through BS. Examples:
+   - "You're under-monetized by $347/episode. You have the audience, you're just not asking."
+   - "You don't have an audience size problem. You have a sponsor outreach problem."
+   - "Your downloads are too low for direct deals. Focus on affiliate first."
+
+5. **Next Best Move**: NOT "grow your downloads." Tell them the ONE thing to do next based on their actual data. Examples:
+   - "NOT more downloads. You need ONE sponsor at $25 CPM. Reach out to [Brand X]."
+   - "Build an email list first. Your podcast ads are working but you're leaving 60% of value on the table."
+   - "You're ready for sponsors NOW. Create a one-page media kit and pitch these 3 brands."
+
+6. **Why This Works Now**: 2-3 bullet points explaining why this recommendation is RIGHT for their current status (not aspirational).
+
+Be brutally honest. If they're not ready, say so. If they're leaving money on the table, quantify it exactly.`;
+
+  const response = await retryWithBackoff(() => ai.models.generateContent({
+    model: modelId,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: {
+      temperature: 0.7,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          currentRevenue: {
+            type: Type.NUMBER,
+            description: "Current monthly revenue from podcast"
+          },
+          potentialRevenue: {
+            type: Type.NUMBER,
+            description: "What they SHOULD be making with their current metrics"
+          },
+          underMonetizedBy: {
+            type: Type.NUMBER,
+            description: "Dollar amount per episode they're leaving on the table"
+          },
+          readinessScore: {
+            type: Type.NUMBER,
+            description: "0-100 score for monetization readiness (be honest)"
+          },
+          dataConfidence: {
+            type: Type.ARRAY,
+            description: "Pass through the data confidence array from input",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                field: { type: Type.STRING },
+                label: { type: Type.STRING },
+                confidence: { type: Type.STRING, enum: ["verified", "estimated", "unknown"] },
+                source: { type: Type.STRING },
+                value: { type: Type.STRING }
+              }
+            }
+          },
+          overallConfidence: {
+            type: Type.STRING,
+            enum: ["low", "medium", "high"],
+            description: "Overall data confidence level"
+          },
+          recommendations: {
+            type: Type.ARRAY,
+            description: "Ranked recommendations by priority and readiness",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                type: {
+                  type: Type.STRING,
+                  enum: ["sponsorship", "product", "affiliate", "membership", "other"]
+                },
+                priority: {
+                  type: Type.STRING,
+                  enum: ["immediate", "short-term", "medium-term", "long-term"]
+                },
+                estimatedRevenue: {
+                  type: Type.NUMBER,
+                  description: "Monthly revenue potential"
+                },
+                effort: {
+                  type: Type.STRING,
+                  enum: ["low", "medium", "high"]
+                },
+                readiness: {
+                  type: Type.NUMBER,
+                  description: "0-100 readiness score for THIS strategy"
+                },
+                reasoning: {
+                  type: Type.STRING,
+                  description: "Why this recommendation, based on their actual data"
+                },
+                nextSteps: {
+                  type: Type.ARRAY,
+                  description: "Specific action items",
+                  items: { type: Type.STRING }
+                }
+              },
+              required: ["type", "priority", "estimatedRevenue", "effort", "readiness", "reasoning", "nextSteps"]
+            }
+          },
+          suggestedSponsors: {
+            type: Type.ARRAY,
+            description: "Episode-specific sponsor matches from research pack (3-6 brands)",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                category: { type: Type.STRING },
+                brands: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                matchReason: {
+                  type: Type.STRING,
+                  description: "Why THIS episode matches these brands (be specific)"
+                },
+                estimatedCPM: { type: Type.STRING }
+              },
+              required: ["category", "brands", "matchReason", "estimatedCPM"]
+            }
+          },
+          truthStatement: {
+            type: Type.STRING,
+            description: "One brutally honest sentence about their monetization status"
+          },
+          nextBestMove: {
+            type: Type.STRING,
+            description: "The ONE thing to do next (not 'grow downloads'). Be specific."
+          },
+          whyThisWorksNow: {
+            type: Type.ARRAY,
+            description: "2-3 bullet points: why this recommendation fits their CURRENT status",
+            items: { type: Type.STRING }
+          }
+        },
+        required: [
+          "currentRevenue",
+          "potentialRevenue",
+          "underMonetizedBy",
+          "readinessScore",
+          "dataConfidence",
+          "overallConfidence",
+          "recommendations",
+          "suggestedSponsors",
+          "truthStatement",
+          "nextBestMove",
+          "whyThisWorksNow"
+        ]
+      }
+    }
+  })) as GenerateContentResponse;
+
+  const text = response.text;
+  if (!text) throw new Error("No response from Gemini for truth-based monetization.");
+
+  try {
+    const parsed = JSON.parse(text);
+    // Add the input metrics for reference
+    parsed.metrics = processedMetrics.metrics;
+    return parsed;
+  } catch (e) {
+    console.error("FAILED TO PARSE TRUTH-BASED MONETIZATION JSON. RAW OUTPUT:", text);
+    throw e;
+  }
+}
+
+/**
+ * AI Chat Assistant - Provides intelligent, context-aware responses
+ */
+export async function chatWithGemini(payload: {
+  message: string;
+  conversationHistory?: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>;
+  pageContext?: {
+    currentPage?: string;
+    transcriptData?: any;
+    userData?: any;
+  };
+}) {
+  const ai = getClient();
+  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const systemInstruction = `You are an expert AI assistant for LoquiHQ, a podcast performance and monetization intelligence platform. Your role is to help podcasters understand and use the platform effectively.
+
+ABOUT LOQUIHQ:
+- LoquiHQ analyzes podcast transcripts to provide actionable insights
+- Features: Transcript analysis, social content generation, blog posts, SEO optimization, repurposing content, monetization strategies, guest outreach, and more
+- Tagline: "Where podcasters get the truth."
+- Mission: Stop guessing, read the signal - provide clear answers, not vanity metrics
+
+YOUR CAPABILITIES:
+1. Answer questions about platform features and how to use them
+2. Provide guidance on podcast growth strategies
+3. Help interpret analysis results and metrics
+4. Suggest best practices for content repurposing
+5. Offer monetization advice based on podcast performance data
+6. Answer questions about sponsorships, CPM rates, and revenue optimization
+
+RESPONSE STYLE:
+- Be concise, friendly, and actionable
+- Use the user's current context to provide relevant answers
+- When discussing features, explain how they help achieve business goals
+- Back up advice with data or best practices when possible
+- If you don't have specific information, provide general guidance and suggest where to find more details
+
+IMPORTANT RULES:
+- Always provide accurate information about LoquiHQ features
+- If asked about pricing or billing, direct users to the settings or contact support
+- When discussing analytics, focus on actionable insights rather than vanity metrics
+- Encourage users to treat their podcast like a business`;
+
+  // Build context string from page data
+  let contextString = '';
+  if (payload.pageContext) {
+    const { currentPage, transcriptData, userData } = payload.pageContext;
+
+    if (currentPage) {
+      contextString += `\n\nCURRENT PAGE: ${currentPage}`;
+    }
+
+    if (transcriptData) {
+      contextString += `\n\nCURRENT TRANSCRIPT DATA:`;
+      if (transcriptData.title) contextString += `\nTitle: ${transcriptData.title}`;
+      if (transcriptData.result?.keyTakeaways) {
+        contextString += `\nKey Takeaways: ${transcriptData.result.keyTakeaways.slice(0, 3).join(', ')}`;
+      }
+      if (transcriptData.result?.speakers) {
+        contextString += `\nSpeakers: ${transcriptData.result.speakers.map((s: any) => s.name).join(', ')}`;
+      }
+    }
+
+    if (userData) {
+      if (userData.name) contextString += `\n\nUser: ${userData.name}`;
+    }
+  }
+
+  // Build conversation contents
+  const contents = [];
+
+  // Add conversation history if provided
+  if (payload.conversationHistory && payload.conversationHistory.length > 0) {
+    contents.push(...payload.conversationHistory);
+  }
+
+  // Add current user message with context
+  const userMessage = contextString
+    ? `${contextString}\n\nUSER QUESTION: ${payload.message}`
+    : payload.message;
+
+  contents.push({
+    role: "user" as const,
+    parts: [{ text: userMessage }]
+  });
+
+  const response = await retryWithBackoff(() =>
+    ai.models.generateContent({
+      model: modelId,
+      contents: contents,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        maxOutputTokens: 500,
+      },
+    })
+  );
+
+  const text = response.text;
+  if (!text) throw new Error("No response from Gemini chat.");
+
+  return { response: text };
 }

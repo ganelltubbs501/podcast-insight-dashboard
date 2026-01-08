@@ -1,4 +1,5 @@
 import { AnalysisResult, Guest, SponsorshipInsights, AnalysisSettings, RepurposedContent } from "../types";
+import { MonetizationInput, MonetizationInsights } from "../types/monetization";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 if (!API_BASE_URL) throw new Error("VITE_API_BASE_URL is not configured");
@@ -53,4 +54,11 @@ export const generateRepurposedContent = async (
   _context: string
 ): Promise<Partial<RepurposedContent>> => {
   return postJSON<Partial<RepurposedContent>>('/api/repurpose', { type: _type, context: _context });
+};
+
+export const generateTruthBasedMonetization = async (
+  _context: string,
+  monetizationInput: MonetizationInput
+): Promise<MonetizationInsights> => {
+  return postJSON<MonetizationInsights>('/api/monetization', { context: _context, monetizationInput });
 };

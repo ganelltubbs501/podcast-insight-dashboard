@@ -1,6 +1,6 @@
 {
-  "name": "Podcast Insight Dashboard",
-  "description": "Generate insights, summaries, and social media clips from podcast transcripts using AI.",
+  "name": "LoquiHQ",
+  "description": "Podcast performance and monetization intelligence. Where podcasters get the truth.",
   "requestFramePermissions": [
     "camera",
     "microphone"

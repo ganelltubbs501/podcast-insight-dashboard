@@ -61,33 +61,33 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
 
   return (
     <div 
-      className={`fixed inset-y-0 right-0 w-full sm:w-[450px] bg-white shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      className={`fixed inset-y-0 right-0 w-full sm:w-[450px] bg-gray-100 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
     >
       {/* Header */}
-      <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50">
-        <h2 className="text-xl font-bold text-gray-900">Help & Support</h2>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-200 rounded-full transition">
+      <div className="flex justify-between items-center p-6 border-b border-gray-300 bg-gray-50">
+        <h2 className="text-xl font-bold text-textPrimary">Help & Support</h2>
+        <button onClick={onClose} className="text-textMuted hover:text-textSecondary p-1 hover:bg-gray-200 rounded-full transition">
           <X className="h-6 w-6" />
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-gray-300">
         <button 
           onClick={() => setActiveTab('knowledge')}
-          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'knowledge' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'knowledge' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-textMuted hover:text-textSecondary hover:bg-gray-200'}`}
         >
           <BookOpen className="h-4 w-4" /> FAQ
         </button>
         <button 
           onClick={() => setActiveTab('tutorials')}
-          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'tutorials' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'tutorials' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-textMuted hover:text-textSecondary hover:bg-gray-200'}`}
         >
           <PlayCircle className="h-4 w-4" /> Academy
         </button>
         <button 
           onClick={() => setActiveTab('support')}
-          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'support' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+          className={`flex-1 py-3 text-sm font-medium transition flex items-center justify-center gap-2 ${activeTab === 'support' ? 'text-primary border-b-2 border-primary bg-accent-soft/30' : 'text-textMuted hover:text-textSecondary hover:bg-gray-200'}`}
         >
           <MessageCircle className="h-4 w-4" /> Contact
         </button>
@@ -100,7 +100,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
         {activeTab === 'knowledge' && (
           <div className="space-y-6">
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              <Search className="absolute left-3 top-2.5 h-5 w-5 text-textMuted" />
               <input 
                 type="text" 
                 placeholder="Search articles..." 
@@ -112,22 +112,22 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
 
             <div className="space-y-2">
               {filteredArticles.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No articles found matching "{searchQuery}"</div>
+                <div className="text-center py-8 text-textMuted">No articles found matching "{searchQuery}"</div>
               ) : (
                 filteredArticles.map(article => (
-                  <div key={article.id} className="border border-gray-200 rounded-lg overflow-hidden transition-all hover:border-primary">
+                  <div key={article.id} className="border border-gray-300 rounded-lg overflow-hidden transition-all hover:border-primary">
                     <button 
                       onClick={() => setExpandedArticleId(expandedArticleId === article.id ? null : article.id)}
-                      className="w-full flex items-center justify-between p-4 text-left bg-white hover:bg-gray-50 transition"
+                      className="w-full flex items-center justify-between p-4 text-left bg-gray-100 hover:bg-gray-100 transition"
                     >
                       <div>
                         <span className="text-xs font-bold text-primary bg-accent-soft px-2 py-0.5 rounded uppercase tracking-wide mb-1 inline-block">{article.category}</span>
-                        <h3 className="font-bold text-gray-800 text-sm">{article.title}</h3>
+                        <h3 className="font-bold text-textBody text-sm">{article.title}</h3>
                       </div>
-                      {expandedArticleId === article.id ? <ChevronDown className="h-5 w-5 text-gray-400" /> : <ChevronRight className="h-5 w-5 text-gray-400" />}
+                      {expandedArticleId === article.id ? <ChevronDown className="h-5 w-5 text-textMuted" /> : <ChevronRight className="h-5 w-5 text-textMuted" />}
                     </button>
                     {expandedArticleId === article.id && (
-                      <div className="p-4 pt-0 text-sm text-gray-600 bg-white border-t border-gray-100 leading-relaxed">
+                      <div className="p-4 pt-0 text-sm text-textSecondary bg-gray-100 border-t border-gray-300 leading-relaxed">
                         {article.content}
                       </div>
                     )}
@@ -136,12 +136,12 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
               )}
             </div>
             
-            <div className="pt-6 border-t border-gray-100">
-                <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+            <div className="pt-6 border-t border-gray-300">
+                <h4 className="font-bold text-textPrimary mb-3 flex items-center gap-2">
                     <ExternalLink className="h-4 w-4" /> Best Practices Guide
                 </h4>
                 <div className="bg-accent-soft p-4 rounded-lg border border-primary">
-                    <p className="text-sm text-gray-700 mb-2">Want to create viral-worthy content? Learn the secrets of top podcasters.</p>
+                    <p className="text-sm text-textSecondary mb-2">Want to create viral-worthy content? Learn the secrets of top podcasters.</p>
                     <a href="#" className="text-sm font-bold text-primary hover:underline">Read the Full Guide &rarr;</a>
                 </div>
             </div>
@@ -151,11 +151,11 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
         {/* Tutorials Tab */}
         {activeTab === 'tutorials' && (
           <div className="space-y-6">
-            <p className="text-sm text-gray-500">Video guides to help you master the dashboard.</p>
+            <p className="text-sm text-textMuted">Video guides to help you master the dashboard.</p>
             <div className="space-y-4">
               {tutorials.map(tutorial => (
                 <div key={tutorial.id} className="group cursor-pointer">
-                  <div className="relative rounded-xl overflow-hidden aspect-video bg-gray-100 mb-2 shadow-sm border border-gray-200">
+                  <div className="relative rounded-xl overflow-hidden aspect-video bg-gray-100 mb-2 shadow-sm border border-gray-300">
                     <img src={tutorial.thumbnailUrl} alt={tutorial.title} className="w-full h-full object-cover transition transform group-hover:scale-105" />
                     <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition flex items-center justify-center">
                       <div className="bg-white/90 rounded-full p-3 shadow-lg transform group-hover:scale-110 transition">
@@ -166,7 +166,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                       {tutorial.duration}
                     </div>
                   </div>
-                  <h3 className="font-bold text-gray-900 group-hover:text-primary transition">{tutorial.title}</h3>
+                  <h3 className="font-bold text-textPrimary group-hover:text-primary transition">{tutorial.title}</h3>
                 </div>
               ))}
             </div>
@@ -186,8 +186,8 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div>
-               <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Mail className="h-5 w-5 text-gray-500" /> Email Support
+               <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-textMuted" /> Email Support
                </h3>
                {sentSuccess ? (
                    <div className="bg-accent-soft border border-green-200 rounded-lg p-6 text-center">
@@ -200,7 +200,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                ) : (
                    <form onSubmit={handleSendTicket} className="space-y-4">
                       <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                         <label className="block text-sm font-medium text-textSecondary mb-1">Subject</label>
                          <select 
                             className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary outline-none"
                             value={supportSubject}
@@ -215,7 +215,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                          </select>
                       </div>
                       <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                         <label className="block text-sm font-medium text-textSecondary mb-1">Message</label>
                          <textarea 
                             className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-primary outline-none h-32"
                             placeholder="Describe your issue..."
@@ -235,14 +235,14 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
                )}
             </div>
 
-            <div className="pt-6 border-t border-gray-100">
-               <h4 className="font-bold text-gray-900 mb-3">Community</h4>
-               <a href="#" className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-primary hover:bg-gray-50 transition group">
+            <div className="pt-6 border-t border-gray-300">
+               <h4 className="font-bold text-textPrimary mb-3">Community</h4>
+               <a href="#" className="flex items-center justify-between p-4 border border-gray-300 rounded-lg hover:border-primary hover:bg-gray-100 transition group">
                   <div>
-                     <p className="font-bold text-gray-800 text-sm">Join our Discord</p>
-                     <p className="text-xs text-gray-500">Connect with other creators</p>
+                     <p className="font-bold text-textBody text-sm">Join our Discord</p>
+                     <p className="text-xs text-textMuted">Connect with other creators</p>
                   </div>
-                  <ExternalLink className="h-4 w-4 text-gray-400 group-hover:text-primary" />
+                  <ExternalLink className="h-4 w-4 text-textMuted group-hover:text-primary" />
                </a>
             </div>
           </div>

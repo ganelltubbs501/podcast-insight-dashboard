@@ -46,11 +46,6 @@ export async function addWebhook(payload: any) { return postJSON('/api/webhooks'
 export async function deleteWebhook(id: string) { return postJSON(`/api/webhooks/${id}/delete`, {}); }
 export async function testWebhook(id: string) { return postJSON(`/api/webhooks/${id}/test`, {}); }
 
-// Calendar / Scheduling
-export async function getScheduledPosts() { return getJSON('/api/schedule'); }
-export async function schedulePost(post: any) { return postJSON('/api/schedule', post); }
-export async function deleteScheduledPost(id: string) { return postJSON(`/api/schedule/${id}/delete`, {}); }
-
 // Help
 export async function getHelpArticles() { return getJSON('/api/help/articles'); }
 export async function getTutorials() { return getJSON('/api/help/tutorials'); }
@@ -68,7 +63,6 @@ export async function getActivityLog() { return getJSON('/api/team/activity'); }
 export default {
   getGuests, addGuest, updateGuest, deleteGuest,
   getApiKeys, generateApiKey, revokeApiKey, getWebhooks, addWebhook, deleteWebhook, testWebhook,
-  getScheduledPosts, schedulePost, deleteScheduledPost,
   getHelpArticles, getTutorials, sendSupportTicket,
   getTeamMembers, inviteTeamMember, removeTeamMember, getActivityLog,
 };

@@ -84,7 +84,6 @@ export async function getTranscripts(): Promise<Transcript[]> {
   const { data, error } = await supabase
     .from("transcripts")
     .select("*")
-    .eq("user_id", auth.user.id)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -100,12 +99,9 @@ export async function getTranscriptById(id: string): Promise<Transcript | null> 
     .from("transcripts")
     .select("*")
     .eq("id", id)
-    .eq("user_id", auth.user.id)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    // If the row doesn't exist for this user, treat as null
-    if ((error as any).code === "PGRST116") return null;
     throw error;
   }
 
@@ -119,8 +115,7 @@ export async function deleteTranscript(id: string): Promise<void> {
   const { error } = await supabase
     .from("transcripts")
     .delete()
-    .eq("id", id)
-    .eq("user_id", auth.user.id);
+    .eq("id", id);
 
   if (error) throw error;
 }
@@ -144,8 +139,7 @@ export async function updateTranscriptStatus(id: string, workflowStatus: Workflo
   const { error } = await supabase
     .from("transcripts")
     .update({ result: updatedResult })
-    .eq("id", id)
-    .eq("user_id", auth.user.id);
+    .eq("id", id);
 
   if (error) throw error;
 }
@@ -170,8 +164,7 @@ export async function saveTranscriptResult(id: string, patch: Record<string, any
   const { error } = await supabase
     .from("transcripts")
     .update({ result: updatedResult })
-    .eq("id", id)
-    .eq("user_id", auth.user.id);
+    .eq("id", id);
 
   if (error) throw error;
 }
@@ -213,4 +206,93 @@ export async function getUsageMetrics(): Promise<UsageMetrics> {
     quotaResetDate: "Next month",
     hoursSaved: Math.round(used * 0.5),
   } as UsageMetrics;
+}
+
+/**
+ * Scheduled Posts Functions
+ */
+
+export async function getScheduledPosts() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("scheduled_posts")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("scheduled_date", { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function schedulePost(post: {
+  platform: string;
+  content: string;
+  scheduledDate: string;
+  status?: string;
+  transcriptId?: string;
+}) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("scheduled_posts")
+    .insert({
+      user_id: user.id,
+      transcript_id: post.transcriptId || null,
+      platform: post.platform,
+      content: post.content,
+      scheduled_date: post.scheduledDate,
+      status: post.status || 'Scheduled',
+      metrics: null
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteScheduledPost(id: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("scheduled_posts")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id); // Ensure user can only delete their own posts
+
+  if (error) throw error;
+  return { success: true };
+}
+
+export async function updateScheduledPost(id: string, updates: {
+  platform?: string;
+  content?: string;
+  scheduledDate?: string;
+  status?: string;
+  metrics?: any;
+}) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const updateData: any = {};
+  if (updates.platform) updateData.platform = updates.platform;
+  if (updates.content) updateData.content = updates.content;
+  if (updates.scheduledDate) updateData.scheduled_date = updates.scheduledDate;
+  if (updates.status) updateData.status = updates.status;
+  if (updates.metrics !== undefined) updateData.metrics = updates.metrics;
+
+  const { data, error } = await supabase
+    .from("scheduled_posts")
+    .update(updateData)
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }

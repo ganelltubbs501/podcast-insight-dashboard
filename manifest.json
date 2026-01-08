@@ -1,6 +1,6 @@
 {
-  "name": "Podcast Insight Dashboard",
-  "short_name": "PodcastInsight",
+  "name": "LoquiHQ",
+  "short_name": "LoquiHQ",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F9FAFB",

@@ -1,14 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, User, Minimize2 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { getStoredUser } from '../services/auth';
 
-const LiveChatWidget: React.FC = () => {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
+
+interface ChatMessage {
+  id: string;
+  text: string;
+  sender: 'user' | 'agent';
+  time: string;
+}
+
+interface LiveChatWidgetProps {
+  transcriptData?: any;
+}
+
+const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({ transcriptData }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<{id: string, text: string, sender: 'user' | 'agent', time: string}[]>([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     { id: '1', text: 'Hi there! 👋 How can I help you with your podcast today?', sender: 'agent', time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [conversationHistory, setConversationHistory] = useState<Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -22,45 +39,81 @@ const LiveChatWidget: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    const userMsg = {
+    const userMsg: ChatMessage = {
       id: Date.now().toString(),
       text: inputText,
-      sender: 'user' as const,
+      sender: 'user',
       time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
     };
 
     setMessages(prev => [...prev, userMsg]);
+    const userMessage = inputText;
     setInputText('');
     setIsTyping(true);
 
-    // Simulate Agent Reply
-    setTimeout(() => {
-      const replies = [
-        "That's a great question! Let me check on that for you.",
-        "You can find that setting in the 'Advanced Settings' menu when creating a new analysis.",
-        "I'd be happy to help you with your transcript export.",
-        "Could you provide a bit more detail?",
-        "Thanks for the feedback! I'll pass that to our dev team."
+    try {
+      // Get current user for context
+      const user = await getStoredUser();
+
+      // Build page context
+      const pageContext = {
+        currentPage: location.pathname,
+        transcriptData: transcriptData || null,
+        userData: user ? { name: user.name, email: user.email } : null
+      };
+
+      // Call AI chat API
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          conversationHistory,
+          pageContext
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Chat request failed');
+      }
+
+      const data = await response.json();
+
+      // Update conversation history for context
+      const newHistory = [
+        ...conversationHistory,
+        { role: 'user' as const, parts: [{ text: userMessage }] },
+        { role: 'model' as const, parts: [{ text: data.response }] }
       ];
-      const randomReply = replies[Math.floor(Math.random() * replies.length)];
-      
-      const agentMsg = {
+      setConversationHistory(newHistory);
+
+      const agentMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        text: randomReply,
-        sender: 'agent' as const,
+        text: data.response,
+        sender: 'agent',
         time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
       };
-      
+
       setMessages(prev => [...prev, agentMsg]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: "Sorry, I'm having trouble connecting right now. Please make sure the backend server is running and try again.",
+        sender: 'agent',
+        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end">
       {/* Chat Window */}
       {isOpen && (
-        <div className="bg-white w-80 sm:w-96 h-[500px] rounded-2xl shadow-2xl border border-gray-200 flex flex-col mb-4 overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
+        <div className="bg-gray-100 w-80 sm:w-96 h-[500px] rounded-2xl shadow-2xl border border-gray-300 flex flex-col mb-4 overflow-hidden animate-in slide-in-from-bottom-10 fade-in duration-300">
           {/* Header */}
           <div className="bg-primary p-4 flex justify-between items-center text-white">
             <div className="flex items-center gap-3">
@@ -83,18 +136,18 @@ const LiveChatWidget: React.FC = () => {
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 bg-gray-100 space-y-4">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div 
                   className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
                     msg.sender === 'user' 
                       ? 'bg-primary text-white rounded-br-none' 
-                      : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
+                      : 'bg-gray-100 text-textBody border border-gray-300 rounded-bl-none'
                   }`}
                 >
                   <p>{msg.text}</p>
-                  <p className={`text-[10px] mt-1 ${msg.sender === 'user' ? 'text-primary text-right' : 'text-gray-400'}`}>
+                  <p className={`text-[10px] mt-1 ${msg.sender === 'user' ? 'text-primary text-right' : 'text-textMuted'}`}>
                     {msg.time}
                   </p>
                 </div>
@@ -102,7 +155,7 @@ const LiveChatWidget: React.FC = () => {
             ))}
             {isTyping && (
               <div className="flex justify-start">
-                <div className="bg-white border border-gray-200 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex gap-1">
+                <div className="bg-gray-100 border border-gray-300 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex gap-1">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></div>
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></div>
@@ -113,7 +166,7 @@ const LiveChatWidget: React.FC = () => {
           </div>
 
           {/* Input Area */}
-          <form onSubmit={handleSend} className="p-3 bg-white border-t border-gray-100 flex gap-2">
+          <form onSubmit={handleSend} className="p-3 bg-gray-100 border-t border-gray-300 flex gap-2">
             <input 
               type="text" 
               value={inputText}

@@ -14,17 +14,23 @@ import {
   addCommentToTranscript,
   updateTranscriptStatus,
   saveTranscriptResult,
+  schedulePost,
 } from "../services/transcripts";
 
 
 import { getStoredUser } from '../services/auth';
 
-import { generateSponsorshipInsights, generateRepurposedContent } from '../services/geminiService';
+import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
+import { MonetizationInput } from '../types/monetization';
 import {
   downloadPDF, downloadDOCX, downloadMarkdown, downloadMediaKit, downloadJSON,
   sendEmailExport, exportToGoogleSheets
 } from '../services/downloadService';
+import { MonetizationInputModal } from '../components/MonetizationInputModal';
+import BulkScheduleWizard from '../components/BulkScheduleWizard';
+import SeriesScheduleWizard from '../components/SeriesScheduleWizard';
+import { DataConfidenceDisplay, CompactConfidenceIndicator } from '../components/DataConfidenceDisplay';
 
 interface ResultsPageProps {
   id: string;
@@ -53,6 +59,10 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [isScheduling, setIsScheduling] = useState(false);
+  const [showBulkScheduleWizard, setShowBulkScheduleWizard] = useState(false);
+  const [showSeriesScheduleWizard, setShowSeriesScheduleWizard] = useState(false);
+  const [seriesScheduleType, setSeriesScheduleType] = useState<'email' | 'social'>('email');
+  const [seriesScheduleItems, setSeriesScheduleItems] = useState<any[]>([]);
 
   // Email Export State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -63,6 +73,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const [isGeneratingMonetization, setIsGeneratingMonetization] = useState(false);
   const [downloads, setDownloads] = useState(1000);
   const [cpm, setCpm] = useState(18);
+  const [showMonetizationModal, setShowMonetizationModal] = useState(false);
 
   // Update calculator when sponsorship data is loaded
   useEffect(() => {
@@ -86,11 +97,11 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
 
   // Estimate speaking times using a simple heuristic (uniform distribution)
   const estimateSpeakers = () => {
-    if (!result?.speakers || result.speakers.length === 0) return;
+    if (!transcript?.result?.speakers || transcript.result.speakers.length === 0) return;
     setIsEstimatingSpeakers(true);
 
     try {
-      const speakers = result.speakers;
+      const speakers = transcript.result.speakers;
       const n = speakers.length;
       const base = Math.floor(100 / n);
       let remainder = 100 - base * n;
@@ -280,23 +291,29 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   };
 
   const handleSchedulePost = async () => {
-    // Scheduling requires a production backend. The UI remains but scheduling will call the configured API when available.
     if (!scheduleDate || !scheduleTime || !transcript || !transcript.result) return;
 
     setIsScheduling(true);
     try {
       const dateTime = new Date(`${scheduleDate}T${scheduleTime}`);
-      console.log("SCHEDULE (not wired yet):", {
-        transcriptId: transcript.id,
-        when: dateTime.toISOString(),
-        platform: activePlatform
+      const content = getContentForPlatform(activePlatform, transcript.result.socialContent);
+
+      // Call the backend API to schedule the post
+      await schedulePost({
+        platform: activePlatform,
+        content: content,
+        scheduledDate: dateTime.toISOString(),
+        status: 'Scheduled',
+        transcriptId: transcript.id
       });
 
       setShowScheduleModal(false);
-      alert("Scheduling is not wired to Supabase yet. (Safe stub)");
+      setScheduleDate('');
+      setScheduleTime('');
+      alert(`${activePlatform} post scheduled for ${dateTime.toLocaleString()}`);
     } catch (e) {
       console.error(e);
-      alert("Failed to schedule post");
+      alert("Failed to schedule post. The backend may not be running.");
     } finally {
       setIsScheduling(false);
     }
@@ -348,6 +365,53 @@ ${(transcript.content || '').substring(0, 1000)}
       alert(`Failed to generate sponsorship insights: ${msg}`);
     } finally {
       setIsGeneratingMonetization(false);
+    }
+  };
+
+  const handleMonetizationInput = async (monetizationInput: MonetizationInput) => {
+    if (!transcript || !transcript.result) return;
+
+    try {
+      // Build episode context
+      const speakers = transcript.result.speakers?.map(s => `${s.name} (${s.role}): ${s.contribution}`).join('\n') || '';
+      const quotes = transcript.result.quotes?.map(q => `"${q.text}" - ${q.speaker}`).join('\n') || '';
+      const blogSections = transcript.result.blogPost?.sections?.map(s => `${s.heading}: ${s.content.substring(0, 200)}`).join('\n') || '';
+
+      const context = `
+EPISODE TITLE: ${transcript.title}
+
+MAIN TOPICS & THEMES:
+${transcript.result.keyTakeaways?.join('\n- ') || 'Not available'}
+
+KEY INSIGHTS FROM DISCUSSION:
+${blogSections || 'Not available'}
+
+NOTABLE QUOTES:
+${quotes.substring(0, 1000) || 'Not available'}
+
+SPEAKERS & THEIR EXPERTISE:
+${speakers || 'Not available'}
+
+SEO KEYWORDS (Topics Covered):
+${transcript.result.seo?.keywords?.join(', ') || 'Not available'}
+
+AUDIENCE TONE & SENTIMENT:
+Sentiment: ${transcript.result.sentiment?.label || 'N/A'} (${transcript.result.sentiment?.score || 'N/A'}/100)
+Tone: ${transcript.result.sentiment?.tone || 'N/A'}
+
+TRANSCRIPT EXCERPT (First 1000 chars):
+${(transcript.content || '').substring(0, 1000)}
+      `.trim();
+
+      const insights = await generateTruthBasedMonetization(context, monetizationInput);
+
+      // Save to transcript
+      await saveTranscriptResult(transcript.id, { sponsorship: insights });
+      await loadData();
+    } catch (e) {
+      console.error("Truth-based monetization generation failed:", e);
+      const msg = (e as any)?.message ?? String(e);
+      alert(`Failed to generate monetization insights: ${msg}`);
     }
   };
 
@@ -433,7 +497,7 @@ ${(transcript.content || '').substring(0, 1000)}
   }, [activeTab, transcript, hasAutoGeneratedRepurposing]);
 
   if (!transcript || !transcript.result) {
-    return <div className="p-12 text-center text-gray-500">Loading results...</div>;
+    return <div className="p-12 text-center text-textMuted">Loading results...</div>;
   }
 
   const { result, settings } = transcript;
@@ -475,21 +539,30 @@ ${(transcript.content || '').substring(0, 1000)}
   const renderMonetizationTab = () => {
     if (!result.sponsorship) {
       return (
-        <div className="flex flex-col items-center justify-center p-16 bg-white rounded-xl border border-gray-200 text-center">
+        <div className="flex flex-col items-center justify-center p-16 bg-gray-100 rounded-xl border border-gray-300 text-center">
           <DollarSign className="h-16 w-16 text-primary mb-4" />
-          <h3 className="text-xl font-bold text-gray-900 mb-2">Unlock Monetization Insights</h3>
-          <p className="text-gray-500 max-w-md mb-8">
-            Discover potential sponsors, estimate ad revenue, and generate a professional media kit based on this episode's content.
+          <h3 className="text-xl font-bold text-textPrimary mb-2">Unlock Monetization Insights</h3>
+          <p className="text-textMuted max-w-md mb-8">
+            Get real monetization advice based on your actual podcast metrics, not generic estimates.
           </p>
-          <button
-            onClick={generateMonetization}
-            disabled={isGeneratingMonetization}
-            style={{ backgroundColor: isGeneratingMonetization ? undefined : 'var(--color-primary)' }}
-            className="text-white px-6 py-3 rounded-lg font-bold shadow-md hover:brightness-110 transition flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {isGeneratingMonetization ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
-            Generate Sponsorship Analysis
-          </button>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              onClick={() => setShowMonetizationModal(true)}
+              style={{ backgroundColor: 'var(--color-primary)' }}
+              className="text-white px-6 py-3 rounded-lg font-bold shadow-md hover:brightness-110 transition flex items-center gap-2 justify-center"
+            >
+              <Sparkles className="h-5 w-5" />
+              Get Real Monetization Analysis
+            </button>
+            <button
+              onClick={generateMonetization}
+              disabled={isGeneratingMonetization}
+              className="border-2 border-gray-300 text-textSecondary px-6 py-3 rounded-lg font-semibold hover:border-gray-400 hover:bg-gray-100 transition flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed justify-center"
+            >
+              {isGeneratingMonetization ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+              Quick Estimate (Legacy)
+            </button>
+          </div>
         </div>
       );
     }
@@ -499,7 +572,181 @@ ${(transcript.content || '').substring(0, 1000)}
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 flex flex-col md:flex-row gap-6 items-center">
+          {/* Change Analysis Method Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={async () => {
+                if (!transcript) return;
+                await saveTranscriptResult(transcript.id, { sponsorship: null });
+                await loadData();
+              }}
+              className="text-sm text-textSecondary hover:text-textPrimary font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition"
+            >
+              ← Change Analysis Method
+            </button>
+          </div>
+
+          {/* Truth Statement & Data Confidence */}
+          {sponsorship.truthStatement && (
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
+              <div className="flex items-start gap-3 mb-4">
+                <Target className="h-6 w-6 flex-shrink-0 mt-1" />
+                <div>
+                  <h3 className="text-lg font-bold mb-2">The Truth About Your Monetization</h3>
+                  <p className="text-xl font-semibold leading-relaxed">{sponsorship.truthStatement}</p>
+                </div>
+              </div>
+              {sponsorship.nextBestMove && (
+                <div className="mt-4 p-4 bg-white/10 rounded-lg border border-white/20">
+                  <h4 className="font-bold text-sm uppercase tracking-wide mb-2">Next Best Move</h4>
+                  <p className="text-base leading-relaxed">{sponsorship.nextBestMove}</p>
+                </div>
+              )}
+              {sponsorship.whyThisWorksNow && sponsorship.whyThisWorksNow.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-bold text-sm uppercase tracking-wide mb-2">Why This Works Now</h4>
+                  <ul className="space-y-1.5">
+                    {sponsorship.whyThisWorksNow.map((reason: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Check className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <span className="text-sm">{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Data Confidence Display */}
+          {sponsorship.dataConfidence && sponsorship.overallConfidence && (
+            <DataConfidenceDisplay
+              dataConfidence={sponsorship.dataConfidence}
+              overallConfidence={sponsorship.overallConfidence}
+            />
+          )}
+
+          {/* Key Metrics Summary with Confidence */}
+          {sponsorship.metrics && (
+            <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+              <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-textMuted" />
+                Your Podcast Metrics
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {sponsorship.metrics.downloadsPerEpisode && (
+                  <div className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-textMuted font-medium">Downloads/Ep</span>
+                      {sponsorship.dataConfidence && (() => {
+                        const conf = sponsorship.dataConfidence.find((d: any) => d.field === 'downloadsPerEpisode');
+                        return conf ? (
+                          <span className="text-xs">
+                            {conf.confidence === 'verified' ? '🟢' : conf.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="text-lg font-bold text-textPrimary">
+                      {sponsorship.metrics.downloadsPerEpisode.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+                {sponsorship.metrics.completionRate && (
+                  <div className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-textMuted font-medium">Completion Rate</span>
+                      {sponsorship.dataConfidence && (() => {
+                        const conf = sponsorship.dataConfidence.find((d: any) => d.field === 'completionRate');
+                        return conf ? (
+                          <span className="text-xs">
+                            {conf.confidence === 'verified' ? '🟢' : conf.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="text-lg font-bold text-textPrimary">
+                      {sponsorship.metrics.completionRate}%
+                    </div>
+                  </div>
+                )}
+                {sponsorship.metrics.totalEpisodes && (
+                  <div className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-textMuted font-medium">Total Episodes</span>
+                      {sponsorship.dataConfidence && (() => {
+                        const conf = sponsorship.dataConfidence.find((d: any) => d.field === 'totalEpisodes');
+                        return conf ? (
+                          <span className="text-xs">
+                            {conf.confidence === 'verified' ? '🟢' : conf.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="text-lg font-bold text-textPrimary">
+                      {sponsorship.metrics.totalEpisodes}
+                    </div>
+                  </div>
+                )}
+                {sponsorship.metrics.emailListSize && (
+                  <div className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-textMuted font-medium">Email List</span>
+                      {sponsorship.dataConfidence && (() => {
+                        const conf = sponsorship.dataConfidence.find((d: any) => d.field === 'emailListSize');
+                        return conf ? (
+                          <span className="text-xs">
+                            {conf.confidence === 'verified' ? '🟢' : conf.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="text-lg font-bold text-textPrimary">
+                      {sponsorship.metrics.emailListSize.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+                {sponsorship.metrics.youtubeSubscribers && (
+                  <div className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-textMuted font-medium">YouTube Subs</span>
+                      {sponsorship.dataConfidence && (() => {
+                        const conf = sponsorship.dataConfidence.find((d: any) => d.field === 'youtubeSubscribers');
+                        return conf ? (
+                          <span className="text-xs">
+                            {conf.confidence === 'verified' ? '🟢' : conf.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="text-lg font-bold text-textPrimary">
+                      {sponsorship.metrics.youtubeSubscribers.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+                {sponsorship.metrics.estimatedCPM && (
+                  <div className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-textMuted font-medium">CPM Rate</span>
+                      {sponsorship.dataConfidence && (() => {
+                        const conf = sponsorship.dataConfidence.find((d: any) => d.field === 'estimatedCPM');
+                        return conf ? (
+                          <span className="text-xs">
+                            {conf.confidence === 'verified' ? '🟢' : conf.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="text-lg font-bold text-textPrimary">
+                      ${sponsorship.metrics.estimatedCPM}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-gray-100 rounded-xl border border-gray-300 p-6 flex flex-col md:flex-row gap-6 items-center">
             <div className="relative w-32 h-32 flex-shrink-0">
               <svg className="w-full h-full transform -rotate-90">
                 <circle cx="64" cy="64" r="56" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
@@ -514,27 +761,27 @@ ${(transcript.content || '').substring(0, 1000)}
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="text-3xl font-bold text-gray-900">{sponsorship.score}</span>
-                <span className="text-xs font-bold text-gray-400 uppercase">Score</span>
+                <span className="text-3xl font-bold text-textPrimary">{sponsorship.score}</span>
+                <span className="text-xs font-bold text-textMuted uppercase">Score</span>
               </div>
             </div>
             <div>
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">Sponsorship Readiness</h3>
+                  <h3 className="text-lg font-bold text-textPrimary mb-2">Sponsorship Readiness</h3>
                     {sponsorship.enrichment?.sources && (
-                      <div className="text-xs text-gray-500 mb-2">Live data: {sponsorship.enrichment.sources.join(', ')}</div>
+                      <div className="text-xs text-textMuted mb-2">Live data: {sponsorship.enrichment.sources.join(', ')}</div>
                     )}
 
                     {sponsorship.enrichmentAttempted && sponsorship.enrichmentNote === 'noSponsorCandidates' && (
-                      <div className="text-xs text-gray-400 mt-1">Live data was checked but no sponsor mentions were found in show notes / feed.</div>
+                      <div className="text-xs text-textMuted mt-1">Live data was checked but no sponsor mentions were found in show notes / feed.</div>
                     )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleCopyJSON(sponsorship, 'copy-sponsorship');
                     }}
-                    className="px-3 py-1 bg-white border rounded-md text-sm"
+                    className="px-3 py-1 bg-gray-100 border rounded-md text-sm"
                   >
                     {copiedSection === 'copy-sponsorship' ? 'Copied' : 'Copy JSON'}
                   </button>
@@ -545,7 +792,7 @@ ${(transcript.content || '').substring(0, 1000)}
                       generateMonetization();
                     }}
                     disabled={isGeneratingMonetization}
-                    className="px-3 py-1 bg-white border rounded-md text-sm disabled:opacity-70"
+                    className="px-3 py-1 bg-gray-100 border rounded-md text-sm disabled:opacity-70"
                   >
                     {isGeneratingMonetization ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Regenerate'}
                   </button>
@@ -564,24 +811,41 @@ ${(transcript.content || '').substring(0, 1000)}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                <Briefcase className="h-5 w-5 text-gray-500" /> Suggested Sponsors
-              </h3>
-              {sponsorship.researchMetadata && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {sponsorship.researchMetadata.totalSponsorBrands} brands analyzed • {sponsorship.researchMetadata.categoriesMatched} categories matched
-                  {sponsorship.researchMetadata.liveDataUsed && ' • Live data included'}
-                </p>
-              )}
+          <div className="bg-gray-100 rounded-xl border border-gray-300 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-300 bg-gray-50">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-bold text-textPrimary flex items-center gap-2">
+                    <Briefcase className="h-5 w-5 text-textMuted" /> Suggested Sponsors
+                  </h3>
+                  {sponsorship.researchMetadata && (
+                    <p className="text-xs text-textMuted mt-1">
+                      {sponsorship.researchMetadata.totalSponsorBrands} brands analyzed • {sponsorship.researchMetadata.categoriesMatched} categories matched
+                      {sponsorship.researchMetadata.liveDataUsed && ' • Live data included'}
+                    </p>
+                  )}
+                </div>
+                {sponsorship.overallConfidence && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-textMuted">Confidence:</span>
+                    <CompactConfidenceIndicator
+                      confidence={
+                        sponsorship.overallConfidence === 'high' ? 'verified' :
+                        sponsorship.overallConfidence === 'medium' ? 'estimated' :
+                        'unknown'
+                      }
+                      source={sponsorship.overallConfidence}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="divide-y divide-gray-100">
               {sponsorship.suggestedSponsors?.map((rec: any, i: number) => (
-                <div key={i} className="p-6 hover:bg-gray-50 transition">
+                <div key={i} className="p-6 hover:bg-gray-100 transition">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex-1">
-                      <h4 className="font-bold text-gray-900 text-lg">{rec.category || rec.industry}</h4>
+                      <h4 className="font-bold text-textPrimary text-lg">{rec.category || rec.industry}</h4>
                       {rec.estimatedCPM && (
                         <p className="text-xs text-accent-emerald font-semibold mt-1">Est. {rec.estimatedCPM}</p>
                       )}
@@ -591,7 +855,7 @@ ${(transcript.content || '').substring(0, 1000)}
                         e.stopPropagation();
                         handleCopyJSON(rec, `copy-sponsor-${i}`);
                       }}
-                      className="px-2 py-1 bg-white border rounded-md text-xs flex-shrink-0 ml-3"
+                      className="px-2 py-1 bg-gray-100 border rounded-md text-xs flex-shrink-0 ml-3"
                     >
                       {copiedSection === `copy-sponsor-${i}` ? 'Copied' : 'Copy'}
                     </button>
@@ -603,33 +867,33 @@ ${(transcript.content || '').substring(0, 1000)}
                     ))}
                   </div>
 
-                  <p className="text-sm text-gray-600 mb-2">{rec.matchReason}</p>
+                  <p className="text-sm text-textSecondary mb-2">{rec.matchReason}</p>
 
                   {rec.typicalDeal && (
-                    <p className="text-xs text-gray-500 italic">Typical deal: {rec.typicalDeal}</p>
+                    <p className="text-xs text-textMuted italic">Typical deal: {rec.typicalDeal}</p>
                   )}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+            <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
               <Target className="h-5 w-5 text-primary" /> Target Audience Profile
             </h3>
-            <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-100">
+            <p className="text-textSecondary text-sm leading-relaxed bg-gray-100 p-4 rounded-lg border border-gray-300">
               {sponsorship.targetAudienceProfile}
             </p>
           </div>
 
           {sponsorship.actionableNextSteps && sponsorship.actionableNextSteps.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="font-bold text-gray-900 mb-4">Next Steps to Land Sponsors</h3>
+            <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+              <h3 className="font-bold text-textPrimary mb-4">Next Steps to Land Sponsors</h3>
               <ol className="space-y-3">
                 {sponsorship.actionableNextSteps.map((step: string, i: number) => (
                   <li key={i} className="flex items-start gap-3">
                     <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
-                    <span className="text-sm text-gray-700 pt-0.5">{step}</span>
+                    <span className="text-sm text-textSecondary pt-0.5">{step}</span>
                   </li>
                 ))}
               </ol>
@@ -637,22 +901,22 @@ ${(transcript.content || '').substring(0, 1000)}
           )}
 
           {sponsorship.platformRecommendations && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="font-bold text-gray-900 mb-4">Platform Monetization Opportunities</h3>
+            <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+              <h3 className="font-bold text-textPrimary mb-4">Platform Monetization Opportunities</h3>
               <div className="grid gap-4">
                 {Object.entries(sponsorship.platformRecommendations).map(([platform, data]: [string, any]) => (
-                  <div key={platform} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <div key={platform} className="flex items-start gap-3 p-3 bg-gray-100 rounded-lg border border-gray-300">
                     <div className={`px-2 py-1 rounded text-xs font-bold ${
                       data.priority === 'High' ? 'bg-accent-soft text-green-700' :
                       data.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-gray-100 text-gray-600'
+                      'bg-gray-100 text-textSecondary'
                     }`}>
                       {data.priority}
                     </div>
                     <div className="flex-1">
-                      <div className="font-semibold text-gray-900 text-sm capitalize">{platform}</div>
+                      <div className="font-semibold text-textPrimary text-sm capitalize">{platform}</div>
                       <div className="text-xs text-accent-emerald font-mono mt-0.5">{data.cpmRange}</div>
-                      <div className="text-xs text-gray-600 mt-1">{data.notes}</div>
+                      <div className="text-xs text-textSecondary mt-1">{data.notes}</div>
                     </div>
                   </div>
                 ))}
@@ -661,8 +925,8 @@ ${(transcript.content || '').substring(0, 1000)}
           )}
 
           {sponsorship.dataSources && sponsorship.dataSources.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6">
-              <h3 className="font-bold text-gray-900 mb-3 text-sm">Data Sources</h3>
+            <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+              <h3 className="font-bold text-textPrimary mb-3 text-sm">Data Sources</h3>
               <div className="flex flex-wrap gap-2">
                 {sponsorship.dataSources.map((source: string, i: number) => (
                   <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">
@@ -675,8 +939,8 @@ ${(transcript.content || '').substring(0, 1000)}
         </div>
 
         <div className="lg:col-span-1 space-y-8">
-          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-            <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+          <div className="bg-gray-100 rounded-xl border border-gray-300 p-6 shadow-sm">
+            <h3 className="font-bold text-textPrimary mb-2 flex items-center gap-2">
               <Calculator className="h-5 w-5 text-green-500" /> Revenue Calculator
             </h3>
 
@@ -687,7 +951,7 @@ ${(transcript.content || '').substring(0, 1000)}
                   <span className={
                     sponsorship.estimatedMetrics.confidence === 'high' ? 'text-green-600' :
                     sponsorship.estimatedMetrics.confidence === 'medium' ? 'text-yellow-600' :
-                    'text-gray-600'
+                    'text-textSecondary'
                   }>
                     {sponsorship.estimatedMetrics.confidence} confidence
                   </span>
@@ -699,7 +963,29 @@ ${(transcript.content || '').substring(0, 1000)}
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Downloads per Ep</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-textMuted uppercase">Downloads per Ep</label>
+                  {sponsorship?.dataConfidence && (
+                    (() => {
+                      const downloadConfidence = sponsorship.dataConfidence.find((d: any) =>
+                        d.field === 'downloadsPerEpisode' || d.label.includes('Downloads')
+                      );
+                      if (downloadConfidence) {
+                        return (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                            downloadConfidence.confidence === 'verified' ? 'bg-green-100 text-green-700' :
+                            downloadConfidence.confidence === 'estimated' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-textSecondary'
+                          }`}>
+                            {downloadConfidence.confidence === 'verified' ? '🟢' :
+                             downloadConfidence.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()
+                  )}
+                </div>
                 <input
                   type="number"
                   value={downloads}
@@ -708,9 +994,31 @@ ${(transcript.content || '').substring(0, 1000)}
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">CPM Rate ($)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-textMuted uppercase">CPM Rate ($)</label>
+                  {sponsorship?.dataConfidence && (
+                    (() => {
+                      const cpmConfidence = sponsorship.dataConfidence.find((d: any) =>
+                        d.field === 'estimatedCPM' || d.label.includes('CPM')
+                      );
+                      if (cpmConfidence) {
+                        return (
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                            cpmConfidence.confidence === 'verified' ? 'bg-green-100 text-green-700' :
+                            cpmConfidence.confidence === 'estimated' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-textSecondary'
+                          }`}>
+                            {cpmConfidence.confidence === 'verified' ? '🟢' :
+                             cpmConfidence.confidence === 'estimated' ? '🟡' : '🔴'}
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()
+                  )}
+                </div>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-gray-500">$</span>
+                  <span className="absolute left-3 top-2.5 text-textMuted">$</span>
                   <input
                     type="number"
                     value={cpm}
@@ -728,10 +1036,112 @@ ${(transcript.content || '').substring(0, 1000)}
               </div>
               <div className="text-xs text-green-500 mt-1">per episode</div>
             </div>
+
+            {/* Show under-monetization if available */}
+            {sponsorship.underMonetizedBy !== undefined && sponsorship.underMonetizedBy > 0 && (
+              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-center">
+                <div className="text-xs font-bold text-red-900 uppercase mb-1">Under-Monetized By</div>
+                <div className="text-2xl font-extrabold text-red-700">
+                  ${sponsorship.underMonetizedBy.toFixed(2)}
+                </div>
+                <div className="text-xs text-red-600 mt-1">per episode</div>
+              </div>
+            )}
+
+            {/* Show readiness score if available */}
+            {sponsorship.readinessScore !== undefined && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-textSecondary">Readiness Score</span>
+                  <span className="text-xs font-bold text-textPrimary">{sponsorship.readinessScore}/100</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      sponsorship.readinessScore >= 80 ? 'bg-green-500' :
+                      sponsorship.readinessScore >= 60 ? 'bg-yellow-500' :
+                      sponsorship.readinessScore >= 40 ? 'bg-orange-500' :
+                      'bg-red-500'
+                    }`}
+                    style={{ width: `${sponsorship.readinessScore}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="font-bold text-gray-900 mb-4">Actions</h3>
+          {/* Ranked Recommendations by Readiness */}
+          {sponsorship.recommendations && sponsorship.recommendations.length > 0 && (
+            <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+              <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                Monetization Strategies
+              </h3>
+              <div className="space-y-3">
+                {sponsorship.recommendations
+                  .sort((a: any, b: any) => b.readiness - a.readiness)
+                  .slice(0, 4)
+                  .map((rec: any, i: number) => (
+                    <div
+                      key={i}
+                      className="border border-gray-300 rounded-lg p-3 hover:border-primary transition"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-bold text-textPrimary capitalize">
+                              {rec.type}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                              rec.priority === 'immediate' ? 'bg-red-100 text-red-700' :
+                              rec.priority === 'short-term' ? 'bg-orange-100 text-orange-700' :
+                              rec.priority === 'medium-term' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-textSecondary'
+                            }`}>
+                              {rec.priority}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-textSecondary mb-2">
+                            <span className="font-mono">${rec.estimatedRevenue?.toLocaleString()}/mo</span>
+                            <span>•</span>
+                            <span className="capitalize">{rec.effort} effort</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs font-bold text-textMuted mb-1">Readiness</div>
+                          <div className={`text-lg font-bold ${
+                            rec.readiness >= 80 ? 'text-green-600' :
+                            rec.readiness >= 60 ? 'text-yellow-600' :
+                            'text-textMuted'
+                          }`}>
+                            {rec.readiness}%
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-textSecondary leading-relaxed mb-2">
+                        {rec.reasoning}
+                      </p>
+                      {rec.nextSteps && rec.nextSteps.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-300">
+                          <div className="text-xs font-semibold text-textSecondary mb-1">Next Steps:</div>
+                          <ul className="space-y-1">
+                            {rec.nextSteps.slice(0, 2).map((step: string, idx: number) => (
+                              <li key={idx} className="text-xs text-textSecondary flex items-start gap-1">
+                                <span className="text-primary mt-0.5">→</span>
+                                <span>{step}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+            <h3 className="font-bold text-textPrimary mb-4">Actions</h3>
 
             <div className="flex flex-col gap-3 mb-4">
               <button
@@ -739,7 +1149,7 @@ ${(transcript.content || '').substring(0, 1000)}
                   e.stopPropagation();
                   handleCopyJSON(result.sponsorship, 'copy-sponsorship');
                 }}
-                className="w-full flex items-center justify-center gap-2 bg-white text-gray-700 border border-gray-200 px-4 py-3 rounded-lg hover:bg-gray-50 transition"
+                className="w-full flex items-center justify-center gap-2 bg-gray-100 text-textSecondary border border-gray-300 px-4 py-3 rounded-lg hover:bg-gray-100 transition"
               >
                 <FileJson className="h-4 w-4" /> {copiedSection === 'copy-sponsorship' ? 'Copied' : 'Copy Sponsorship JSON'}
               </button>
@@ -752,18 +1162,18 @@ ${(transcript.content || '').substring(0, 1000)}
               </button>
             </div>
 
-            <p className="text-xs text-center text-gray-500 mb-6">Generates a PDF one-sheet with your stats and audience profile.</p>
+            <p className="text-xs text-center text-textMuted mb-6">Generates a PDF one-sheet with your stats and audience profile.</p>
 
-            <h4 className="font-bold text-gray-900 text-sm mb-3">Recommended Ad Networks</h4>
+            <h4 className="font-bold text-textPrimary text-sm mb-3">Recommended Ad Networks</h4>
             <ul className="space-y-2">
-              <li className="flex items-center gap-2 text-sm text-gray-600">
-                <ExternalLink className="h-3 w-3 text-gray-400" /> Gumball
+              <li className="flex items-center gap-2 text-sm text-textSecondary">
+                <ExternalLink className="h-3 w-3 text-textMuted" /> Gumball
               </li>
-              <li className="flex items-center gap-2 text-sm text-gray-600">
-                <ExternalLink className="h-3 w-3 text-gray-400" /> AdvertiseCast
+              <li className="flex items-center gap-2 text-sm text-textSecondary">
+                <ExternalLink className="h-3 w-3 text-textMuted" /> AdvertiseCast
               </li>
-              <li className="flex items-center gap-2 text-sm text-gray-600">
-                <ExternalLink className="h-3 w-3 text-gray-400" /> Podcorn
+              <li className="flex items-center gap-2 text-sm text-textSecondary">
+                <ExternalLink className="h-3 w-3 text-textMuted" /> Podcorn
               </li>
             </ul>
           </div>
@@ -776,15 +1186,15 @@ ${(transcript.content || '').substring(0, 1000)}
     const repurposed: Partial<RepurposedContent> = result.repurposed || {};
 
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Repurposing</h3>
-            <p className="text-sm text-gray-500">Email series, social calendar, LinkedIn drafts, and image prompts auto-generated from this episode.</p>
+            <h3 className="text-lg font-bold text-textPrimary">Repurposing</h3>
+            <p className="text-sm text-textMuted">Email series, social calendar, LinkedIn drafts, and image prompts auto-generated from this episode.</p>
           </div>
 
           {isRepurposing && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-textMuted">
               <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full"></div>
               Generating content...
             </div>
@@ -798,47 +1208,47 @@ ${(transcript.content || '').substring(0, 1000)}
               {isRepurposing && !repurposed.emailSeries && (
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-4"></div>
-                  <p className="text-gray-600">Generating all repurposed content...</p>
-                  <p className="text-sm text-gray-500 mt-1">This will take about 30 seconds</p>
+                  <p className="text-textSecondary">Generating all repurposed content...</p>
+                  <p className="text-sm text-textMuted mt-1">This will take about 30 seconds</p>
                 </div>
               )}
 
               {(!isRepurposing || repurposed.emailSeries) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <h4 className="font-semibold text-gray-900">Email Series</h4>
-                    <p className="text-sm text-gray-600 mt-2">Short automated email sequences to onboard listeners or promote the episode.</p>
+                  <div className="p-4 bg-gray-100 rounded-lg border border-gray-300">
+                    <h4 className="font-semibold text-textPrimary">Email Series</h4>
+                    <p className="text-sm text-textSecondary mt-2">Short automated email sequences to onboard listeners or promote the episode.</p>
                     <div className="mt-4">
-                      <button onClick={() => { setActiveRepurposeView('email'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm hover:bg-gray-50">Open</button>
+                      <button onClick={() => { setActiveRepurposeView('email'); }} className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200">Open</button>
                     </div>
-                    <div className="mt-4 text-xs text-gray-500">{repurposed.emailSeries ? `${repurposed.emailSeries.length} emails generated` : 'Generating...'}</div>
+                    <div className="mt-4 text-xs text-textMuted">{repurposed.emailSeries ? `${repurposed.emailSeries.length} emails generated` : 'Generating...'}</div>
                   </div>
 
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <h4 className="font-semibold text-gray-900">Social Calendar</h4>
-                    <p className="text-sm text-gray-600 mt-2">A multi-week calendar of posts for LinkedIn, Twitter, and more.</p>
+                  <div className="p-4 bg-gray-100 rounded-lg border border-gray-300">
+                    <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
+                    <p className="text-sm text-textSecondary mt-2">25 posts across 5 platforms (Instagram, Facebook, LinkedIn, Twitter, Instagram Stories) for 5 days.</p>
                     <div className="mt-4">
-                      <button onClick={() => { setActiveRepurposeView('calendar'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm hover:bg-gray-50">Open</button>
+                      <button onClick={() => { setActiveRepurposeView('calendar'); }} className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200">Open</button>
                     </div>
-                    <div className="mt-4 text-xs text-gray-500">{repurposed.socialCalendar ? `${repurposed.socialCalendar.length} items` : 'Generating...'}</div>
+                    <div className="mt-4 text-xs text-textMuted">{repurposed.socialCalendar ? `${repurposed.socialCalendar.length} posts generated` : 'Generating...'}</div>
                   </div>
 
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <h4 className="font-semibold text-gray-900">LinkedIn Article</h4>
-                    <p className="text-sm text-gray-600 mt-2">A draft article adapted for LinkedIn based on the episode's insights.</p>
+                  <div className="p-4 bg-gray-100 rounded-lg border border-gray-300">
+                    <h4 className="font-semibold text-textPrimary">LinkedIn Article</h4>
+                    <p className="text-sm text-textSecondary mt-2">A draft article adapted for LinkedIn based on the episode's insights.</p>
                     <div className="mt-4">
-                      <button onClick={() => { setActiveRepurposeView('article'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm hover:bg-gray-50">Open</button>
+                      <button onClick={() => { setActiveRepurposeView('article'); }} className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200">Open</button>
                     </div>
-                    <div className="mt-4 text-xs text-gray-500">{repurposed.linkedinArticle ? 'Draft available' : 'Generating...'}</div>
+                    <div className="mt-4 text-xs text-textMuted">{repurposed.linkedinArticle ? 'Draft available' : 'Generating...'}</div>
                   </div>
 
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <h4 className="font-semibold text-gray-900">Image Prompts</h4>
-                    <p className="text-sm text-gray-600 mt-2">AI image prompts for social graphics or quote cards.</p>
+                  <div className="p-4 bg-gray-100 rounded-lg border border-gray-300">
+                    <h4 className="font-semibold text-textPrimary">Image Prompts</h4>
+                    <p className="text-sm text-textSecondary mt-2">AI image prompts for social graphics or quote cards.</p>
                     <div className="mt-4">
-                      <button onClick={() => { setActiveRepurposeView('images'); }} className="px-3 py-2 bg-white border border-gray-200 rounded-md text-sm hover:bg-gray-50">Open</button>
+                      <button onClick={() => { setActiveRepurposeView('images'); }} className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200">Open</button>
                     </div>
-                    <div className="mt-4 text-xs text-gray-500">{repurposed.imagePrompts ? `${repurposed.imagePrompts.length} prompts` : 'Generating...'}</div>
+                    <div className="mt-4 text-xs text-textMuted">{repurposed.imagePrompts ? `${repurposed.imagePrompts.length} prompts` : 'Generating...'}</div>
                   </div>
                 </div>
               )}
@@ -849,15 +1259,27 @@ ${(transcript.content || '').substring(0, 1000)}
           {activeRepurposeView === 'email' && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold text-gray-900">Email Series</h4>
+                <h4 className="font-semibold text-textPrimary">Email Series</h4>
                 <div className="flex gap-2">
-                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
+                  {repurposed.emailSeries && (
+                    <button
+                      onClick={() => {
+                        setSeriesScheduleType('email');
+                        setSeriesScheduleItems(repurposed.emailSeries);
+                        setShowSeriesScheduleWizard(true);
+                      }}
+                      className="px-4 py-1 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
+                    >
+                      <Sparkles className="h-4 w-4" /> Schedule All
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       if (repurposed.emailSeries) handleCopyJSON(repurposed.emailSeries, 'copy-json');
                     }}
-                    className="px-3 py-1 bg-white border rounded-md text-sm"
+                    className="px-3 py-1 bg-gray-100 border rounded-md text-sm"
                   >
                     {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
                   </button>
@@ -865,18 +1287,18 @@ ${(transcript.content || '').substring(0, 1000)}
               </div>
 
               {!repurposed.emailSeries ? (
-                <div className="p-6 text-center text-gray-500">No email series generated. Click “Email Series” above to generate.</div>
+                <div className="p-6 text-center text-textMuted">No email series generated. Click “Email Series” above to generate.</div>
               ) : (
                 <div className="space-y-4">
                   {repurposed.emailSeries.map((e: any, i: number) => (
-                    <div key={i} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <div key={i} className="p-4 bg-gray-100 rounded-lg border border-gray-300">
                       <div className="flex justify-between items-start">
                         <div>
-                          <div className="font-semibold text-gray-900">Day {e.day}: {e.subject}</div>
-                          <div className="text-sm text-gray-700 mt-1 whitespace-pre-line">{e.body}</div>
+                          <div className="font-semibold text-textPrimary">Day {e.day}: {e.subject}</div>
+                          <div className="text-sm text-textSecondary mt-1 whitespace-pre-line">{e.body}</div>
                         </div>
                         <div className="flex flex-col gap-2">
-                          <button onClick={() => navigator.clipboard.writeText(e.body)} className="px-3 py-1 bg-white border rounded-md text-sm">Copy</button>
+                          <button onClick={() => navigator.clipboard.writeText(e.body)} className="px-3 py-1 bg-gray-100 border rounded-md text-sm">Copy</button>
                         </div>
                       </div>
                     </div>
@@ -890,15 +1312,27 @@ ${(transcript.content || '').substring(0, 1000)}
           {activeRepurposeView === 'calendar' && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold text-gray-900">Social Calendar</h4>
+                <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
                 <div className="flex gap-2">
-                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
+                  {repurposed.socialCalendar && (
+                    <button
+                      onClick={() => {
+                        setSeriesScheduleType('social');
+                        setSeriesScheduleItems(repurposed.socialCalendar);
+                        setShowSeriesScheduleWizard(true);
+                      }}
+                      className="px-4 py-1 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
+                    >
+                      <Sparkles className="h-4 w-4" /> Schedule All
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       if (repurposed.socialCalendar) handleCopyJSON(repurposed.socialCalendar, 'copy-json');
                     }}
-                    className="px-3 py-1 bg-white border rounded-md"
+                    className="px-3 py-1 bg-gray-100 border rounded-md"
                   >
                     {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
                   </button>
@@ -906,17 +1340,17 @@ ${(transcript.content || '').substring(0, 1000)}
               </div>
 
               {!repurposed.socialCalendar ? (
-                <div className="p-6 text-center text-gray-500">No social calendar generated. Click “Social Calendar” above to generate.</div>
+                <div className="p-6 text-center text-textMuted">No social calendar generated. Click “Social Calendar” above to generate.</div>
               ) : (
                 <div className="space-y-4">
                   {repurposed.socialCalendar.map((s: any, i: number) => (
-                    <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-100 flex justify-between items-center">
+                    <div key={i} className="p-3 bg-gray-100 rounded-lg border border-gray-300 flex justify-between items-center">
                       <div>
-                        <div className="font-semibold text-gray-900">Day {s.day} • {s.platform}</div>
-                        <div className="text-sm text-gray-700">{s.content}</div>
+                        <div className="font-semibold text-textPrimary">Day {s.day} • {s.platform}</div>
+                        <div className="text-sm text-textSecondary">{s.content}</div>
                       </div>
                       <div>
-                        <button onClick={() => navigator.clipboard.writeText(s.content)} className="px-3 py-1 bg-white border rounded-md text-sm">Copy</button>
+                        <button onClick={() => navigator.clipboard.writeText(s.content)} className="px-3 py-1 bg-gray-100 border rounded-md text-sm">Copy</button>
                       </div>
                     </div>
                   ))}
@@ -929,15 +1363,15 @@ ${(transcript.content || '').substring(0, 1000)}
           {activeRepurposeView === 'article' && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold text-gray-900">LinkedIn Article</h4>
+                <h4 className="font-semibold text-textPrimary">LinkedIn Article</h4>
                 <div className="flex gap-2">
-                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       if (repurposed.linkedinArticle) handleCopy(repurposed.linkedinArticle, 'copy-linkedin');
                     }}
-                    className="px-3 py-1 bg-white border rounded-md"
+                    className="px-3 py-1 bg-gray-100 border rounded-md"
                   >
                     {copiedSection === 'copy-linkedin' ? 'Copied' : 'Copy'}
                   </button>
@@ -945,9 +1379,9 @@ ${(transcript.content || '').substring(0, 1000)}
               </div>
 
               {!repurposed.linkedinArticle ? (
-                <div className="p-6 text-center text-gray-500">No LinkedIn draft generated. Click “LinkedIn Article” above to generate.</div>
+                <div className="p-6 text-center text-textMuted">No LinkedIn draft generated. Click “LinkedIn Article” above to generate.</div>
               ) : (
-                <div className="prose max-w-none text-sm text-gray-700">
+                <div className="prose max-w-none text-sm text-textSecondary">
                   <h2 className="text-lg font-bold mb-2">{transcript.title}</h2>
                   <div className="mt-2 whitespace-pre-line">{repurposed.linkedinArticle}</div>
                 </div>
@@ -959,15 +1393,15 @@ ${(transcript.content || '').substring(0, 1000)}
           {activeRepurposeView === 'images' && (
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold text-gray-900">Image Prompts</h4>
+                <h4 className="font-semibold text-textPrimary">Image Prompts</h4>
                 <div className="flex gap-2">
-                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-white border rounded-md">Back</button>
+                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       if (repurposed.imagePrompts) handleCopyJSON(repurposed.imagePrompts, 'copy-json');
                     }}
-                    className="px-3 py-1 bg-white border rounded-md"
+                    className="px-3 py-1 bg-gray-100 border rounded-md"
                   >
                     {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
                   </button>
@@ -975,18 +1409,18 @@ ${(transcript.content || '').substring(0, 1000)}
               </div>
 
               {!repurposed.imagePrompts ? (
-                <div className="p-6 text-center text-gray-500">No image prompts generated. Click “Image Prompts” above to generate.</div>
+                <div className="p-6 text-center text-textMuted">No image prompts generated. Click “Image Prompts” above to generate.</div>
               ) : (
                 <div className="space-y-4">
                   {repurposed.imagePrompts.map((p: any, i: number) => (
-                    <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                    <div key={i} className="p-3 bg-gray-100 rounded-lg border border-gray-300">
                       <div className="flex justify-between items-start">
                         <div>
-                          <div className="font-semibold text-gray-900">{p.quote}</div>
-                          <div className="text-sm text-gray-700 mt-1">{p.prompt}</div>
+                          <div className="font-semibold text-textPrimary">{p.quote}</div>
+                          <div className="text-sm text-textSecondary mt-1">{p.prompt}</div>
                         </div>
                         <div>
-                          <button onClick={() => navigator.clipboard.writeText(p.prompt)} className="px-3 py-1 bg-white border rounded-md text-sm">Copy</button>
+                          <button onClick={() => navigator.clipboard.writeText(p.prompt)} className="px-3 py-1 bg-gray-100 border rounded-md text-sm">Copy</button>
                         </div>
                       </div>
                     </div>
@@ -1003,22 +1437,22 @@ ${(transcript.content || '').substring(0, 1000)}
   const renderOverviewTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2 space-y-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-textPrimary flex items-center gap-2">
               <FileText className="h-5 w-5 text-primary" />
               Key Takeaways
             </h2>
             <button
               onClick={() => handleCopy(result.keyTakeaways?.join('\n- ') || '', 'takeaways')}
-              className="text-gray-400 hover:text-primary transition"
+              className="text-textMuted hover:text-primary transition"
             >
               {copiedSection === 'takeaways' ? <Check className="h-5 w-5 text-green-500" /> : <Copy className="h-5 w-5" />}
             </button>
           </div>
           <ul className="space-y-4">
             {result.keyTakeaways?.map((item: string, idx: number) => (
-              <li key={idx} className="flex items-start text-gray-700 bg-accent-soft/50 p-3 rounded-lg">
+              <li key={idx} className="flex items-start text-textSecondary bg-accent-soft/50 p-3 rounded-lg">
                 <span className="mr-3 text-primary font-bold mt-1">•</span>
                 <span className="leading-relaxed">{item}</span>
               </li>
@@ -1026,15 +1460,15 @@ ${(transcript.content || '').substring(0, 1000)}
           </ul>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 p-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-textPrimary flex items-center gap-2">
               <Activity className="h-5 w-5 text-secondary" />
               Sentiment & Tone Analysis
             </h2>
           </div>
 
-          <div className="flex flex-col md:flex-row items-center gap-8 mb-8 border-b border-gray-100 pb-8">
+          <div className="flex flex-col md:flex-row items-center gap-8 mb-8 border-b border-gray-300 pb-8">
             <div className="relative w-40 h-40 flex items-center justify-center flex-shrink-0">
               <svg className="w-full h-full transform -rotate-90">
                 <circle cx="80" cy="80" r="70" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
@@ -1050,7 +1484,7 @@ ${(transcript.content || '').substring(0, 1000)}
                 />
               </svg>
               <div className="absolute flex flex-col items-center">
-                <span className="text-4xl font-extrabold text-gray-900">{sentiment.score}</span>
+                <span className="text-4xl font-extrabold text-textPrimary">{sentiment.score}</span>
                 <span className={`text-sm font-bold uppercase tracking-wide ${
                   sentiment.score > 60 ? 'text-accent-emerald' : sentiment.score < 40 ? 'text-red-600' : 'text-yellow-600'
                 }`}>{sentiment.label}</span>
@@ -1059,14 +1493,14 @@ ${(transcript.content || '').substring(0, 1000)}
 
             <div className="flex-1 space-y-4">
               <div>
-                <h4 className="text-xs font-bold text-gray-400 uppercase mb-1">Overall Tone</h4>
-                <p className="text-gray-900 font-medium text-lg leading-snug">{sentiment.tone || "Not available"}</p>
+                <h4 className="text-xs font-bold text-textMuted uppercase mb-1">Overall Tone</h4>
+                <p className="text-textPrimary font-medium text-lg leading-snug">{sentiment.tone || "Not available"}</p>
               </div>
               <div>
-                <h4 className="text-xs font-bold text-gray-400 uppercase mb-2">Emotional Triggers</h4>
+                <h4 className="text-xs font-bold text-textMuted uppercase mb-2">Emotional Triggers</h4>
                 <div className="flex flex-wrap gap-2">
                   {sentiment.emotionalKeywords?.map((kw: string, idx: number) => (
-                    <span key={idx} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md border border-gray-200">
+                    <span key={idx} className="text-xs bg-gray-100 text-textSecondary px-2 py-1 rounded-md border border-gray-300">
                       {kw}
                     </span>
                   ))}
@@ -1079,21 +1513,21 @@ ${(transcript.content || '').substring(0, 1000)}
       </div>
 
       <div className="space-y-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 p-6 h-full">
+          <h2 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
             <Quote className="h-5 w-5 text-accent-violet" />
             Best Quotes
           </h2>
           <div className="space-y-6">
             {result.quotes?.map((quote: any, idx: number) => (
               <div key={idx} className="relative pl-4 border-l-4 border-purple-200">
-                <blockquote className="italic text-gray-700 mb-2 text-sm leading-relaxed">
+                <blockquote className="italic text-textSecondary mb-2 text-sm leading-relaxed">
                   "{quote.text}"
                 </blockquote>
                 <div className="flex justify-between items-center text-xs">
-                  <div className="flex items-center gap-2 text-gray-500 font-medium">
+                  <div className="flex items-center gap-2 text-textMuted font-medium">
                     {quote.speaker && <span className="text-accent-violet bg-accent-soft px-1.5 rounded">{quote.speaker}</span>}
-                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-400 font-mono">{quote.timestamp}</span>
+                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-textMuted font-mono">{quote.timestamp}</span>
                   </div>
                   <button onClick={() => handleCopy(`"${quote.text}"`, `quote-${idx}`)} className="text-gray-300 hover:text-primary transition">
                     {copiedSection === `quote-${idx}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
@@ -1109,24 +1543,36 @@ ${(transcript.content || '').substring(0, 1000)}
   );
 
   const renderPlatformTab = () => (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-      <div className="col-span-1 space-y-2">
-        {[
-          { id: 'linkedin', icon: Linkedin, label: 'LinkedIn' },
-          { id: 'twitter', icon: Twitter, label: 'Twitter / X' },
-          { id: 'tiktok', icon: Video, label: 'TikTok / Reels' },
-          { id: 'youtube', icon: Youtube, label: 'YouTube Shorts' },
-          { id: 'email', icon: Mail, label: 'Newsletter' },
-          { id: 'medium', icon: FileType, label: 'Medium Article' },
-          { id: 'teaser', icon: Send, label: 'Teaser' },
-        ].map((platform) => (
+    <div className="space-y-4">
+      {/* Bulk Schedule Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setShowBulkScheduleWizard(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium shadow-md"
+        >
+          <Sparkles className="h-4 w-4" />
+          Bulk Schedule All Platforms
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="col-span-1 space-y-2">
+          {[
+            { id: 'linkedin', icon: Linkedin, label: 'LinkedIn' },
+            { id: 'twitter', icon: Twitter, label: 'Twitter / X' },
+            { id: 'tiktok', icon: Video, label: 'TikTok / Reels' },
+            { id: 'youtube', icon: Youtube, label: 'YouTube Shorts' },
+            { id: 'email', icon: Mail, label: 'Newsletter' },
+            { id: 'medium', icon: FileType, label: 'Medium Article' },
+            { id: 'teaser', icon: Send, label: 'Teaser' },
+          ].map((platform) => (
           <button
             key={platform.id}
             onClick={() => setActivePlatform(platform.id as PlatformType)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition ${
               activePlatform === platform.id
                 ? 'bg-primary text-white shadow-md'
-                : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                : 'bg-gray-100 text-textSecondary hover:bg-gray-100 border border-gray-300'
             }`}
           >
             <platform.icon className="h-4 w-4" /> {platform.label}
@@ -1135,16 +1581,19 @@ ${(transcript.content || '').substring(0, 1000)}
       </div>
 
       <div className="col-span-1 md:col-span-3">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-full">
-          <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+        <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 overflow-hidden h-full">
+          <div className="p-6 border-b border-gray-300 flex justify-between items-center bg-gray-50">
             <div>
-              <h3 className="font-bold text-gray-900 capitalize">{activePlatform.replace('teaser', 'Newsletter Teaser')}</h3>
-              <p className="text-xs text-gray-500 mt-1">Optimized content ready to post</p>
+              <h3 className="font-bold text-textPrimary capitalize">{activePlatform.replace('teaser', 'Newsletter Teaser')}</h3>
+              <p className="text-xs text-textMuted mt-1">Optimized content ready to post</p>
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowScheduleModal(true)}
-                className="text-gray-600 hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-white transition"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowScheduleModal(true);
+                }}
+                className="text-textSecondary hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
               >
                 <CalendarIcon className="h-4 w-4" /> Schedule
               </button>
@@ -1163,17 +1612,17 @@ ${(transcript.content || '').substring(0, 1000)}
             {activePlatform === 'twitter' ? (
               <div className="space-y-4">
                 {socialContent.twitterThread?.map((tweet: string, idx: number) => (
-                  <div key={idx} className="bg-gray-50 p-4 rounded-lg text-sm text-gray-800 border border-gray-100 relative">
+                  <div key={idx} className="bg-gray-100 p-4 rounded-lg text-sm text-textBody border border-gray-300 relative">
                     <div className="flex justify-between items-start mb-2">
                       <span className="bg-black text-white text-xs w-5 h-5 flex items-center justify-center rounded-full font-bold">{idx + 1}</span>
-                      <span className={`text-xs ${tweet.length > 280 ? 'text-red-500' : 'text-gray-400'}`}>{tweet.length}/280</span>
+                      <span className={`text-xs ${tweet.length > 280 ? 'text-red-500' : 'text-textMuted'}`}>{tweet.length}/280</span>
                     </div>
                     {tweet}
                   </div>
                 ))}
               </div>
             ) : (
-              <pre className="whitespace-pre-wrap font-sans text-gray-700 text-sm leading-relaxed">
+              <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
                 {activePlatform === 'linkedin' && socialContent.linkedinPost}
                 {activePlatform === 'tiktok' && socialContent.tiktokScript}
                 {activePlatform === 'youtube' && socialContent.youtubeDescription}
@@ -1185,21 +1634,22 @@ ${(transcript.content || '').substring(0, 1000)}
           </div>
         </div>
       </div>
+      </div>
     </div>
   );
 
   const renderCollaborationTab = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div className="lg:col-span-2">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+        <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 p-6">
+          <h2 className="text-lg font-bold text-textPrimary mb-6 flex items-center gap-2">
             <MessageSquare className="h-5 w-5 text-primary" />
             Team Comments
           </h2>
 
           <div className="space-y-6 mb-8">
             {comments.length === 0 && (
-              <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+              <div className="text-center py-8 text-textMuted bg-gray-100 rounded-lg">
                 No comments yet. Start the conversation!
               </div>
             )}
@@ -1210,12 +1660,12 @@ ${(transcript.content || '').substring(0, 1000)}
                   {(comment.userName || "U").charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
-                  <div className="bg-gray-50 p-4 rounded-lg rounded-tl-none">
+                  <div className="bg-gray-100 p-4 rounded-lg rounded-tl-none">
                     <div className="flex justify-between items-center mb-1">
-                      <span className="font-bold text-sm text-gray-900">{comment.userName}</span>
-                      <span className="text-xs text-gray-400">{new Date(comment.timestamp).toLocaleString()}</span>
+                      <span className="font-bold text-sm text-textPrimary">{comment.userName}</span>
+                      <span className="text-xs text-textMuted">{new Date(comment.timestamp).toLocaleString()}</span>
                     </div>
-                    <p className="text-gray-700 text-sm">{comment.text}</p>
+                    <p className="text-textSecondary text-sm">{comment.text}</p>
                   </div>
                 </div>
               </div>
@@ -1223,7 +1673,7 @@ ${(transcript.content || '').substring(0, 1000)}
           </div>
 
           <div className="flex gap-3 items-start">
-            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-xs flex-shrink-0">
+            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-textMuted font-bold text-xs flex-shrink-0">
               Y
             </div>
             <div className="flex-1">
@@ -1250,15 +1700,15 @@ ${(transcript.content || '').substring(0, 1000)}
       </div>
 
       <div className="lg:col-span-1">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="font-bold text-gray-900 mb-4">Workflow Status</h3>
+        <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 p-6">
+          <h3 className="font-bold text-textPrimary mb-4">Workflow Status</h3>
           <div className="space-y-2">
             {(['Draft', 'In Review', 'Approved', 'Published'] as WorkflowStatus[]).map(status => (
               <div
                 key={status}
                 onClick={() => handleStatusChange(status)}
                 className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition ${
-                  transcript.status === status ? 'bg-accent-soft border border-primary' : 'hover:bg-gray-50 border border-transparent'
+                  transcript.status === status ? 'bg-accent-soft border border-primary' : 'hover:bg-gray-100 border border-transparent'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -1267,7 +1717,7 @@ ${(transcript.content || '').substring(0, 1000)}
                     status === 'Published' ? 'bg-blue-500' :
                     status === 'In Review' ? 'bg-yellow-500' : 'bg-gray-300'
                   }`}></div>
-                  <span className={`text-sm font-medium ${transcript.status === status ? 'text-primary' : 'text-gray-700'}`}>{status}</span>
+                  <span className={`text-sm font-medium ${transcript.status === status ? 'text-primary' : 'text-textSecondary'}`}>{status}</span>
                 </div>
                 {transcript.status === status && <Check className="h-4 w-4 text-primary" />}
               </div>
@@ -1283,29 +1733,29 @@ ${(transcript.content || '').substring(0, 1000)}
     const seoData = result.seo || null;
 
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h3 className="text-lg font-bold text-gray-900">Blog & SEO</h3>
-            <p className="text-sm text-gray-500">Drafts and SEO suggestions generated from the episode</p>
+            <h3 className="text-lg font-bold text-textPrimary">Blog & SEO</h3>
+            <p className="text-sm text-textMuted">Drafts and SEO suggestions generated from the episode</p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveBlogTab('article')}
-              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'article' ? 'bg-accent-soft text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'article' ? 'bg-accent-soft text-primary' : 'text-textSecondary hover:bg-gray-200'}`}
             >
               Article
             </button>
             <button
               onClick={() => setActiveBlogTab('shownotes')}
-              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'shownotes' ? 'bg-accent-soft text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'shownotes' ? 'bg-accent-soft text-primary' : 'text-textSecondary hover:bg-gray-200'}`}
             >
               Show Notes
             </button>
             <button
               onClick={() => setActiveBlogTab('seo')}
-              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'seo' ? 'bg-accent-soft text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+              className={`px-3 py-1 text-sm rounded-md ${activeBlogTab === 'seo' ? 'bg-accent-soft text-primary' : 'text-textSecondary hover:bg-gray-200'}`}
             >
               SEO
             </button>
@@ -1315,27 +1765,27 @@ ${(transcript.content || '').substring(0, 1000)}
         <div>
           {activeBlogTab === 'article' && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-gray-900">{post?.title || 'Draft Title'}</h2>
-              <p className="text-sm text-gray-600">{post?.intro || 'No intro available.'}</p>
+              <h2 className="text-2xl font-bold text-textPrimary">{post?.title || 'Draft Title'}</h2>
+              <p className="text-sm text-textSecondary">{post?.intro || 'No intro available.'}</p>
 
               {post?.sections?.map((s, i) => (
-                <div key={i} className="pt-4 border-t border-gray-100">
-                  <h4 className="font-semibold text-gray-900 mb-2">{s.heading}</h4>
-                  <p className="text-sm text-gray-700 leading-relaxed">{s.content}</p>
+                <div key={i} className="pt-4 border-t border-gray-300">
+                  <h4 className="font-semibold text-textPrimary mb-2">{s.heading}</h4>
+                  <p className="text-sm text-textSecondary leading-relaxed">{s.content}</p>
                 </div>
               ))}
 
               {post?.conclusion && (
-                <div className="pt-4 border-t border-gray-100">
-                  <h4 className="font-semibold text-gray-900 mb-2">Conclusion</h4>
-                  <p className="text-sm text-gray-700">{post.conclusion}</p>
+                <div className="pt-4 border-t border-gray-300">
+                  <h4 className="font-semibold text-textPrimary mb-2">Conclusion</h4>
+                  <p className="text-sm text-textSecondary">{post.conclusion}</p>
                 </div>
               )}
 
               <div className="flex justify-end gap-3">
                 <button
                   onClick={() => navigator.clipboard.writeText(`${post?.title}\n\n${post?.intro}\n\n${post?.sections?.map(s => `${s.heading}\n${s.content}`).join('\n\n') || ''}\n\n${post?.conclusion || ''}`)}
-                  className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm text-textSecondary hover:bg-gray-200"
                 >
                   Copy Article
                 </button>
@@ -1346,33 +1796,33 @@ ${(transcript.content || '').substring(0, 1000)}
 
           {activeBlogTab === 'shownotes' && (
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-900">Show Notes</h3>
-              <p className="text-sm text-gray-600">{result.showNotes || post?.intro || 'No show notes available.'}</p>
+              <h3 className="font-bold text-textPrimary">Show Notes</h3>
+              <p className="text-sm text-textSecondary">{result.showNotes || post?.intro || 'No show notes available.'}</p>
 
               <div className="mt-4 grid gap-3">
                 {post?.sections?.map((s, i) => (
-                  <div key={i} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <h4 className="font-semibold text-gray-900">{s.heading}</h4>
-                    <p className="text-sm text-gray-700">{s.content}</p>
+                  <div key={i} className="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                    <h4 className="font-semibold text-textPrimary">{s.heading}</h4>
+                    <p className="text-sm text-textSecondary">{s.content}</p>
                   </div>
                 ))}
               </div>
 
               <div className="flex justify-end mt-4">
-                <button onClick={() => navigator.clipboard.writeText(result.showNotes || post?.intro || '')} className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50">Copy Notes</button>
+                <button onClick={() => navigator.clipboard.writeText(result.showNotes || post?.intro || '')} className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm text-textSecondary hover:bg-gray-200">Copy Notes</button>
               </div>
             </div>
           )}
 
           {activeBlogTab === 'seo' && (
             <div className="space-y-4">
-              <h3 className="font-bold text-gray-900">SEO Suggestions</h3>
+              <h3 className="font-bold text-textPrimary">SEO Suggestions</h3>
 
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
-                <p className="text-sm text-gray-700"><span className="font-medium">Meta Description:</span> {seoData?.metaDescription || 'No meta description generated.'}</p>
-                <p className="text-sm text-gray-700 mt-2"><span className="font-medium">Keywords:</span> {seoData?.keywords?.join(', ') || 'No keywords generated.'}</p>
-                <p className="text-sm text-gray-700 mt-2"><span className="font-medium">Title Variations:</span> {seoData?.titleVariations?.join(' • ') || 'No title variations.'}</p>
-                <p className="text-sm text-gray-700 mt-2"><span className="font-medium">Readability:</span> {seoData?.readability?.score ?? 'N/A'} ({seoData?.readability?.level ?? 'N/A'})</p>
+              <div className="bg-gray-100 p-4 rounded-lg border border-gray-300">
+                <p className="text-sm text-textSecondary"><span className="font-medium">Meta Description:</span> {seoData?.metaDescription || 'No meta description generated.'}</p>
+                <p className="text-sm text-textSecondary mt-2"><span className="font-medium">Keywords:</span> {seoData?.keywords?.join(', ') || 'No keywords generated.'}</p>
+                <p className="text-sm text-textSecondary mt-2"><span className="font-medium">Title Variations:</span> {seoData?.titleVariations?.join(' • ') || 'No title variations.'}</p>
+                <p className="text-sm text-textSecondary mt-2"><span className="font-medium">Readability:</span> {seoData?.readability?.score ?? 'N/A'} ({seoData?.readability?.level ?? 'N/A'})</p>
               </div>
 
               <div className="flex justify-end mt-2">
@@ -1381,7 +1831,7 @@ ${(transcript.content || '').substring(0, 1000)}
                     e.stopPropagation();
                     handleCopyJSON(seoData, 'copy-seo-json');
                   }}
-                  className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm text-textSecondary hover:bg-gray-200"
                 >
                   {copiedSection === 'copy-seo-json' ? 'Copied' : 'Copy SEO JSON'}
                 </button>
@@ -1397,18 +1847,18 @@ ${(transcript.content || '').substring(0, 1000)}
     const hasPercent = speakers.some(s => typeof s.speakingTimePercent === 'number');
 
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Speaker Analytics</h3>
-            <p className="text-sm text-gray-500">Contributions and speaking time estimates</p>
+            <h3 className="text-lg font-bold text-textPrimary">Speaker Analytics</h3>
+            <p className="text-sm text-textMuted">Contributions and speaking time estimates</p>
           </div>
 
           <div className="flex items-center gap-2">
             {!hasPercent && speakers.length > 0 && (
               <button
                 onClick={estimateSpeakers}
-                className={`px-3 py-1 text-sm rounded-md ${isEstimatingSpeakers ? 'bg-gray-100' : 'bg-white border border-gray-200'}`}
+                className={`px-3 py-1 text-sm rounded-md ${isEstimatingSpeakers ? 'bg-gray-100' : 'bg-gray-100 border border-gray-300'}`}
               >
                 {isEstimatingSpeakers ? 'Estimating...' : 'Estimate Speaking Times'}
               </button>
@@ -1427,22 +1877,22 @@ ${(transcript.content || '').substring(0, 1000)}
         </div>
 
         {speakers.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">No speaker analytics available for this transcript.</div>
+          <div className="p-8 text-center text-textMuted">No speaker analytics available for this transcript.</div>
         ) : (
           <div className="space-y-4">
             {speakers.map((s, i) => {
               const percent = speakerEstimates?.[s.name] ?? s.speakingTimePercent ?? 0;
               return (
-                <div key={i} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+                <div key={i} className="p-4 bg-gray-100 rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="h-10 w-10 rounded-full bg-accent-soft flex items-center justify-center font-bold text-primary">{(s.name || 'U').charAt(0).toUpperCase()}</div>
                     <div>
-                      <div className="font-semibold text-gray-900">{s.name} <span className="text-xs text-gray-500 ml-2">{s.role}</span></div>
-                      <p className="text-sm text-gray-600">{s.contribution}</p>
+                      <div className="font-semibold text-textPrimary">{s.name} <span className="text-xs text-textMuted ml-2">{s.role}</span></div>
+                      <p className="text-sm text-textSecondary">{s.contribution}</p>
                       {s.topics && s.topics.length > 0 && (
                         <div className="flex gap-2 mt-2">
                           {s.topics.map((t: string) => (
-                            <span key={t} className="text-xs bg-white border border-gray-200 px-2 py-0.5 rounded">{t}</span>
+                            <span key={t} className="text-xs bg-gray-100 border border-gray-300 px-2 py-0.5 rounded">{t}</span>
                           ))}
                         </div>
                       )}
@@ -1450,11 +1900,11 @@ ${(transcript.content || '').substring(0, 1000)}
                   </div>
 
                   <div className="w-40 text-right">
-                    <div className="text-xs text-gray-500 mb-1">Speaking Time</div>
+                    <div className="text-xs text-textMuted mb-1">Speaking Time</div>
                     <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
                       <div className="h-2 bg-primary" style={{ width: `${percent}%` }} />
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">{percent}%</div>
+                    <div className="text-xs text-textMuted mt-1">{percent}%</div>
                   </div>
                 </div>
               );
@@ -1463,7 +1913,7 @@ ${(transcript.content || '').substring(0, 1000)}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => navigator.clipboard.writeText(speakers.map(s => `${s.name}: ${speakerEstimates?.[s.name] ?? s.speakingTimePercent ?? 0}%`).join('\n'))}
-                className="px-4 py-2 bg-white border border-gray-200 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+                className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm text-textSecondary hover:bg-gray-200"
               >
                 Copy Summary
               </button>
@@ -1482,12 +1932,12 @@ ${(transcript.content || '').substring(0, 1000)}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <button onClick={onBack} className="flex items-center text-gray-500 hover:text-gray-900 mb-2 transition text-sm">
+          <button onClick={onBack} className="flex items-center text-textMuted hover:text-textPrimary mb-2 transition text-sm">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back to Dashboard
           </button>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-900 line-clamp-1">{transcript.title}</h1>
+            <h1 className="text-3xl font-bold text-textPrimary line-clamp-1">{transcript.title}</h1>
 
             <div className="relative">
               <button
@@ -1496,7 +1946,7 @@ ${(transcript.content || '').substring(0, 1000)}
                   transcript.status === 'Approved' ? 'bg-accent-soft text-accent-emerald border-green-200' :
                   transcript.status === 'Published' ? 'bg-blue-100 text-blue-800 border-blue-200' :
                   transcript.status === 'In Review' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                  'bg-gray-100 text-gray-700 border-gray-200'
+                  'bg-gray-100 text-textSecondary border-gray-300'
                 }`}
               >
                 {transcript.status || 'Draft'}
@@ -1504,12 +1954,12 @@ ${(transcript.content || '').substring(0, 1000)}
               </button>
 
               {showStatusMenu && (
-                <div className="absolute top-full left-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10">
+                <div className="absolute top-full left-0 mt-2 w-40 bg-gray-100 rounded-lg shadow-lg border border-gray-300 py-1 z-10">
                   {(['Draft', 'In Review', 'Approved', 'Published'] as WorkflowStatus[]).map(status => (
                     <button
                       key={status}
                       onClick={() => handleStatusChange(status)}
-                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      className="block w-full text-left px-4 py-2 text-sm text-textSecondary hover:bg-gray-200"
                     >
                       {status}
                     </button>
@@ -1520,12 +1970,12 @@ ${(transcript.content || '').substring(0, 1000)}
           </div>
 
           <div className="flex items-center gap-4 mt-2">
-            <span className="flex items-center text-gray-500 text-sm">
+            <span className="flex items-center text-textMuted text-sm">
               <Clock className="h-3.5 w-3.5 mr-1" />
               Analyzed on {new Date((transcript as any).date ?? transcript.created_at ?? Date.now()).toLocaleDateString()}
             </span>
             {settings && (
-              <div className="flex items-center gap-2 text-xs text-gray-400 border-l border-gray-300 pl-4">
+              <div className="flex items-center gap-2 text-xs text-textMuted border-l border-gray-300 pl-4">
                 <span title="Accuracy">{settings.accuracyLevel} Mode</span>
                 {settings.language !== 'Auto' && <span>• {settings.language}</span>}
                 {settings.toneFilter !== 'Auto' && <span>• {settings.toneFilter} Tone</span>}
@@ -1540,49 +1990,49 @@ ${(transcript.content || '').substring(0, 1000)}
             <button
               onClick={(e) => { e.stopPropagation(); setShowDownloadMenu(!showDownloadMenu); }}
               disabled={isDownloading}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition text-sm font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg text-textSecondary hover:bg-gray-100 transition text-sm font-medium disabled:opacity-50"
             >
               {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {isDownloading ? "Processing..." : "Export"}
             </button>
 
             {showDownloadMenu && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10">
-                <button onClick={() => handleDownload('pdf')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+              <div className="absolute right-0 mt-2 w-56 bg-gray-100 rounded-lg shadow-lg border border-gray-300 py-1 z-10">
+                <button onClick={() => handleDownload('pdf')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
                   <FileText className="h-4 w-4 text-red-500" />
                   Download PDF
                 </button>
 
-                <button onClick={() => handleDownload('docx')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                <button onClick={() => handleDownload('docx')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
                   <File className="h-4 w-4 text-blue-500" />
                   Download DOCX
                 </button>
 
-                <button onClick={() => handleDownload('md')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
-                  <Download className="h-4 w-4 text-gray-500" />
+                <button onClick={() => handleDownload('md')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
+                  <Download className="h-4 w-4 text-textMuted" />
                   Download Markdown
                 </button>
 
-                <button onClick={() => handleDownload('json')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                <button onClick={() => handleDownload('json')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
                   <FileJson className="h-4 w-4 text-orange-500" />
                   Export JSON
                 </button>
 
                 <div className="h-px bg-gray-100 my-1"></div>
 
-                <button onClick={() => handleDownload('kit')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                <button onClick={() => handleDownload('kit')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
                   <Briefcase className="h-4 w-4 text-accent-violet" />
                   Media Kit
                 </button>
 
                 <div className="h-px bg-gray-100 my-1"></div>
 
-                <button onClick={() => handleDownload('email')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                <button onClick={() => handleDownload('email')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
                   <Mail className="h-4 w-4 text-green-500" />
                   Email Results
                 </button>
 
-                <button onClick={() => handleDownload('sheets')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left">
+                <button onClick={() => handleDownload('sheets')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
                   <Table className="h-4 w-4 text-accent-emerald" />
                   Google Sheets
                 </button>
@@ -1601,26 +2051,26 @@ ${(transcript.content || '').substring(0, 1000)}
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-8 overflow-x-auto">
-        <button onClick={() => setActiveTab('overview')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+      <div className="flex border-b border-gray-300 mb-8 overflow-x-auto">
+        <button onClick={() => setActiveTab('overview')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Overview
         </button>
-        <button onClick={() => setActiveTab('platform')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'platform' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <button onClick={() => setActiveTab('platform')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'platform' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Platform Content
         </button>
-        <button onClick={() => setActiveTab('blog')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'blog' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <button onClick={() => setActiveTab('blog')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'blog' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Blog & SEO
         </button>
-        <button onClick={() => setActiveTab('speakers')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'speakers' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <button onClick={() => setActiveTab('speakers')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'speakers' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Speakers
         </button>
-        <button onClick={() => setActiveTab('repurpose')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'repurpose' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <button onClick={() => setActiveTab('repurpose')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'repurpose' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Repurposing
         </button>
-        <button onClick={() => setActiveTab('monetization')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'monetization' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <button onClick={() => setActiveTab('monetization')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 ${activeTab === 'monetization' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Monetization
         </button>
-        <button onClick={() => setActiveTab('collaboration')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 flex items-center gap-2 ${activeTab === 'collaboration' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+        <button onClick={() => setActiveTab('collaboration')} className={`px-6 py-4 text-sm font-medium transition whitespace-nowrap border-b-2 flex items-center gap-2 ${activeTab === 'collaboration' ? 'border-primary text-primary' : 'border-transparent text-textMuted hover:text-textSecondary'}`}>
           Collaboration
           {comments.length > 0 && (
             <span className="bg-primary text-primary text-xs px-2 py-0.5 rounded-full">{comments.length}</span>
@@ -1642,18 +2092,18 @@ ${(transcript.content || '').substring(0, 1000)}
       {/* Schedule Modal */}
       {showScheduleModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
               <CalendarIcon className="h-5 w-5 text-primary" />
               Schedule Post
             </h3>
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-textMuted mb-6">
               Choose a date and time to publish this {activePlatform} post.
             </p>
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                <label className="block text-sm font-medium text-textSecondary mb-1">Date</label>
                 <input
                   type="date"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
@@ -1662,7 +2112,7 @@ ${(transcript.content || '').substring(0, 1000)}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                <label className="block text-sm font-medium text-textSecondary mb-1">Time</label>
                 <input
                   type="time"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
@@ -1675,7 +2125,7 @@ ${(transcript.content || '').substring(0, 1000)}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowScheduleModal(false)}
-                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg text-sm"
+                className="px-4 py-2 text-textSecondary font-medium hover:bg-gray-100 rounded-lg text-sm"
               >
                 Cancel
               </button>
@@ -1692,17 +2142,50 @@ ${(transcript.content || '').substring(0, 1000)}
         </div>
       )}
 
+      {/* Bulk Schedule Wizard */}
+      {showBulkScheduleWizard && transcript?.result?.socialContent && (
+        <BulkScheduleWizard
+          content={[
+            { platform: 'linkedin', text: transcript.result.socialContent.linkedinPost },
+            { platform: 'twitter', text: transcript.result.socialContent.twitterThread?.join('\n\n') || '' },
+            { platform: 'tiktok', text: transcript.result.socialContent.tiktokScript },
+            { platform: 'youtube', text: transcript.result.socialContent.youtubeDescription },
+            { platform: 'email', text: `Subject: ${transcript.result.socialContent.emailNewsletter?.subject}\n\n${transcript.result.socialContent.emailNewsletter?.body}` },
+            { platform: 'medium', text: transcript.result.socialContent.mediumArticle },
+            { platform: 'teaser', text: `Subject: ${transcript.result.socialContent.newsletterTeaser?.subject}\n\n${transcript.result.socialContent.newsletterTeaser?.body}` },
+          ]}
+          transcriptId={transcript.id}
+          onClose={() => setShowBulkScheduleWizard(false)}
+          onComplete={() => {
+            alert('Posts scheduled successfully! View them in the Content Calendar.');
+          }}
+        />
+      )}
+
+      {/* Series Schedule Wizard */}
+      {showSeriesScheduleWizard && seriesScheduleItems.length > 0 && (
+        <SeriesScheduleWizard
+          type={seriesScheduleType}
+          items={seriesScheduleItems}
+          transcriptId={transcript?.id}
+          onClose={() => setShowSeriesScheduleWizard(false)}
+          onComplete={() => {
+            alert(`${seriesScheduleType === 'email' ? 'Email series' : 'Social posts'} scheduled successfully! View them in the Content Calendar.`);
+          }}
+        />
+      )}
+
       {/* Email Export Modal */}
       {showEmailModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
               <Mail className="h-5 w-5 text-primary" /> Email Results
             </h3>
-            <p className="text-sm text-gray-500 mb-6">Send the complete analysis report to a team member or client.</p>
+            <p className="text-sm text-textMuted mb-6">Send the complete analysis report to a team member or client.</p>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Recipient Email</label>
+              <label className="block text-sm font-medium text-textSecondary mb-1">Recipient Email</label>
               <input
                 type="email"
                 value={recipientEmail}
@@ -1715,7 +2198,7 @@ ${(transcript.content || '').substring(0, 1000)}
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowEmailModal(false)}
-                className="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg text-sm"
+                className="px-4 py-2 text-textSecondary font-medium hover:bg-gray-100 rounded-lg text-sm"
               >
                 Cancel
               </button>
@@ -1731,6 +2214,14 @@ ${(transcript.content || '').substring(0, 1000)}
           </div>
         </div>
       )}
+
+      {/* Monetization Input Modal */}
+      <MonetizationInputModal
+        isOpen={showMonetizationModal}
+        onClose={() => setShowMonetizationModal(false)}
+        onSubmit={handleMonetizationInput}
+        podcastTitle={transcript?.title || 'Your Podcast'}
+      />
 
     </div>
   );

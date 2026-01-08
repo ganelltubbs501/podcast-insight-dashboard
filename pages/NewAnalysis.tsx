@@ -197,20 +197,20 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <button onClick={onBack} className="flex items-center text-gray-500 hover:text-gray-900 mb-6 transition">
+      <button onClick={onBack} className="flex items-center text-textMuted hover:text-textPrimary mb-6 transition">
         <ArrowLeft className="h-4 w-4 mr-2" />
         Back to Dashboard
       </button>
 
-      <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-        <div className="border-b border-gray-200 p-6 bg-gray-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="bg-gray-100 rounded-xl shadow-lg border border-gray-300 overflow-hidden">
+        <div className="border-b border-gray-300 p-6 bg-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-             <h1 className="text-2xl font-bold text-gray-900">New Analysis</h1>
-             <p className="text-gray-500 mt-1">Upload a transcript, voice note, or image.</p>
+             <h1 className="text-2xl font-bold text-textPrimary">New Analysis</h1>
+             <p className="text-textMuted mt-1">Upload a transcript, voice note, or image.</p>
           </div>
           <button 
              onClick={() => setShowSettings(true)}
-             className="flex items-center gap-2 text-gray-600 bg-white border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-50 transition text-sm font-medium w-full sm:w-auto justify-center"
+             className="flex items-center gap-2 text-textSecondary bg-gray-100 border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100 transition text-sm font-medium w-full sm:w-auto justify-center"
           >
              <Sliders className="h-4 w-4" /> Advanced Settings
           </button>
@@ -218,7 +218,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
 
         <div className="p-6">
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Episode Title</label>
+            <label className="block text-sm font-medium text-textSecondary mb-2">Episode Title</label>
             <input 
               type="text" 
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none transition"
@@ -228,30 +228,30 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
             />
           </div>
 
-          <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
+          <div className="flex border-b border-gray-300 mb-6 overflow-x-auto">
             <button 
-              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'paste' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'paste' ? 'border-b-2 border-primary text-primary' : 'text-textMuted hover:text-textSecondary'}`}
               onClick={() => { setActiveTab('paste'); setMediaData(null); }}
             >
               <Type className="h-4 w-4" />
               Paste Text
             </button>
             <button 
-              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'upload' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'upload' ? 'border-b-2 border-primary text-primary' : 'text-textMuted hover:text-textSecondary'}`}
               onClick={() => { setActiveTab('upload'); setMediaData(null); }}
             >
               <FileUp className="h-4 w-4" />
               Upload File
             </button>
             <button 
-              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'camera' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'camera' ? 'border-b-2 border-primary text-primary' : 'text-textMuted hover:text-textSecondary'}`}
               onClick={() => { setActiveTab('camera'); setContent(''); }}
             >
               <Camera className="h-4 w-4" />
               Photo
             </button>
             <button 
-              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'audio' ? 'border-b-2 border-primary text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`pb-3 px-4 text-sm font-medium transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'audio' ? 'border-b-2 border-primary text-primary' : 'text-textMuted hover:text-textSecondary'}`}
               onClick={() => { setActiveTab('audio'); setContent(''); }}
             >
               <Mic className="h-4 w-4" />
@@ -267,12 +267,12 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
               ></textarea>
-              <p className="text-xs text-gray-400 mt-2 text-right">{content.length} characters (Max 45,000)</p>
+              <p className="text-xs text-textMuted mt-2 text-right">{content.length} characters (Max 45,000)</p>
             </div>
           )}
           
           {activeTab === 'upload' && (
-            <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition">
+            <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-100 transition">
               <input 
                 type="file" 
                 accept=".txt" 
@@ -281,16 +281,16 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                 id="file-upload"
               />
               <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-                 <FileUp className="h-10 w-10 text-gray-400 mb-3" />
-                 <span className="text-sm font-medium text-gray-700">Click to upload transcript</span>
-                 <span className="text-xs text-gray-500 mt-1">.txt files only</span>
+                 <FileUp className="h-10 w-10 text-textMuted mb-3" />
+                 <span className="text-sm font-medium text-textSecondary">Click to upload transcript</span>
+                 <span className="text-xs text-textMuted mt-1">.txt files only</span>
               </label>
               {content && <p className="mt-4 text-sm text-accent-emerald font-medium truncate max-w-xs px-4">File loaded successfully!</p>}
             </div>
           )}
 
           {activeTab === 'camera' && (
-            <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition relative overflow-hidden">
+            <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-100 transition relative overflow-hidden">
                 {mediaPreview && mediaPreview !== 'AUDIO_RECORDED' ? (
                     <img src={mediaPreview} alt="Preview" className="h-full w-full object-contain" />
                 ) : (
@@ -304,16 +304,16 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                             id="camera-upload"
                         />
                         <label htmlFor="camera-upload" className="cursor-pointer flex flex-col items-center">
-                            <Camera className="h-10 w-10 text-gray-400 mb-3" />
-                            <span className="text-sm font-medium text-gray-700">Take a photo of notes</span>
-                            <span className="text-xs text-gray-500 mt-1">or upload image</span>
+                            <Camera className="h-10 w-10 text-textMuted mb-3" />
+                            <span className="text-sm font-medium text-textSecondary">Take a photo of notes</span>
+                            <span className="text-xs text-textMuted mt-1">or upload image</span>
                         </label>
                     </>
                 )}
                 {mediaData && (
                     <button 
                         onClick={() => { setMediaData(null); setMediaPreview(null); }}
-                        className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-gray-600 hover:text-red-500"
+                        className="absolute top-2 right-2 bg-white/80 p-1 rounded-full text-textSecondary hover:text-red-500"
                     >
                         <X className="h-5 w-5" />
                     </button>
@@ -322,13 +322,13 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
           )}
 
           {activeTab === 'audio' && (
-             <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-50 transition">
+             <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-100 transition">
                  {mediaPreview === 'AUDIO_RECORDED' ? (
                      <div className="text-center">
                          <div className="h-16 w-16 bg-accent-soft rounded-full flex items-center justify-center mx-auto mb-4">
                              <Check className="h-8 w-8 text-accent-emerald" />
                          </div>
-                         <p className="font-bold text-gray-900">Audio Recorded!</p>
+                         <p className="font-bold text-textPrimary">Audio Recorded!</p>
                          <button onClick={() => { setMediaData(null); setMediaPreview(null); }} className="text-sm text-red-500 hover:underline mt-2">Delete & Retake</button>
                      </div>
                  ) : isRecording ? (
@@ -336,7 +336,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                          <div className="animate-pulse h-16 w-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                              <Mic className="h-8 w-8 text-red-600" />
                          </div>
-                         <p className="font-bold text-gray-900 mb-4">Recording...</p>
+                         <p className="font-bold text-textPrimary mb-4">Recording...</p>
                          <button 
                             onClick={stopRecording}
                             className="bg-red-500 text-white px-6 py-2 rounded-full font-bold hover:bg-red-600"
@@ -352,7 +352,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                          >
                              <Mic className="h-10 w-10 text-white" />
                          </button>
-                         <p className="text-sm font-medium text-gray-700">Tap to record voice note</p>
+                         <p className="text-sm font-medium text-textSecondary">Tap to record voice note</p>
                      </div>
                  )}
              </div>
@@ -365,7 +365,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
           )}
 
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-             <div className="text-sm text-gray-500 w-full sm:w-auto text-center sm:text-left">
+             <div className="text-sm text-textMuted w-full sm:w-auto text-center sm:text-left">
                 {settings.accuracyLevel !== 'Standard' && <span className="mr-2 text-primary font-medium">• {settings.accuracyLevel} Accuracy</span>}
                 {settings.language !== 'Auto' && <span className="text-primary font-medium">• {settings.language}</span>}
              </div>
@@ -391,37 +391,37 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
       {/* Advanced Settings Modal */}
       {showSettings && (
          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="bg-gray-100 rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                     <Settings className="h-5 w-5 text-gray-600" /> Analysis Settings
+                  <h2 className="text-xl font-bold text-textPrimary flex items-center gap-2">
+                     <Settings className="h-5 w-5 text-textSecondary" /> Analysis Settings
                   </h2>
-                  <button onClick={() => setShowSettings(false)}><X className="h-6 w-6 text-gray-400 hover:text-gray-600" /></button>
+                  <button onClick={() => setShowSettings(false)}><X className="h-6 w-6 text-textMuted hover:text-textSecondary" /></button>
                </div>
 
                <div className="space-y-6">
                   {/* Accuracy */}
                   <div>
-                     <label className="block text-sm font-bold text-gray-700 mb-2">Transcript Accuracy & Depth</label>
+                     <label className="block text-sm font-bold text-textSecondary mb-2">Transcript Accuracy & Depth</label>
                      <div className="grid grid-cols-3 gap-2">
                         {(['Standard', 'High', 'Maximum'] as const).map(level => (
                            <button
                              key={level}
                              onClick={() => setSettings(s => ({...s, accuracyLevel: level}))}
                              className={`px-3 py-2 rounded-lg text-sm border font-medium transition ${
-                               settings.accuracyLevel === level ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                               settings.accuracyLevel === level ? 'bg-primary text-white border-primary' : 'bg-gray-100 text-textSecondary border-gray-300 hover:bg-gray-200'
                              }`}
                            >
                               {level}
                            </button>
                         ))}
                      </div>
-                     <p className="text-xs text-gray-500 mt-1">Higher levels provide deeper, more nuanced analysis but may take longer.</p>
+                     <p className="text-xs text-textMuted mt-1">Higher levels provide deeper, more nuanced analysis but may take longer.</p>
                   </div>
 
                   {/* Tone */}
                   <div>
-                     <label className="block text-sm font-bold text-gray-700 mb-2">Tone Filtering</label>
+                     <label className="block text-sm font-bold text-textSecondary mb-2">Tone Filtering</label>
                      <select 
                         value={settings.toneFilter}
                         onChange={(e) => setSettings(s => ({...s, toneFilter: e.target.value as any}))}
@@ -436,7 +436,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                   {/* Language & Dialect */}
                   <div className="grid grid-cols-2 gap-4">
                      <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
+                        <label className="block text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
                            <Globe className="h-4 w-4" /> Language
                         </label>
                         <select 
@@ -454,7 +454,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                         </select>
                      </div>
                      <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
+                        <label className="block text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
                            <Mic2 className="h-4 w-4" /> Dialect/Accent
                         </label>
                         <input 
@@ -469,7 +469,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
 
                   {/* Custom Keywords */}
                   <div>
-                     <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
+                     <label className="block text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
                         <Tag className="h-4 w-4" /> Custom Keywords
                      </label>
                      <div className="flex gap-2 mb-2">
@@ -483,7 +483,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                         />
                         <button 
                            onClick={handleAddKeyword}
-                           className="bg-gray-100 text-gray-700 px-4 rounded-lg font-medium hover:bg-gray-200"
+                           className="bg-gray-100 text-textSecondary px-4 rounded-lg font-medium hover:bg-gray-200"
                         >
                            Add
                         </button>
@@ -498,10 +498,10 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                   </div>
 
                   {/* Sensitive Content */}
-                  <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                     <Shield className="h-5 w-5 text-gray-500 mt-0.5" />
+                  <div className="flex items-start gap-3 p-4 bg-gray-100 rounded-lg border border-gray-300">
+                     <Shield className="h-5 w-5 text-textMuted mt-0.5" />
                      <div>
-                        <label className="flex items-center gap-2 font-bold text-gray-900 text-sm cursor-pointer select-none">
+                        <label className="flex items-center gap-2 font-bold text-textPrimary text-sm cursor-pointer select-none">
                            <input 
                               type="checkbox"
                               checked={settings.sensitiveContentFilter}
@@ -510,12 +510,12 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                            />
                            Sensitive Content Filter
                         </label>
-                        <p className="text-xs text-gray-500 mt-1">Flag potential sensitive topics and redact or use neutral language in outputs.</p>
+                        <p className="text-xs text-textMuted mt-1">Flag potential sensitive topics and redact or use neutral language in outputs.</p>
                      </div>
                   </div>
                </div>
 
-               <div className="flex justify-end pt-6 border-t border-gray-100 mt-6">
+               <div className="flex justify-end pt-6 border-t border-gray-300 mt-6">
                   <button 
                      onClick={() => setShowSettings(false)}
                      className="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-primary"

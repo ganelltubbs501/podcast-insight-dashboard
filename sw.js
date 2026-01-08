@@ -1,4 +1,4 @@
-const CACHE_NAME = 'podcast-insight-v1';
+const CACHE_NAME = 'loquihq-v1';
 const urlsToCache = [
   '/',
   '/index.html',

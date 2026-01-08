@@ -12,9 +12,23 @@ import UsageAnalytics from './pages/UsageAnalytics';
 import DeveloperSettings from './pages/DeveloperSettings';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
+import { ThemeToggle } from './components/ThemeToggle';
 import { getStoredUser, loginUser, logoutUser } from './services/auth';
 import { User } from './types';
 import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp } from 'lucide-react';
+import { validateEnv } from './src/utils/env';
+import { initSentry, ErrorBoundary, setUser as setSentryUser } from './src/utils/sentry';
+
+// Validate environment variables on app startup
+try {
+  validateEnv();
+} catch (error) {
+  console.error('Environment validation failed:', error);
+  // In production, you might want to show an error page instead
+}
+
+// Initialize error tracking
+initSentry();
 
 // Wrapper to provide navigation props to pages
 const AppContent: React.FC = () => {
@@ -30,6 +44,7 @@ const AppContent: React.FC = () => {
     const storedUser = await getStoredUser();
     if (storedUser) {
       setUser(storedUser);
+      setSentryUser(storedUser); // Track user in Sentry
     }
     setLoading(false);
   })();
@@ -41,6 +56,7 @@ const AppContent: React.FC = () => {
     try {
       const newUser = await loginUser('test@test.com', 'Kaleb2022!');
       setUser(newUser);
+      setSentryUser(newUser); // Track user in Sentry
       navigate('/dashboard');
     } catch (err) {
       console.error('Login failed:', err);
@@ -51,6 +67,7 @@ const AppContent: React.FC = () => {
   const handleLogout = async () => {
     await logoutUser();
     setUser(null);
+    setSentryUser(null); // Clear user from Sentry
     navigate('/');
     setMobileMenuOpen(false);
   };
@@ -60,56 +77,56 @@ const AppContent: React.FC = () => {
       setMobileMenuOpen(false);
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50">Loading...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-100">Loading...</div>;
 
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-bgLight">
+    <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
       {user && (
-        <nav className="bg-white border-b border-gray-200 px-4 sm:px-6 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm md:shadow-none">
+        <nav className="bg-gray-100 border-b border-gray-300 px-4 sm:px-6 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm md:shadow-none">
             <div className="flex items-center gap-4">
-                <button 
+                <button
                     onClick={() => setMobileMenuOpen(true)}
-                    className="md:hidden text-gray-600 p-1 hover:bg-gray-100 rounded-lg"
+                    className="md:hidden text-gray-700 p-1 hover:bg-gray-300 rounded-lg"
                 >
                     <Menu className="h-6 w-6" />
                 </button>
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/dashboard')}>
-                    <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg">PI</div>
-                    <span className="font-bold text-gray-900 text-lg hidden sm:block">Podcast Insight</span>
+                    <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-lg">LQ</div>
+                    <span className="font-bold text-textPrimary text-lg hidden sm:block">LoquiHQ</span>
                 </div>
                 
                 {/* Desktop Menu */}
                 <div className="hidden md:flex space-x-1 ml-4">
-                    <button 
+                    <button
                       onClick={() => navigate('/dashboard')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/dashboard') ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/dashboard') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <LayoutDashboard className="h-4 w-4" /> Dashboard
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigate('/analytics')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/analytics') ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/analytics') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <BarChart3 className="h-4 w-4" /> Insights
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigate('/calendar')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/calendar') ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/calendar') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <Calendar className="h-4 w-4" /> Calendar
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigate('/outreach')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/outreach') ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/outreach') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <UserPlus className="h-4 w-4" /> Outreach
                     </button>
-                    <button 
+                    <button
                       onClick={() => navigate('/team')}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-gray-600 hover:bg-gray-50'}`}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <Users className="h-4 w-4" /> Team
                     </button>
@@ -133,27 +150,30 @@ const AppContent: React.FC = () => {
                  >
                    <Plus className="h-5 w-5" />
                  </button>
-                 <span className="text-sm text-gray-600 hidden sm:block">Welcome, {user.name}</span>
+                 <span className="text-sm text-textSecondary hidden sm:block">Welcome, {user.name}</span>
                  <button
                    onClick={() => navigate('/developer')}
-                   className={`transition hidden md:block ${isActive('/developer') ? 'text-primary' : 'text-gray-500 hover:text-primary'}`}
+                   className={`transition hidden md:block ${isActive('/developer') ? 'text-primary' : 'text-textMuted hover:text-primary'}`}
                    title="Developer Settings"
                  >
                    <Terminal className="h-5 w-5" />
                  </button>
 
+                 {/* Theme Toggle */}
+                 <ThemeToggle />
+
                  {/* Help Button */}
                  <button
                    onClick={() => setHelpPanelOpen(true)}
-                   className="text-gray-500 hover:text-primary transition"
+                   className="text-textMuted hover:text-primary transition"
                    title="Help & Support"
                  >
                    <CircleHelp className="h-5 w-5" />
                  </button>
 
-                 <button 
+                 <button
                    onClick={handleLogout}
-                   className="text-gray-500 hover:text-red-500 transition hidden md:block"
+                   className="text-textMuted hover:text-red-500 transition hidden md:block"
                    title="Logout"
                  >
                    <LogOut className="h-5 w-5" />
@@ -166,35 +186,35 @@ const AppContent: React.FC = () => {
       {user && mobileMenuOpen && (
           <div className="fixed inset-0 z-50 flex">
               <div className="fixed inset-0 bg-black/50" onClick={() => setMobileMenuOpen(false)}></div>
-              <div className="relative bg-white w-64 max-w-[80%] h-full shadow-2xl flex flex-col p-4 animate-in slide-in-from-left duration-200">
-                  <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4">
+              <div className="relative bg-gray-100 w-64 max-w-[80%] h-full shadow-2xl flex flex-col p-4 animate-in slide-in-from-left duration-200">
+                  <div className="flex justify-between items-center mb-8 border-b border-gray-300 pb-4">
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold">PI</div>
-                        <span className="font-bold text-gray-900">Podcast Insight</span>
+                        <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold">LQ</div>
+                        <span className="font-bold text-textPrimary">LoquiHQ</span>
                       </div>
-                      <button onClick={() => setMobileMenuOpen(false)} className="text-gray-500"><X className="h-6 w-6" /></button>
+                      <button onClick={() => setMobileMenuOpen(false)} className="text-textMuted"><X className="h-6 w-6" /></button>
                   </div>
-                  
+
                   <div className="flex-1 space-y-2">
-                     <button onClick={() => handleNav('/dashboard')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/dashboard') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/dashboard')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/dashboard') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <LayoutDashboard className="h-5 w-5" /> Dashboard
                      </button>
-                     <button onClick={() => handleNav('/analytics')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/analytics') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/analytics')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/analytics') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <BarChart3 className="h-5 w-5" /> Insights
                      </button>
-                     <button onClick={() => handleNav('/usage')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/usage') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/usage')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/usage') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <PieChart className="h-5 w-5" /> Usage & ROI
                      </button>
-                     <button onClick={() => handleNav('/calendar')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/calendar') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/calendar')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/calendar') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <Calendar className="h-5 w-5" /> Calendar
                      </button>
-                     <button onClick={() => handleNav('/outreach')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/outreach') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/outreach')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/outreach') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <UserPlus className="h-5 w-5" /> Outreach
                      </button>
-                     <button onClick={() => handleNav('/team')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/team')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <Users className="h-5 w-5" /> Team Workspace
                      </button>
-                     <button onClick={() => handleNav('/developer')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/developer') ? 'bg-indigo-50 text-primary' : 'text-gray-600'}`}>
+                     <button onClick={() => handleNav('/developer')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/developer') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <Terminal className="h-5 w-5" /> Developer
                      </button>
                      <button onClick={() => { setHelpPanelOpen(true); setMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 text-gray-600`}>
@@ -202,14 +222,14 @@ const AppContent: React.FC = () => {
                      </button>
                   </div>
 
-                  <div className="border-t border-gray-100 pt-4">
+                  <div className="border-t border-gray-300 pt-4">
                       <div className="flex items-center gap-3 px-4 py-2 mb-2">
-                          <div className="h-8 w-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold">
+                          <div className="h-8 w-8 bg-gray-300 rounded-full flex items-center justify-center text-textMuted font-bold">
                               {user.name.charAt(0)}
                           </div>
                           <div className="overflow-hidden">
-                              <p className="text-sm font-bold text-gray-900 truncate">{user.name}</p>
-                              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                              <p className="text-sm font-bold text-textPrimary truncate">{user.name}</p>
+                              <p className="text-xs text-textMuted truncate">{user.email}</p>
                           </div>
                       </div>
                       <button onClick={handleLogout} className="w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 text-red-500 hover:bg-red-50">
@@ -295,9 +315,47 @@ const ResultsPageWrapper: React.FC<{onBack: () => void}> = ({onBack}) => {
 
 const App: React.FC = () => {
   return (
-    <HashRouter>
-      <AppContent />
-    </HashRouter>
+    <ErrorBoundary
+      fallback={({ error, resetError }) => (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl p-8 max-w-lg w-full border border-gray-200">
+            <div className="text-center">
+              <div className="text-6xl mb-4">⚠️</div>
+              <h1 className="text-2xl font-bold text-textPrimary mb-2">Something went wrong</h1>
+              <p className="text-textSecondary mb-6">
+                An unexpected error occurred. Our team has been notified.
+              </p>
+              <details className="text-left mb-6 bg-gray-100 p-4 rounded border border-gray-300">
+                <summary className="cursor-pointer font-medium text-textBody mb-2">
+                  Error Details
+                </summary>
+                <pre className="text-sm text-error whitespace-pre-wrap overflow-auto">
+                  {error?.toString()}
+                </pre>
+              </details>
+              <div className="flex gap-3">
+                <button
+                  onClick={resetError}
+                  className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium"
+                >
+                  Try Again
+                </button>
+                <button
+                  onClick={() => window.location.href = '/'}
+                  className="flex-1 px-4 py-2 bg-gray-100 border border-gray-300 text-textBody rounded-lg hover:bg-gray-200 transition font-medium"
+                >
+                  Go Home
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    >
+      <HashRouter>
+        <AppContent />
+      </HashRouter>
+    </ErrorBoundary>
   );
 };
 
