@@ -894,7 +894,7 @@ IMPORTANT RULES:
   }
 
   // Build conversation contents
-  const contents = [];
+  const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
 
   // Add conversation history if provided
   if (payload.conversationHistory && payload.conversationHistory.length > 0) {
