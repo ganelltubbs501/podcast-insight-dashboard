@@ -430,7 +430,7 @@ app.use((err: any, req: any, res: any, next: any) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-const server = app.listen(backendEnv.port, () => {
+const server = app.listen(backendEnv.port, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${backendEnv.port}`);
   console.log(`   Environment: ${backendEnv.nodeEnv}`);
   console.log(`   CORS Origins: ${backendEnv.cors.allowedOrigins.join(', ')}`);
