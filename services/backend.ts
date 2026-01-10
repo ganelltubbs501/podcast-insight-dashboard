@@ -1,24 +1,73 @@
+import { supabase } from "../lib/supabaseClient";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL as string;
 function requireApi() {
   if (!API_BASE) throw new Error('VITE_API_BASE_URL is not configured');
 }
 
+/**
+ * Get authentication token from Supabase session
+ */
+async function getAuthToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
+}
+
+/**
+ * Get auth headers
+ */
+async function getHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function getJSON<T>(path: string): Promise<T> {
   requireApi();
-  const res = await fetch(`${API_BASE}${path}`, { credentials: 'include' });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+  const token = await getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers,
+    credentials: 'include'
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+    throw new Error(`API ${res.status}: ${text}`);
+  }
   return (await res.json()) as T;
 }
 
 async function postJSON<T>(path: string, body: any): Promise<T> {
   requireApi();
+  const headers = await getHeaders();
+
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     credentials: 'include',
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`);
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+    throw new Error(`API ${res.status}: ${text}`);
+  }
   return (await res.json()) as T;
 }
 
