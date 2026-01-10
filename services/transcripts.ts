@@ -84,6 +84,7 @@ export async function getTranscripts(): Promise<Transcript[]> {
   const { data, error } = await supabase
     .from("transcripts")
     .select("*")
+    .eq("user_id", auth.user.id) // 🔒 SECURITY: Only fetch user's own transcripts
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -99,10 +100,15 @@ export async function getTranscriptById(id: string): Promise<Transcript | null> 
     .from("transcripts")
     .select("*")
     .eq("id", id)
+    .eq("user_id", auth.user.id) // 🔒 SECURITY: Prevent IDOR - users can only access their own transcripts
     .maybeSingle();
 
   if (error) {
     throw error;
+  }
+
+  if (!data) {
+    return null; // Transcript not found or doesn't belong to user
   }
 
   return mapRowToTranscript(data);
@@ -115,7 +121,8 @@ export async function deleteTranscript(id: string): Promise<void> {
   const { error } = await supabase
     .from("transcripts")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", auth.user.id); // 🔒 SECURITY: Users can only delete their own transcripts
 
   if (error) throw error;
 }
@@ -139,7 +146,8 @@ export async function updateTranscriptStatus(id: string, workflowStatus: Workflo
   const { error } = await supabase
     .from("transcripts")
     .update({ result: updatedResult })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", auth.user.id); // 🔒 SECURITY: Users can only update their own transcripts
 
   if (error) throw error;
 }
@@ -164,7 +172,8 @@ export async function saveTranscriptResult(id: string, patch: Record<string, any
   const { error } = await supabase
     .from("transcripts")
     .update({ result: updatedResult })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", auth.user.id); // 🔒 SECURITY: Users can only update their own transcripts
 
   if (error) throw error;
 }
