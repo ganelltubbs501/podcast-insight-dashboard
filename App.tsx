@@ -41,12 +41,20 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
   (async () => {
-    const storedUser = await getStoredUser();
-    if (storedUser) {
-      setUser(storedUser);
-      setSentryUser(storedUser); // Track user in Sentry
+    try {
+      const storedUser = await getStoredUser();
+      if (storedUser) {
+        setUser(storedUser);
+        setSentryUser(storedUser); // Track user in Sentry
+      }
+    } catch (err: any) {
+      const message = err?.message || "Something went wrong.";
+      // Store this somewhere your UI can show it (toast, banner, modal, etc.)
+      // If you already have a toast system, use it here.
+      alert(message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   })();
 }, []);
 

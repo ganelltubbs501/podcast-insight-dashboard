@@ -11,9 +11,35 @@ function mapUser(u: any): User {
   };
 }
 
+async function ensureProfileExists(userId: string) {
+  // Attempt to create profile row (beta cap triggers here)
+  const { error } = await supabase
+    .from("profiles")
+    .insert({ id: userId });
+
+  if (!error) return;
+
+  // If already exists, ignore
+  // Postgres unique violation = 23505
+  if ((error as any).code === "23505") return;
+
+  // If beta is full, sign out and throw a friendly error
+  const msg = (error as any).message || "";
+  if (msg.includes("Beta is full")) {
+    await supabase.auth.signOut();
+    throw new Error("Beta is full (50 users). Please try again later.");
+  }
+
+  // Any other error should surface
+  throw error;
+}
+
 export async function getStoredUser(): Promise<User | null> {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return null;
+
+  await ensureProfileExists(data.user.id);
+
   return mapUser(data.user);
 }
 
