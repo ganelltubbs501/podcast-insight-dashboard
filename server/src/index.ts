@@ -75,7 +75,7 @@ app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest
     if (!validation.success) {
       return res.status(400).json({
         error: "Invalid request",
-        details: validation.errors
+        details: "errors" in validation ? validation.errors : undefined
       });
     }
 
@@ -130,7 +130,7 @@ app.post("/api/repurpose", requireAuth, repurposingLimiter, async (req: AuthRequ
     if (!validation.success) {
       return res.status(400).json({
         error: "Invalid request",
-        details: validation.errors
+        details: "errors" in validation ? validation.errors : undefined
       });
     }
 
@@ -158,7 +158,7 @@ app.post("/api/chat", requireAuth, generalLimiter, async (req: AuthRequest, res)
     if (!validation.success) {
       return res.status(400).json({
         error: "Invalid request",
-        details: validation.errors
+        details: "errors" in validation ? validation.errors : undefined
       });
     }
 
@@ -524,7 +524,7 @@ app.post("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
     if (!validation.success) {
       return res.status(400).json({
         error: "Invalid request",
-        details: validation.errors
+        details: "errors" in validation ? validation.errors : undefined
       });
     }
 

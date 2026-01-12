@@ -14,6 +14,7 @@ import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
 import { getStoredUser, loginUser, logoutUser } from './services/auth';
+import Login from './components/Login';
 import { User } from './types';
 import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp } from 'lucide-react';
 import { validateEnv } from './src/utils/env';
@@ -36,6 +37,7 @@ const AppContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [helpPanelOpen, setHelpPanelOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,17 +61,9 @@ const AppContent: React.FC = () => {
 }, []);
 
 
-  const handleLogin = async () => {
-    // Simulate login flow
-    try {
-      const newUser = await loginUser('test@test.com', 'Kaleb2022!');
-      setUser(newUser);
-      setSentryUser(newUser); // Track user in Sentry
-      navigate('/dashboard');
-    } catch (err) {
-      console.error('Login failed:', err);
-      alert('Login failed. If you are developing locally, ensure Supabase env vars are set or use a configured test account.');
-    }
+  const handleLogin = () => {
+    // Open the real login/signup UI instead of using test credentials
+    setShowLogin(true);
   };
 
   const handleLogout = async () => {
@@ -254,6 +248,18 @@ const AppContent: React.FC = () => {
           <HelpPanel isOpen={helpPanelOpen} onClose={() => setHelpPanelOpen(false)} />
           <LiveChatWidget />
         </>
+      )}
+
+      {showLogin && (
+        <Login
+          onClose={() => setShowLogin(false)}
+          onSuccess={(u) => {
+            setUser(u);
+            setSentryUser(u);
+            setShowLogin(false);
+            navigate('/dashboard');
+          }}
+        />
       )}
 
       <Routes>

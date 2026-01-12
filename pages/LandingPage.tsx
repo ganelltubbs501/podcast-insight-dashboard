@@ -143,7 +143,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </div>
       
       <footer className="bg-gray-200 py-12 text-center">
-        <p className="text-textMuted">© 2024 LoquiHQ. Where podcasters get the truth.</p>
+        <p className="text-textMuted">© 2026 LoquiHQ. Where podcasters get the truth.</p>
       </footer>
     </div>
   );
