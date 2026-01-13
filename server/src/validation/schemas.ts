@@ -52,9 +52,7 @@ const contentInputSchema = z.union([
 const analysisSettingsSchema = z.object({
   accuracyLevel: z.enum(['Standard', 'High', 'Maximum']).optional(),
   outputFormat: z.enum(['JSON', 'Markdown']).optional(),
-  includeTimestamps: z.boolean().optional(),
-  generateSEO: z.boolean().optional(),
-}).strict().optional();
+}).passthrough();
 
 // POST /api/analyze - Analyze podcast transcript
 export const analyzeRequestSchema = z.object({

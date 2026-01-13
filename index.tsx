@@ -15,7 +15,7 @@ root.render(
   </React.StrictMode>
 );
 
-if (import.meta.env.DEV) {
+if (import.meta.env.MODE === "development") {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then(registration => {

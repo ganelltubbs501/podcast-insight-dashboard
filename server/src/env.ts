@@ -121,7 +121,7 @@ export const backendEnv = {
   // CORS
   cors: {
     allowedOrigins: parseOrigins(
-      getEnv('ALLOWED_ORIGINS', false, 'http://localhost:3000,http://localhost:5173')
+      getEnv('ALLOWED_ORIGINS', false, 'https://loquihq-beta.web.app,http://localhost:3000,http://localhost:5173')
     ),
   },
 
