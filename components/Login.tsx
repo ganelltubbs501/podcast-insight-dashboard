@@ -1,7 +1,34 @@
 import React, { useState } from 'react';
-import { loginUser, signUpUser } from '../services/auth';
+import { loginUser } from '../services/auth';
 import { User } from '../types';
 import { X } from 'lucide-react';
+
+async function requestInvite(email: string) {
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (res.ok) return { ok: true as const, data };
+
+  return { ok: false as const, status: res.status, data };
+}
+
+async function joinWaitlist(email: string) {
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/waitlist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) throw new Error(data?.error || "Waitlist failed");
+  return data;
+}
 
 interface LoginProps {
   onClose: () => void;
@@ -13,59 +40,60 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [betaFull, setBetaFull] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     setMessage('');
 
-    if (!email || !password) {
-      setError('Please enter email and password');
-      return;
-    }
+    if (isSignUp) {
+      // Signup mode - request invite (email only)
+      if (!email) {
+        setError('Please enter your email');
+        return;
+      }
 
-    if (isSignUp && password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
+      setLoading(true);
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
+      const emailNorm = email.trim().toLowerCase();
+      const result = await requestInvite(emailNorm);
 
-    setLoading(true);
-
-    try {
-      if (isSignUp) {
-        const data = await signUpUser(email, password);
-        // If email confirmation is required, session will be null
-        if (data.session) {
-          // User is logged in immediately (no email confirmation required)
-          if (data.user) {
-            onSuccess({
-              id: data.user.id,
-              email: data.user.email ?? '',
-              name: (data.user.email ?? 'user').split('@')[0],
-              plan: 'Free',
-              role: 'Owner',
-            });
-          }
-        } else {
-          // Email confirmation required
-          setMessage('Check your email for a confirmation link to complete sign up.');
-        }
+      if (result.ok) {
+        setMessage("You're in! Check your email for your invite link.");
+      } else if (result.status === 403 && result.data?.code === "beta_full") {
+        setBetaFull(true);
+        setError("Beta is full. Join the waitlist to get notified when a spot opens.");
       } else {
+        setError(result.data?.error || "Signup failed. Please try again.");
+      }
+
+      setLoading(false);
+    } else {
+      // Login mode - use password
+      if (!email || !password) {
+        setError('Please enter email and password');
+        return;
+      }
+
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters');
+        return;
+      }
+
+      setLoading(true);
+
+      try {
         const user = await loginUser(email, password);
         onSuccess(user);
+      } catch (err: any) {
+        setError(err.message || 'Authentication failed');
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -85,10 +113,10 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
             LQ
           </div>
           <h2 className="text-2xl font-bold text-gray-900">
-            {isSignUp ? 'Create your account' : 'Welcome back'}
+            {isSignUp ? 'Join the Beta' : 'Welcome back'}
           </h2>
           <p className="text-gray-500 mt-1">
-            {isSignUp ? 'Start your free trial today' : 'Sign in to continue'}
+            {isSignUp ? 'Enter your email to request an invite' : 'Sign in to continue'}
           </p>
         </div>
 
@@ -108,33 +136,18 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
             />
           </div>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-              placeholder="At least 6 characters"
-              required
-            />
-          </div>
-
-          {isSignUp && (
+          {!isSignUp && (
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                Confirm Password
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                Password
               </label>
               <input
-                id="confirmPassword"
+                id="password"
                 type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="Confirm your password"
+                placeholder="At least 6 characters"
                 required
               />
             </div>
@@ -152,13 +165,43 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50"
-          >
-            {loading ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
-          </button>
+          {!betaFull && (
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50"
+            >
+              {loading ? 'Please wait...' : isSignUp ? 'Request Invite' : 'Sign In'}
+            </button>
+          )}
+
+          {betaFull && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                const emailNorm = email.trim().toLowerCase();
+                if (!emailNorm) {
+                  setError('Please enter your email');
+                  return;
+                }
+                try {
+                  setLoading(true);
+                  await joinWaitlist(emailNorm);
+                  setMessage("You're on the waitlist. We'll email you when a spot opens.");
+                  setBetaFull(false);
+                  setError(null);
+                } catch (e: any) {
+                  setError(e.message || "Waitlist failed. Please try again.");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="w-full py-3 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition disabled:opacity-50"
+            >
+              {loading ? 'Please wait...' : 'Join Waitlist'}
+            </button>
+          )}
         </form>
 
         <div className="mt-6 text-center">

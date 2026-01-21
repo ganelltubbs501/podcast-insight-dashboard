@@ -10,6 +10,13 @@ LoquiHQ analyzes podcast transcripts using Gemini AI, extracts structured insigh
 
 ## ✨ Current Status (Production-Ready)
 
+✅ **Beta Access System** ⭐ NEW
+- Invite-only beta with 50 user cap
+- Server-side signup enforcement (cap can't be bypassed)
+- Email invite flow: signup → email link → set password → dashboard
+- Waitlist for users when beta is full
+- New endpoints: `/api/beta/status`, `/api/signup`, `/api/waitlist`
+
 ✅ **Core Analysis Flow**
 - Multi-format input support (text, audio, images)
 - Comprehensive AI-powered transcript analysis
@@ -259,6 +266,9 @@ loquihq/
 │   ├── UsageAnalytics.tsx   # Usage metrics
 │   └── LandingPage.tsx      # Public landing page
 ├── components/              # Reusable components
+│   ├── AuthCallback.tsx             # Invite link token handler
+│   ├── SetPassword.tsx              # Password setup after invite
+│   ├── Login.tsx                    # Login/signup with beta system
 │   ├── BulkScheduleWizard.tsx       # Bulk platform scheduling
 │   ├── SeriesScheduleWizard.tsx     # Email/social series scheduling
 │   ├── MetricsTracker.tsx           # Performance metrics tracking
@@ -327,6 +337,10 @@ The application uses environment variables for configuration. Template files are
    GEMINI_API_KEY=your_gemini_api_key  # Get from https://aistudio.google.com/app/apikey
    PORT=8080
    ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:5173
+
+   # For beta signup system (production only):
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key  # From Supabase Dashboard > Settings > API
    ```
 
 **Required Variables:**
@@ -342,6 +356,8 @@ The application uses environment variables for configuration. Template files are
 - `VITE_SENTRY_DSN` / `SENTRY_DSN` - Error tracking
 - `VITE_GA_MEASUREMENT_ID` - Google Analytics
 - `ALLOWED_ORIGINS` - CORS allowed origins (comma-separated)
+- `SUPABASE_URL` - Required for beta signup system (backend)
+- `SUPABASE_SERVICE_ROLE_KEY` - Required for beta signup system (backend)
 
 **Environment Validation:**
 
@@ -388,6 +404,17 @@ Or manually run the SQL from the migration files in your Supabase SQL editor.
 ---
 
 ## 🎯 Recent Updates
+
+### January 2025
+
+#### Beta Access System ⭐ NEW
+- **Invite-Only Signup**: 50 user cap enforced server-side
+- **Server-Side Enforcement**: Removed direct `signUpUser()` from frontend to prevent cap bypass
+- **Email Invite Flow**: Users receive Supabase invite email → click link → set password
+- **New Components**: `AuthCallback.tsx` (token handler), `SetPassword.tsx` (password setup)
+- **New Endpoints**: `/api/beta/status`, `/api/signup`, `/api/waitlist`
+- **Waitlist**: Users can join waitlist when beta is full
+- **HashRouter Support**: Invite links properly route to `/#/auth/callback`
 
 ### December 2024 - January 2025
 
@@ -511,6 +538,28 @@ User Message
   → Frontend: Display + maintain conversation history
 ```
 
+### Beta Signup Flow
+```typescript
+User Signup Request
+  → Frontend: POST /api/signup with email
+  → Backend: Check cap against profiles table (active users)
+  → If cap not reached:
+    → Supabase admin.inviteUserByEmail()
+    → User receives email with invite link
+  → If cap reached:
+    → Return 403 with "beta full" message
+    → Frontend shows "Join Waitlist" option
+
+Invite Link Flow
+  → User clicks email link
+  → Redirects to /#/auth/callback with tokens in hash
+  → AuthCallback component extracts tokens
+  → Sets Supabase session
+  → Redirects to /set-password
+  → User creates password
+  → Redirects to /dashboard
+```
+
 ---
 
 ## 🔒 Security
@@ -522,6 +571,9 @@ User Message
 - No API keys in client-side code
 - CORS protection with allowed origins configuration
 - Rate limiting on all API endpoints
+- **Beta cap enforcement**: Server-side only (frontend `signUpUser` removed)
+- **Invite-only signup**: Users can't bypass beta cap via direct Supabase calls
+- **Supabase Admin Client**: Service role key used only on backend for privileged operations
 
 ---
 

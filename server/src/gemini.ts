@@ -341,7 +341,20 @@ IMPORTANT FORMATTING RULES:
 
 Return ONLY JSON matching the responseSchema.`;
 
-  const parts: any[] = [{ text: `Repurpose Type: ${payload.type}` }, { text: `Context:\n${payload.context.substring(0, 45000)}` }];
+  // Map type to the specific field name Gemini should populate
+  const typeToField: Record<string, string> = {
+    'email_series': 'emailSeries',
+    'social_calendar': 'socialCalendar',
+    'linkedin_article': 'linkedinArticle',
+    'image_prompts': 'imagePrompts',
+  };
+  const fieldName = typeToField[payload.type] || payload.type;
+
+  const parts: any[] = [
+    { text: `Generate ONLY the "${fieldName}" field. Repurpose Type: ${payload.type}` },
+    { text: `Context:\n${payload.context.substring(0, 45000)}` },
+    { text: `IMPORTANT: You MUST populate the "${fieldName}" field with content. Do not leave it empty.` }
+  ];
 
   const response = await retryWithBackoff(() =>
     ai.models.generateContent({
@@ -397,7 +410,11 @@ Return ONLY JSON matching the responseSchema.`;
   if (!text) throw new Error("No response from Gemini.");
 
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    console.log(`📝 Repurpose (${payload.type}) result keys:`, Object.keys(parsed));
+    console.log(`📝 emailSeries length:`, parsed.emailSeries?.length ?? 'undefined');
+    console.log(`📝 socialCalendar length:`, parsed.socialCalendar?.length ?? 'undefined');
+    return parsed;
   } catch (e) {
     console.error("FAILED TO PARSE REPURPOSE JSON. RAW OUTPUT:", text);
     throw e;

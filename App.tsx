@@ -13,8 +13,11 @@ import DeveloperSettings from './pages/DeveloperSettings';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
-import { getStoredUser, loginUser, logoutUser } from './services/auth';
+import { getStoredUser, logoutUser } from './services/auth';
+import { supabase } from './lib/supabaseClient';
 import Login from './components/Login';
+import AuthCallback from './components/AuthCallback';
+import SetPassword from './components/SetPassword';
 import { User } from './types';
 import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp } from 'lucide-react';
 import { validateEnv } from './src/utils/env';
@@ -59,6 +62,27 @@ const AppContent: React.FC = () => {
     }
   })();
 }, []);
+
+  // Detect invite links and redirect to set-password
+  useEffect(() => {
+    (async () => {
+      // Only run if we have auth tokens sitting in the hash from an invite/signup link
+      const hash = window.location.hash || "";
+      const cameFromInvite = hash.includes("type=invite") || hash.includes("type=signup");
+
+      if (!cameFromInvite) return;
+
+      // If they're already on the set-password route, do nothing
+      if (location.pathname === "/set-password") return;
+
+      // Confirm there's an active session (invite links often create one immediately)
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        navigate("/set-password", { replace: true });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const handleLogin = () => {
@@ -264,6 +288,11 @@ const AppContent: React.FC = () => {
 
       <Routes>
         <Route path="/" element={!user ? <LandingPage onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
+
+        {/* Auth routes for invite flow */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/set-password" element={<SetPassword />} />
+        <Route path="/login" element={<LandingPage onLogin={handleLogin} />} />
         
         <Route path="/dashboard" element={
           user ? (

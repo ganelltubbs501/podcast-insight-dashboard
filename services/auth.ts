@@ -50,21 +50,8 @@ export async function loginUser(email: string, password: string): Promise<User> 
   return mapUser(data.user);
 }
 
-export async function signUpUser(email: string, password: string) {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      emailRedirectTo: window.location.origin, // https://loquihq-beta.web.app
-    },
-  });
-
-  if (error) throw error;
-
-  // If email confirmation is ON, session may be null until user confirms.
-  // Return whatever Supabase provides so UI can show the right message.
-  return data;
-}
+// NOTE: Direct signUp removed - beta signup now goes through /api/signup
+// which enforces cap and sends invite emails via backend
 
 export async function logoutUser(): Promise<void> {
   await supabase.auth.signOut();

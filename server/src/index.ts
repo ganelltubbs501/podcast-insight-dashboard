@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
 import { analyzeWithGemini, repurposeWithGemini, chatWithGemini } from "./gemini.js";
 import { validateBackendEnv, backendEnv } from "./env.js";
 import {
@@ -31,6 +32,15 @@ validateBackendEnv();
 
 // Initialize error tracking
 initSentry();
+
+// Supabase admin client for beta management (optional for local dev)
+const supabaseAdmin = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } }
+    )
+  : null;
 
 const app = express();
 
@@ -581,6 +591,92 @@ app.post("/api/schedule/:id/delete", requireAuth, async (req: AuthRequest, res) 
       error: backendEnv.isDevelopment ? err?.message : "Server error"
     });
   }
+});
+
+// ============================================================================
+// BETA MANAGEMENT ENDPOINTS
+// ============================================================================
+
+// GET /api/beta/status - Check beta availability
+app.get("/api/beta/status", async (_req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(503).json({ error: "Beta management not configured" });
+  }
+
+  const cap = 50;
+
+  const { count, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id", { count: "exact", head: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const used = count ?? 0;
+  const remaining = Math.max(0, cap - used);
+
+  res.json({ open: remaining > 0, remaining, cap, used });
+});
+
+// POST /api/signup - Invite-only signup
+app.post("/api/signup", async (req, res) => {
+  console.log("✅ HIT /api/signup", new Date().toISOString(), req.body);
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Beta management not configured" });
+    }
+
+    console.log("📨 /api/signup body:", req.body);
+
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!isEmail) return res.status(400).json({ error: "Invalid email" });
+
+    const { count, error: countError } = await supabaseAdmin
+      .from("profiles")
+      .select("*", { count: "exact", head: true });
+
+    if (countError) return res.status(500).json({ error: "Could not check beta capacity" });
+
+    const CAP = 50;
+    if ((count ?? 0) >= CAP) {
+      return res.status(403).json({ code: "beta_full", cap: CAP, used: count ?? 0 });
+    }
+
+    const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo: "https://loquihq-beta.web.app/#/auth/callback",
+    });
+
+    if (error) {
+      console.log("❌ INVITE ERROR:", error);
+      return res.status(400).json({ error: error.message, code: error.name });
+    }
+
+    console.log("✅ INVITED:", data?.user?.id, data?.user?.email);
+    return res.json({ status: "invited", userId: data.user?.id });
+  } catch (err: any) {
+    console.error("SIGNUP ERROR:", err);
+    console.error("SIGNUP ERROR message:", err?.message);
+    console.error("SIGNUP ERROR stack:", err?.stack);
+    return res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// POST /api/waitlist - Add to waitlist
+app.post("/api/waitlist", async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(503).json({ error: "Beta management not configured" });
+  }
+
+  const { email, source } = req.body as { email?: string; source?: string };
+  if (!email) return res.status(400).json({ error: "email required" });
+
+  const { error } = await supabaseAdmin
+    .from("waitlist")
+    .upsert({ email, source: source ?? "loquihq-beta" }, { onConflict: "email" });
+
+  if (error) return res.status(400).json({ error: error.message });
+
+  res.json({ status: "waitlisted" });
 });
 
 // Sentry error handler - MUST be after all routes and before other error handlers
