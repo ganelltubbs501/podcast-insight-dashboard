@@ -10,18 +10,28 @@ import ContentCalendar from './pages/ContentCalendar';
 import GuestOutreach from './pages/GuestOutreach';
 import UsageAnalytics from './pages/UsageAnalytics';
 import DeveloperSettings from './pages/DeveloperSettings';
+import ConnectPodcast from './pages/ConnectPodcast';
+import PodcastAnalytics from './pages/PodcastAnalytics';
+import BetaAdmin from './pages/BetaAdmin';
+import KnownIssues from './pages/KnownIssues';
+import BetaGuide from './pages/BetaGuide';
+import BetaFeedback from './pages/BetaFeedback';
+import Settings from './pages/Settings';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
+import ReportIssue from './components/ReportIssue';
 import { getStoredUser, logoutUser } from './services/auth';
 import { supabase } from './lib/supabaseClient';
 import Login from './components/Login';
 import AuthCallback from './components/AuthCallback';
 import SetPassword from './components/SetPassword';
+import ForgotPassword from './components/ForgotPassword';
 import { User } from './types';
-import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp } from 'lucide-react';
+import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp, Headphones, Settings as SettingsIcon } from 'lucide-react';
 import { validateEnv } from './src/utils/env';
 import { initSentry, ErrorBoundary, setUser as setSentryUser } from './src/utils/sentry';
+import AppErrorBoundary from './components/ErrorBoundary';
 
 // Validate environment variables on app startup
 try {
@@ -38,14 +48,99 @@ initSentry();
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processingAuth, setProcessingAuth] = useState(false);
+  const [authStatus, setAuthStatus] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [helpPanelOpen, setHelpPanelOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [lastError, setLastError] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Handle auth tokens from Supabase (invite/recovery links)
+  // This must run before normal routing to intercept token URLs
+  useEffect(() => {
+    (async () => {
+      const hash = window.location.hash || "";
+
+      // Check if hash contains Supabase auth tokens
+      // With HashRouter, tokens appear as: #access_token=xxx&type=invite
+      // or as: #/some-path#access_token=xxx (if there was a path)
+      const hasTokens = hash.includes("access_token=");
+      const isAuthType = hash.includes("type=invite") || hash.includes("type=signup") || hash.includes("type=recovery");
+
+      if (!hasTokens || !isAuthType) return;
+
+      setProcessingAuth(true);
+      setAuthStatus("Processing your invite link...");
+
+      try {
+        // Extract tokens from the hash
+        // The hash might be: #access_token=xxx&refresh_token=yyy&type=invite
+        // or: #/auth/callback#access_token=xxx (with HashRouter path prefix)
+        const tokenPart = hash.includes("#access_token")
+          ? hash.substring(hash.indexOf("#access_token") + 1)
+          : hash.substring(1); // Remove leading #
+
+        const params = new URLSearchParams(tokenPart);
+        const accessToken = params.get("access_token");
+        const refreshToken = params.get("refresh_token");
+        const type = params.get("type");
+
+        console.log("Auth token detected, type:", type);
+
+        if (accessToken && refreshToken) {
+          setAuthStatus("Setting up your session...");
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) {
+            console.error("Session error:", error);
+            setAuthStatus("Error: " + error.message);
+            setTimeout(() => {
+              setProcessingAuth(false);
+              // Clear the hash and go to home
+              window.location.hash = "/";
+            }, 2000);
+            return;
+          }
+
+          if (data?.session) {
+            console.log("Session established, redirecting to set-password");
+            // Clear the token hash and redirect to set-password
+            // We need to preserve that this was a recovery if applicable
+            const isRecovery = type === "recovery";
+            window.location.hash = isRecovery ? "/set-password#type=recovery" : "/set-password";
+            setProcessingAuth(false);
+            return;
+          }
+        }
+
+        // No valid tokens - show error
+        setAuthStatus("Invalid or expired link. Redirecting...");
+        setTimeout(() => {
+          setProcessingAuth(false);
+          window.location.hash = "/";
+        }, 2000);
+
+      } catch (err: any) {
+        console.error("Auth processing error:", err);
+        setAuthStatus("Error: " + err.message);
+        setTimeout(() => {
+          setProcessingAuth(false);
+          window.location.hash = "/";
+        }, 2000);
+      }
+    })();
+  }, []);
+
   useEffect(() => {
   (async () => {
+    // Don't load user if we're still processing auth tokens
+    if (processingAuth) return;
+
     try {
       const storedUser = await getStoredUser();
       if (storedUser) {
@@ -61,28 +156,7 @@ const AppContent: React.FC = () => {
       setLoading(false);
     }
   })();
-}, []);
-
-  // Detect invite links and redirect to set-password
-  useEffect(() => {
-    (async () => {
-      // Only run if we have auth tokens sitting in the hash from an invite/signup link
-      const hash = window.location.hash || "";
-      const cameFromInvite = hash.includes("type=invite") || hash.includes("type=signup");
-
-      if (!cameFromInvite) return;
-
-      // If they're already on the set-password route, do nothing
-      if (location.pathname === "/set-password") return;
-
-      // Confirm there's an active session (invite links often create one immediately)
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        navigate("/set-password", { replace: true });
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+}, [processingAuth]);
 
 
   const handleLogin = () => {
@@ -103,12 +177,27 @@ const AppContent: React.FC = () => {
       setMobileMenuOpen(false);
   };
 
+  // Show processing state while handling auth tokens
+  if (processingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="h-12 w-12 bg-primary rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-4">
+            LQ
+          </div>
+          <p className="text-gray-600">{authStatus}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-100">Loading...</div>;
 
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <AppErrorBoundary onError={setLastError}>
+      <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
       {user && (
         <nav className="bg-gray-100 border-b border-gray-300 px-4 sm:px-6 py-3 flex justify-between items-center sticky top-0 z-50 shadow-sm md:shadow-none">
@@ -131,6 +220,12 @@ const AppContent: React.FC = () => {
                       className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/dashboard') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <LayoutDashboard className="h-4 w-4" /> Dashboard
+                    </button>
+                    <button
+                      onClick={() => navigate('/podcast-analytics')}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/podcast-analytics') || isActive('/connect-podcast') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
+                    >
+                        <Headphones className="h-4 w-4" /> Podcast
                     </button>
                     <button
                       onClick={() => navigate('/analytics')}
@@ -178,6 +273,13 @@ const AppContent: React.FC = () => {
                  </button>
                  <span className="text-sm text-textSecondary hidden sm:block">Welcome, {user.name}</span>
                  <button
+                   onClick={() => navigate('/settings')}
+                   className={`transition hidden md:block ${isActive('/settings') ? 'text-primary' : 'text-textMuted hover:text-primary'}`}
+                   title="Settings"
+                 >
+                   <SettingsIcon className="h-5 w-5" />
+                 </button>
+                 <button
                    onClick={() => navigate('/developer')}
                    className={`transition hidden md:block ${isActive('/developer') ? 'text-primary' : 'text-textMuted hover:text-primary'}`}
                    title="Developer Settings"
@@ -196,6 +298,9 @@ const AppContent: React.FC = () => {
                  >
                    <CircleHelp className="h-5 w-5" />
                  </button>
+
+                 {/* Report Issue Button */}
+                 <ReportIssue lastError={lastError} variant="link" className="hidden md:block" />
 
                  <button
                    onClick={handleLogout}
@@ -225,6 +330,9 @@ const AppContent: React.FC = () => {
                      <button onClick={() => handleNav('/dashboard')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/dashboard') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <LayoutDashboard className="h-5 w-5" /> Dashboard
                      </button>
+                     <button onClick={() => handleNav('/podcast-analytics')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/podcast-analytics') || isActive('/connect-podcast') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
+                         <Headphones className="h-5 w-5" /> Podcast
+                     </button>
                      <button onClick={() => handleNav('/analytics')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/analytics') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <BarChart3 className="h-5 w-5" /> Insights
                      </button>
@@ -239,6 +347,9 @@ const AppContent: React.FC = () => {
                      </button>
                      <button onClick={() => handleNav('/team')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <Users className="h-5 w-5" /> Team Workspace
+                     </button>
+                     <button onClick={() => handleNav('/settings')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/settings') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
+                         <SettingsIcon className="h-5 w-5" /> Settings
                      </button>
                      <button onClick={() => handleNav('/developer')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/developer') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <Terminal className="h-5 w-5" /> Developer
@@ -289,9 +400,10 @@ const AppContent: React.FC = () => {
       <Routes>
         <Route path="/" element={!user ? <LandingPage onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
 
-        {/* Auth routes for invite flow */}
+        {/* Auth routes for invite flow and password reset */}
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/set-password" element={<SetPassword />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/login" element={<LandingPage onLogin={handleLogin} />} />
         
         <Route path="/dashboard" element={
@@ -327,7 +439,19 @@ const AppContent: React.FC = () => {
         <Route path="/developer" element={
           user ? <DeveloperSettings /> : <Navigate to="/" />
         } />
-        
+
+        <Route path="/settings" element={
+          user ? <Settings /> : <Navigate to="/" />
+        } />
+
+        <Route path="/connect-podcast" element={
+          user ? <ConnectPodcast /> : <Navigate to="/" />
+        } />
+
+        <Route path="/podcast-analytics" element={
+          user ? <PodcastAnalytics /> : <Navigate to="/" />
+        } />
+
         <Route path="/analysis" element={
           user ? (
             <NewAnalysis 
@@ -343,9 +467,20 @@ const AppContent: React.FC = () => {
           ) : <Navigate to="/" />
         } />
 
+        <Route path="/beta-admin" element={
+          user ? <BetaAdmin /> : <Navigate to="/" />
+        } />
+
+        <Route path="/beta-guide" element={<BetaGuide />} />
+
+        <Route path="/beta-feedback" element={<BetaFeedback />} />
+
+        <Route path="/known-issues" element={<KnownIssues />} />
+
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </div>
+    </AppErrorBoundary>
   );
 };
 

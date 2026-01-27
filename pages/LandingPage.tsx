@@ -119,7 +119,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
              <div className="bg-gray-100 p-8 rounded-2xl shadow-xl border-2 border-primary relative transform md:-translate-y-4">
                <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">POPULAR</div>
                <h3 className="text-xl font-bold text-textPrimary">Pro Creator</h3>
-               <p className="text-4xl font-extrabold text-textPrimary mt-4">$29<span className="text-base font-normal text-textMuted">/mo</span></p>
+               <p className="text-4xl font-extrabold text-textPrimary mt-4">XX<span className="text-base font-normal text-textMuted">/mo</span></p>
                <ul className="mt-6 space-y-4">
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> 50 Transcripts / mo</li>
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> All AI Features</li>
@@ -131,7 +131,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
              {/* Business Tier */}
              <div className="bg-gray-100 p-8 rounded-2xl shadow-sm border border-gray-300">
                <h3 className="text-xl font-bold text-textPrimary">Business</h3>
-               <p className="text-4xl font-extrabold text-textPrimary mt-4">$79<span className="text-base font-normal text-textMuted">/mo</span></p>
+               <p className="text-4xl font-extrabold text-textPrimary mt-4">XX<span className="text-base font-normal text-textMuted">/mo</span></p>
                <ul className="mt-6 space-y-4">
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Unlimited Transcripts</li>
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Priority Support</li>

@@ -219,7 +219,7 @@ const UsageAnalytics: React.FC = () => {
                  </div>
 
                  <button className="w-full mt-4 bg-gray-200 text-white py-2 rounded-lg font-bold text-sm hover:bg-gray-300 transition">
-                     Upgrade to Business ($79/mo)
+                     Upgrade to Business
                  </button>
              </div>
           </div>

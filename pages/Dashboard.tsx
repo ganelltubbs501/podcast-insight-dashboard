@@ -4,6 +4,7 @@ import { Transcript, UsageMetrics } from '../types';
 import { getTranscripts, deleteTranscript, getUsageMetrics } from '../services/transcripts';
 import { bulkExportZIP } from '../services/downloadService';
 import { useNavigate } from 'react-router-dom';
+import OnboardingChecklist from '../components/OnboardingChecklist';
 
 interface DashboardProps {
   onNewAnalysis: () => void;
@@ -93,6 +94,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNewAnalysis, onViewResults }) =
             New Analysis
           </button>
         </div>
+      </div>
+
+      {/* Onboarding Checklist */}
+      <div className="mb-10">
+        <OnboardingChecklist />
       </div>
 
       {/* Usage & Quota Section */}

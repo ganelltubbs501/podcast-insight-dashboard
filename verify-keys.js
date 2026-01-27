@@ -148,7 +148,7 @@ if (fs.existsSync(backendEnvPath)) {
     pass('SUPABASE_SERVICE_ROLE_KEY is set in server/.env');
   } else {
     warn('SUPABASE_SERVICE_ROLE_KEY is NOT set - needed for auth to work!');
-    console.log('   Get it from: https://app.supabase.com/project/rvtytagkpridbsifnimf/settings/api');
+    console.log('   Get it from: https://app.supabase.com/project/mhjbiiyvancaiacpaqlc/settings/api');
   }
 
   // Check for SUPABASE_URL in backend

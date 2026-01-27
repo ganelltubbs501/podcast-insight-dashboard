@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { loginUser } from '../services/auth';
 import { User } from '../types';
 import { X } from 'lucide-react';
@@ -44,6 +45,7 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [betaFull, setBetaFull] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,7 +102,7 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50" onClick={onClose}></div>
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 light">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -137,20 +139,34 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
           </div>
 
           {!isSignUp && (
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                placeholder="At least 6 characters"
-                required
-              />
-            </div>
+            <>
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                  Password
+                </label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                  placeholder="At least 6 characters"
+                  required
+                />
+              </div>
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    navigate('/forgot-password');
+                  }}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            </>
           )}
 
           {error && (

@@ -143,6 +143,72 @@ export const updateScheduledPostSchema = z.object({
 
 export type UpdateScheduledPost = z.infer<typeof updateScheduledPostSchema>;
 
+// ============================================================================
+// PODCAST ANALYTICS SCHEMAS
+// ============================================================================
+
+// Supported podcast hosting providers
+const podcastProviderSchema = z.enum([
+  'unknown',
+  'buzzsprout',
+  'libsyn',
+  'anchor',
+  'podbean',
+  'spreaker',
+  'transistor',
+  'captivate',
+  'simplecast',
+  'megaphone',
+  'acast',
+  'spotify',
+  'apple',
+]);
+
+// POST /api/podcast/connect-rss - Connect podcast via RSS
+export const connectRssSchema = z.object({
+  rssUrl: z.string().url('Invalid RSS URL format'),
+}).strict();
+
+export type ConnectRssRequest = z.infer<typeof connectRssSchema>;
+
+// Country metric for top countries
+const countryMetricSchema = z.object({
+  country: z.string().min(1).max(100),
+  percentage: z.number().min(0).max(100),
+});
+
+// POST /api/podcast/analytics/manual - Submit manual metrics
+// Both downloads_30d_total AND avg_downloads_per_episode_30d are REQUIRED per DB schema
+export const manualMetricsSchema = z.object({
+  downloads30dTotal: z.number().int().min(0, 'Total downloads must be a non-negative number'),
+  avgDownloadsPerEpisode30d: z.number().int().min(0, 'Average downloads per episode is required'),
+  followersTotal: z.number().int().min(0).optional(),
+  topCountries: z.array(countryMetricSchema).max(10).optional(),
+}).strict();
+
+export type ManualMetricsInput = z.infer<typeof manualMetricsSchema>;
+
+// POST /api/podcast/projections/recompute - Recompute with new assumptions
+export const projectionsAssumptionsSchema = z.object({
+  fillRate: z.number().min(0).max(1).default(0.35),
+  adSlots: z.number().int().min(1).max(6).default(2),
+  cpmLow: z.number().min(0).default(15),
+  cpmMid: z.number().min(0).default(25),
+  cpmHigh: z.number().min(0).default(40),
+  episodesPerMonth: z.number().int().min(1).max(31).optional(),
+}).strict();
+
+export type ProjectionsAssumptions = z.infer<typeof projectionsAssumptionsSchema>;
+
+// POST /api/podcast/analytics/connect-provider - Connect provider API
+export const connectProviderSchema = z.object({
+  provider: podcastProviderSchema,
+  apiKey: z.string().optional(),
+  showId: z.string().optional(),
+}).strict();
+
+export type ConnectProviderRequest = z.infer<typeof connectProviderSchema>;
+
 /**
  * Validation helper - validates request body and returns typed result
  */

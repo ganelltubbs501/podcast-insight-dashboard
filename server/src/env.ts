@@ -31,6 +31,14 @@ interface BackendEnvConfig {
   SPOTIFY_CLIENT_ID?: string;
   SPOTIFY_CLIENT_SECRET?: string;
 
+  // LinkedIn OAuth
+  LINKEDIN_CLIENT_ID?: string;
+  LINKEDIN_CLIENT_SECRET?: string;
+
+  // Public URLs (for OAuth redirects)
+  APP_PUBLIC_URL?: string;
+  API_PUBLIC_URL?: string;
+
   // Email
   SENDGRID_API_KEY?: string;
   FROM_EMAIL?: string;
@@ -42,6 +50,9 @@ interface BackendEnvConfig {
 
   // Security
   ENCRYPTION_KEY?: string;
+
+  // Cron Jobs
+  PUBLISHER_CRON_SECRET?: string;
 
   // Monitoring
   SENTRY_DSN?: string;
@@ -118,10 +129,15 @@ export const backendEnv = {
     model: getEnv('GEMINI_MODEL', false, 'gemini-2.5-flash'),
   },
 
-  // CORS
+  // CORS - Strict allowlist
+  // Production: Only beta app. Development: Also localhost.
   cors: {
     allowedOrigins: parseOrigins(
-      getEnv('ALLOWED_ORIGINS', false, 'https://loquihq-beta.web.app,http://localhost:3000,http://localhost:5173')
+      getEnv('ALLOWED_ORIGINS', false,
+        process.env.NODE_ENV === 'production'
+          ? 'https://loquihq-beta.web.app'
+          : 'https://loquihq-beta.web.app,http://localhost:3000,http://localhost:5173'
+      )
     ),
   },
 
@@ -139,6 +155,17 @@ export const backendEnv = {
   spotify: {
     clientId: getEnv('SPOTIFY_CLIENT_ID', false),
     clientSecret: getEnv('SPOTIFY_CLIENT_SECRET', false),
+  },
+
+  linkedin: {
+    clientId: getEnv('LINKEDIN_CLIENT_ID', false),
+    clientSecret: getEnv('LINKEDIN_CLIENT_SECRET', false),
+  },
+
+  // Public URLs for OAuth redirects
+  publicUrls: {
+    app: getEnv('APP_PUBLIC_URL', false, 'https://loquihq-beta.web.app'),
+    api: getEnv('API_PUBLIC_URL', false, ''),
   },
 
   // Email
@@ -159,6 +186,11 @@ export const backendEnv = {
   // Security
   security: {
     encryptionKey: getEnv('ENCRYPTION_KEY', false),
+  },
+
+  // Cron Jobs
+  cron: {
+    publisherSecret: getEnv('PUBLISHER_CRON_SECRET', false),
   },
 
   // Monitoring

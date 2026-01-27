@@ -1,0 +1,55 @@
+Subject: Welcome to LoquiHQ Beta! 🎙️ Your Podcast Intelligence Platform is Ready
+
+Hi [First Name],
+
+Welcome to the LoquiHQ beta! You're one of the first podcasters to get access to AI-powered podcast intelligence that turns your episodes into actionable insights.
+
+## What LoquiHQ Does
+
+LoquiHQ analyzes your podcast transcripts using Gemini AI to extract:
+- **Content Performance**: Which topics and segments resonate most with listeners
+- **Audience Insights**: Listener demographics, engagement patterns, and preferences
+- **Monetization Opportunities**: Sponsorship recommendations and revenue projections
+- **Content Strategy**: Repurposing suggestions for social media, email, and more
+
+## Your First 3 Steps
+
+1. **Connect Your Podcast** - Add your RSS feed URL (we support all major hosting platforms)
+2. **Run Your First Analysis** - Upload a transcript or let us fetch your latest episode
+3. **Repurpose Content** - Generate social posts, email newsletters, and blog articles
+
+## Getting Started
+
+Beta Guide: https://loquihq.com/beta-guide
+Feedback Form: https://loquihq.com/beta-feedback
+Login: [Your Email]
+Password: [Set during signup]
+
+## Report Bugs & Feedback
+
+Found a bug or have feedback? Email us at: beta-support@loquihq.com
+
+Include:
+- What you were trying to do
+- What happened instead
+- Your browser/device
+- Any error messages
+
+## Beta Limits
+
+- 1 podcast per user (for now)
+- 5 analyses per day
+- 10 content repurposing requests per day
+
+## What's Next
+
+We'll be iterating based on your feedback. Expect weekly updates with new features and improvements.
+
+Thanks for helping us build the future of podcast intelligence!
+
+Best,
+The LoquiHQ Team
+
+---
+LoquiHQ - Where podcasters get the truth.
+Not vanity metrics, real insights.

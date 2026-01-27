@@ -61,7 +61,7 @@ const HelpPanel: React.FC<HelpPanelProps> = ({ isOpen, onClose }) => {
 
   return (
     <div 
-      className={`fixed inset-y-0 right-0 w-full sm:w-[450px] bg-gray-100 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      className={`fixed inset-y-0 right-0 w-full sm:w-[450px] bg-gray-100 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col light ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
     >
       {/* Header */}
       <div className="flex justify-between items-center p-6 border-b border-gray-300 bg-gray-50">

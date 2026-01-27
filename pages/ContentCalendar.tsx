@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getScheduledPosts, deleteScheduledPost, updateScheduledPost } from '../services/transcripts';
 import { ScheduledPost, Platform } from '../types';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Linkedin, Twitter, Video, Mail, FileType, Plus, Trash2, BarChart2, CheckCircle, Clock, AlertCircle, Edit2 } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Linkedin, Twitter, Video, Mail, FileType, Plus, Trash2, BarChart2, CheckCircle, Clock, AlertCircle, Edit2, Filter, RotateCcw } from 'lucide-react';
 import MetricsTracker from '../components/MetricsTracker';
 
 const ContentCalendar: React.FC = () => {
@@ -15,6 +15,13 @@ const ContentCalendar: React.FC = () => {
   const [editStatus, setEditStatus] = useState<'Scheduled' | 'Published' | 'Failed'>('Scheduled');
   const [showMetricsTracker, setShowMetricsTracker] = useState(false);
 
+  // Filters
+  const [filterPlatform, setFilterPlatform] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // Drag state
+  const [draggedPost, setDraggedPost] = useState<ScheduledPost | null>(null);
+
   useEffect(() => {
     loadPosts();
   }, []);
@@ -22,6 +29,58 @@ const ContentCalendar: React.FC = () => {
   const loadPosts = async () => {
     const data = await getScheduledPosts();
     setPosts(data);
+  };
+
+  // Filter posts
+  const filteredPosts = posts.filter(post => {
+    if (filterPlatform !== 'all' && post.platform !== filterPlatform) return false;
+    if (filterStatus !== 'all' && post.status !== filterStatus) return false;
+    return true;
+  });
+
+  // Retry failed post
+  const handleRetry = async (post: ScheduledPost) => {
+    try {
+      await updateScheduledPost(post.id, { status: 'Scheduled' });
+      loadPosts();
+      if (selectedPost?.id === post.id) {
+        setSelectedPost({ ...post, status: 'Scheduled' });
+      }
+    } catch (e) {
+      console.error('Failed to retry post:', e);
+      alert('Failed to retry post');
+    }
+  };
+
+  // Drag handlers for reschedule
+  const handleDragStart = (e: React.DragEvent, post: ScheduledPost) => {
+    setDraggedPost(post);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e: React.DragEvent, day: number) => {
+    e.preventDefault();
+    if (!draggedPost) return;
+
+    const newDate = new Date(year, month, day);
+    const oldDate = new Date(draggedPost.scheduledDate);
+    // Preserve time, only change date
+    newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), oldDate.getSeconds());
+
+    try {
+      await updateScheduledPost(draggedPost.id, { scheduledDate: newDate.toISOString() });
+      loadPosts();
+    } catch (e) {
+      console.error('Failed to reschedule:', e);
+      alert('Failed to reschedule post');
+    }
+
+    setDraggedPost(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -120,12 +179,43 @@ const ContentCalendar: React.FC = () => {
           </h1>
           <p className="text-textMuted">Schedule, publish, and track your content performance.</p>
         </div>
-        <div className="flex items-center gap-4 bg-gray-100 p-1 rounded-lg border border-gray-300 shadow-sm">
-           <button onClick={prevMonth} className="p-2 hover:bg-gray-200 rounded-md transition"><ChevronLeft className="h-5 w-5 text-textSecondary"/></button>
-           <span className="font-bold text-textPrimary w-32 text-center select-none">
-             {currentDate.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
-           </span>
-           <button onClick={nextMonth} className="p-2 hover:bg-gray-200 rounded-md transition"><ChevronRight className="h-5 w-5 text-textSecondary"/></button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Filters */}
+          <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-300">
+            <Filter className="h-4 w-4 text-textMuted ml-1" />
+            <select
+              value={filterPlatform}
+              onChange={(e) => setFilterPlatform(e.target.value)}
+              className="bg-transparent border-none text-sm text-textSecondary focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Platforms</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="twitter">Twitter</option>
+              <option value="email">Email</option>
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-300">
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="bg-transparent border-none text-sm text-textSecondary focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="Scheduled">Scheduled</option>
+              <option value="Published">Published</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+          {/* Month Navigation */}
+          <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg border border-gray-300 shadow-sm">
+             <button onClick={prevMonth} className="p-2 hover:bg-gray-200 rounded-md transition"><ChevronLeft className="h-5 w-5 text-textSecondary"/></button>
+             <span className="font-bold text-textPrimary w-32 text-center select-none">
+               {currentDate.toLocaleDateString('default', { month: 'long', year: 'numeric' })}
+             </span>
+             <button onClick={nextMonth} className="p-2 hover:bg-gray-200 rounded-md transition"><ChevronRight className="h-5 w-5 text-textSecondary"/></button>
+          </div>
         </div>
       </div>
 
@@ -152,22 +242,33 @@ const ContentCalendar: React.FC = () => {
              {Array.from({ length: daysInMonth }).map((_, i) => {
                const day = i + 1;
                const dateStr = new Date(year, month, day).toDateString();
-               const dayPosts = posts.filter(p => new Date(p.scheduledDate).toDateString() === dateStr);
+               const dayPosts = filteredPosts.filter(p => new Date(p.scheduledDate).toDateString() === dateStr);
                const isToday = new Date().toDateString() === dateStr;
 
                return (
-                 <div key={day} className={`border-b border-r border-gray-300 p-2 min-h-[100px] relative hover:bg-gray-100 transition group ${isToday ? 'bg-accent-soft/30' : ''}`}>
+                 <div
+                   key={day}
+                   className={`border-b border-r border-gray-300 p-2 min-h-[100px] relative hover:bg-gray-100 transition group ${isToday ? 'bg-accent-soft/30' : ''} ${draggedPost ? 'hover:bg-blue-50' : ''}`}
+                   onDragOver={handleDragOver}
+                   onDrop={(e) => handleDrop(e, day)}
+                 >
                     <span className={`text-sm font-medium block mb-2 ${isToday ? 'text-primary bg-primary w-6 h-6 rounded-full flex items-center justify-center' : 'text-textSecondary'}`}>{day}</span>
-                    
+
                     <div className="space-y-1">
                        {dayPosts.map(post => (
-                         <button 
+                         <button
                            key={post.id}
                            onClick={() => setSelectedPost(post)}
-                           className={`w-full text-left text-xs p-1.5 rounded border flex items-center gap-1.5 truncate transition shadow-sm hover:shadow-md ${getPlatformColor(post.platform)}`}
+                           draggable
+                           onDragStart={(e) => handleDragStart(e, post)}
+                           className={`w-full text-left text-xs p-1.5 rounded border flex items-center gap-1.5 truncate transition shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing ${getPlatformColor(post.platform)} ${post.status === 'Failed' ? 'border-red-300 bg-red-50' : ''}`}
                          >
                             {getPlatformIcon(post.platform)}
-                            <span className="truncate font-medium">{post.status === 'Published' ? <CheckCircle className="inline h-3 w-3 mr-1"/> : null}{post.content}</span>
+                            <span className="truncate font-medium">
+                              {post.status === 'Published' && <CheckCircle className="inline h-3 w-3 mr-1 text-green-600"/>}
+                              {post.status === 'Failed' && <AlertCircle className="inline h-3 w-3 mr-1 text-red-600"/>}
+                              {post.content}
+                            </span>
                          </button>
                        ))}
                     </div>
@@ -244,6 +345,14 @@ const ContentCalendar: React.FC = () => {
                    )}
 
                    <div className="mt-auto pt-6 border-t border-gray-300 space-y-2">
+                     {selectedPost.status === 'Failed' && (
+                       <button
+                         onClick={() => handleRetry(selectedPost)}
+                         className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition text-sm font-medium"
+                       >
+                         <RotateCcw className="h-4 w-4" /> Retry Post
+                       </button>
+                     )}
                      <button
                        onClick={() => setShowMetricsTracker(true)}
                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium"

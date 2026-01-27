@@ -307,6 +307,61 @@ loquihq/
 
 ---
 
+## 🎯 Beta Operations
+
+LoquiHQ includes comprehensive tools for managing the beta testing phase. Access the beta admin dashboard at `/beta-admin` or use the command-line tools below.
+
+### Admin Dashboard (`/beta-admin`)
+
+A web interface for beta management with:
+- **Real-time Metrics**: User count, waitlist size, connected podcasts, daily analyses
+- **Beta Capacity**: Track usage against the 50-user limit
+- **Tester Management**: View all beta users with activity stats
+- **User Actions**: Remove testers or send re-invites
+- **Support Links**: Direct links to bug reports and known issues
+
+### Command Line Tools
+
+```bash
+# Show beta metrics and recent testers
+npm run beta-ops
+
+# Run security audit
+npm run security-audit
+```
+
+### SQL Queries (`BETA_OPERATIONS.sql`)
+
+Comprehensive SQL queries for:
+- **Metrics**: User counts, activity statistics, capacity tracking
+- **User Management**: List testers, find inactive users, activity monitoring
+- **Reset Plan**: Step-by-step user removal process
+- **Health Checks**: Database integrity and orphaned records
+
+### Support System
+
+- **Bug Reports**: `beta-support@loquihq.com` - One email for all bug reports
+- **Known Issues**: `/known-issues` - Public page listing current issues and workarounds
+- **User Feedback**: Integrated report issue feature in the app
+
+### Reset Plan
+
+To remove a tester and re-invite:
+
+1. **Remove Tester**: Use admin dashboard or run SQL queries in order
+2. **Database Cleanup**: Deletes analyses, projections, metrics, episodes, connections, podcasts
+3. **User Deletion**: Removes auth account and profile
+4. **Re-invite**: Send new invite email (logs re-invite for tracking)
+
+### Key Metrics to Monitor
+
+- **Daily Active Usage**: Analyses per day, user sign-ins
+- **Growth Rate**: New signups, waitlist growth
+- **Engagement**: Podcast connections, feature usage
+- **Support Load**: Bug reports, user feedback volume
+
+---
+
 ## 🚀 Running Locally
 
 ### Prerequisites

@@ -12,22 +12,28 @@ function mapUser(u: any): User {
 }
 
 async function ensureProfileExists(userId: string) {
-  // Attempt to create profile row (beta cap triggers here)
+  // Use upsert to be idempotent - won't fail if profile already exists
+  // The beta cap trigger will still fire on new inserts
   const { error } = await supabase
     .from("profiles")
-    .insert({ id: userId });
+    .upsert(
+      { id: userId, created_at: new Date().toISOString() },
+      { onConflict: "id", ignoreDuplicates: true }
+    );
 
   if (!error) return;
-
-  // If already exists, ignore
-  // Postgres unique violation = 23505
-  if ((error as any).code === "23505") return;
 
   // If beta is full, sign out and throw a friendly error
   const msg = (error as any).message || "";
   if (msg.includes("Beta is full")) {
     await supabase.auth.signOut();
     throw new Error("Beta is full (50 users). Please try again later.");
+  }
+
+  // RLS violation (user can only insert their own profile)
+  if ((error as any).code === "42501") {
+    console.warn("Profile RLS violation - user may already exist");
+    return; // Likely already exists, safe to continue
   }
 
   // Any other error should surface

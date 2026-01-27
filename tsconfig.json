@@ -26,5 +26,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["env.d.ts", "**/*.ts", "**/*.tsx"]
+  "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "server", "dist"]
 }

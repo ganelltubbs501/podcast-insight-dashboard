@@ -44,7 +44,19 @@
       "Bash(dir:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd authentication to frontend API requests\n\nFrontend now sends JWT tokens with all API requests to backend.\n\nChanges:\n- Updated services/geminiService.ts:\n  - Added getAuthToken\\(\\) helper to fetch Supabase session token\n  - Updated postJSON\\(\\) to include Authorization header\n  - Better error handling for 401 responses\n  - Parses JSON error responses from backend\n\n- Updated services/backend.ts:\n  - Added getAuthToken\\(\\) and getHeaders\\(\\) helpers\n  - Updated getJSON\\(\\) and postJSON\\(\\) to send auth tokens\n  - Better 401 error messages\n\nSecurity Impact:\n✅ All API requests now authenticated\n✅ Backend can verify user identity\n✅ User isolation enforced server-side\n✅ Unauthorized requests rejected with 401\n\nNext: Fix database queries in frontend services\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(supabase db push:*)",
+      "Bash(supabase db execute:*)",
+      "Bash(supabase projects:*)",
+      "Bash(supabase link:*)",
+      "Bash(xargs cat:*)",
+      "Bash(node:*)",
+      "Bash(gcloud config:*)",
+      "Bash(gcloud run deploy:*)",
+      "Bash(gcloud run services describe:*)",
+      "Bash(gcloud run services update:*)",
+      "Bash(curl:*)",
+      "Bash(cmd /c \"del /f /q \\\\?\\\\c:\\\\Users\\\\ganel\\\\OneDrive\\\\Desktop\\\\AI PROJECTS\\\\podcast-insight-dashboard\\\\nul\")"
     ]
   }
 }
