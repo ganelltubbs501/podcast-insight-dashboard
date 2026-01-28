@@ -149,7 +149,7 @@ const ConnectPodcast: React.FC = () => {
       </form>
 
       {/* Help text */}
-      <div className="mt-8 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+      <div className="mt-8 p-4 bg-gray-200 border border-gray-300 rounded-lg">
         <h3 className="font-medium text-textPrimary mb-2">Where to find your RSS feed</h3>
         <ul className="text-sm text-textMuted space-y-1">
           <li>
@@ -308,10 +308,24 @@ const ConnectPodcast: React.FC = () => {
         </button>
       </div>
 
-      {/* Info */}
-      <p className="mt-6 text-center text-sm text-textMuted">
-        You can always update your metrics later from the analytics dashboard.
-      </p>
+      {/* Skip option */}
+      <div className="mt-6 text-center space-y-3">
+        <button
+          onClick={() => navigate("/podcast-analytics")}
+          className="text-sm text-primary hover:text-primary/80 underline transition"
+        >
+          Skip for now — go to Podcast Analytics
+        </button>
+        <p className="text-xs text-textMuted">
+          or{" "}
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="text-primary hover:text-primary/80 underline"
+          >
+            go to Main Dashboard
+          </button>
+        </p>
+      </div>
     </div>
   );
 

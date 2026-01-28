@@ -3,6 +3,7 @@
 // ============================================================================
 
 import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 export interface LinkedInOAuthConfig {
   clientId: string;
@@ -246,7 +247,6 @@ export async function postToLinkedIn(
  * Create Supabase client for storing connections
  */
 function createSupabaseAdmin() {
-  const { createClient } = require('@supabase/supabase-js');
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -272,12 +272,17 @@ export async function storeLinkedInConnection(
     .upsert({
       user_id: userId,
       provider: 'linkedin',
-      account_id: profile.id,
-      account_name: `${profile.localizedFirstName} ${profile.localizedLastName}`,
+      provider_user_id: profile.id,
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken || null,
-      token_expires_at: new Date(tokens.expiresAt).toISOString(),
+      expires_at: new Date(tokens.expiresAt).toISOString(),
       scopes: tokens.scope.split(' '),
+      profile: {
+        name: `${profile.localizedFirstName} ${profile.localizedLastName}`,
+        firstName: profile.localizedFirstName,
+        lastName: profile.localizedLastName,
+        picture: profile.profilePicture,
+      },
       updated_at: new Date().toISOString(),
     }, {
       onConflict: 'user_id,provider',
@@ -315,14 +320,17 @@ export async function getLinkedInConnection(userId: string): Promise<LinkedInCon
     return null;
   }
 
+  // Handle null/undefined expires_at - default to epoch if missing
+  const expiresAt = data.expires_at ? new Date(data.expires_at) : new Date(0);
+
   return {
     userId: data.user_id,
     provider: 'linkedin',
-    accountId: data.account_id,
-    accountName: data.account_name,
+    accountId: data.provider_user_id,
+    accountName: data.profile?.name || '',
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    tokenExpiresAt: new Date(data.token_expires_at),
+    tokenExpiresAt: expiresAt,
     scopes: data.scopes || [],
   };
 }
@@ -378,7 +386,7 @@ export async function getValidLinkedInToken(
     .update({
       access_token: newTokens.accessToken,
       refresh_token: newTokens.refreshToken,
-      token_expires_at: new Date(newTokens.expiresAt).toISOString(),
+      expires_at: new Date(newTokens.expiresAt).toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', connection.userId)

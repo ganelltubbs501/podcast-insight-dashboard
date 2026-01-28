@@ -221,17 +221,25 @@ export async function getUsageMetrics(): Promise<UsageMetrics> {
  * Scheduled Posts Functions
  */
 
+// Use Supabase column aliasing to map snake_case to camelCase
+const SCHEDULED_POST_SELECT = 'id, content, platform, status, metrics, scheduledDate:scheduled_date, transcriptId:transcript_id';
+
 export async function getScheduledPosts() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
   const { data, error } = await supabase
     .from("scheduled_posts")
-    .select("*")
+    .select(SCHEDULED_POST_SELECT)
     .eq("user_id", user.id)
     .order("scheduled_date", { ascending: true });
 
-  if (error) throw error;
+  if (error) {
+    console.error('[getScheduledPosts] Query error:', error);
+    throw error;
+  }
+
+  console.log('[getScheduledPosts] Raw data from Supabase:', data);
   return data || [];
 }
 
@@ -256,7 +264,7 @@ export async function schedulePost(post: {
       status: post.status || 'Scheduled',
       metrics: null
     })
-    .select()
+    .select(SCHEDULED_POST_SELECT)
     .single();
 
   if (error) throw error;
@@ -287,6 +295,7 @@ export async function updateScheduledPost(id: string, updates: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // Map camelCase to snake_case for database
   const updateData: any = {};
   if (updates.platform) updateData.platform = updates.platform;
   if (updates.content) updateData.content = updates.content;
@@ -299,7 +308,7 @@ export async function updateScheduledPost(id: string, updates: {
     .update(updateData)
     .eq("id", id)
     .eq("user_id", user.id)
-    .select()
+    .select(SCHEDULED_POST_SELECT)
     .single();
 
   if (error) throw error;

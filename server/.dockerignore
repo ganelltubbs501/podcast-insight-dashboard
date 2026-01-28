@@ -10,3 +10,5 @@ yarn-error.log*
 .git
 .gitignore
 .vscode
+Dockerfile
+README.md

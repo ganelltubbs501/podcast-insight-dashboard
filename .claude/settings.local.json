@@ -56,7 +56,9 @@
       "Bash(gcloud run services describe:*)",
       "Bash(gcloud run services update:*)",
       "Bash(curl:*)",
-      "Bash(cmd /c \"del /f /q \\\\?\\\\c:\\\\Users\\\\ganel\\\\OneDrive\\\\Desktop\\\\AI PROJECTS\\\\podcast-insight-dashboard\\\\nul\")"
+      "Bash(cmd /c \"del /f /q \\\\?\\\\c:\\\\Users\\\\ganel\\\\OneDrive\\\\Desktop\\\\AI PROJECTS\\\\podcast-insight-dashboard\\\\nul\")",
+      "Bash(powershell -Command:*)",
+      "Bash(firebase deploy:*)"
     ]
   }
 }

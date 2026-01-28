@@ -27,14 +27,19 @@ const ContentCalendar: React.FC = () => {
   }, []);
 
   const loadPosts = async () => {
-    const data = await getScheduledPosts();
-    setPosts(data);
+    try {
+      const data = await getScheduledPosts();
+      console.log('[ContentCalendar] Loaded posts:', data.length, 'posts', data.map(p => ({ id: p.id, scheduledDate: p.scheduledDate, status: p.status })));
+      setPosts(data);
+    } catch (err) {
+      console.error('[ContentCalendar] Failed to load posts:', err);
+    }
   };
 
-  // Filter posts
+  // Filter posts (case-insensitive status comparison)
   const filteredPosts = posts.filter(post => {
     if (filterPlatform !== 'all' && post.platform !== filterPlatform) return false;
-    if (filterStatus !== 'all' && post.status !== filterStatus) return false;
+    if (filterStatus !== 'all' && (post.status || '').toLowerCase() !== filterStatus.toLowerCase()) return false;
     return true;
   });
 
@@ -194,6 +199,8 @@ const ContentCalendar: React.FC = () => {
               <option value="email">Email</option>
               <option value="tiktok">TikTok</option>
               <option value="youtube">YouTube</option>
+              <option value="medium">Medium</option>
+              <option value="teaser">Newsletter Teaser</option>
             </select>
           </div>
           <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-300">
@@ -242,7 +249,13 @@ const ContentCalendar: React.FC = () => {
              {Array.from({ length: daysInMonth }).map((_, i) => {
                const day = i + 1;
                const dateStr = new Date(year, month, day).toDateString();
-               const dayPosts = filteredPosts.filter(p => new Date(p.scheduledDate).toDateString() === dateStr);
+               const dayPosts = filteredPosts.filter(p => {
+                 if (!p.scheduledDate) {
+                   console.warn('[ContentCalendar] Post missing scheduledDate:', p.id);
+                   return false;
+                 }
+                 return new Date(p.scheduledDate).toDateString() === dateStr;
+               });
                const isToday = new Date().toDateString() === dateStr;
 
                return (
@@ -261,12 +274,12 @@ const ContentCalendar: React.FC = () => {
                            onClick={() => setSelectedPost(post)}
                            draggable
                            onDragStart={(e) => handleDragStart(e, post)}
-                           className={`w-full text-left text-xs p-1.5 rounded border flex items-center gap-1.5 truncate transition shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing ${getPlatformColor(post.platform)} ${post.status === 'Failed' ? 'border-red-300 bg-red-50' : ''}`}
+                           className={`w-full text-left text-xs p-1.5 rounded border flex items-center gap-1.5 truncate transition shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing ${getPlatformColor(post.platform)} ${(post.status || '').toLowerCase() === 'failed' ? 'border-red-300 bg-red-50' : ''}`}
                          >
                             {getPlatformIcon(post.platform)}
                             <span className="truncate font-medium">
-                              {post.status === 'Published' && <CheckCircle className="inline h-3 w-3 mr-1 text-green-600"/>}
-                              {post.status === 'Failed' && <AlertCircle className="inline h-3 w-3 mr-1 text-red-600"/>}
+                              {(post.status || '').toLowerCase() === 'published' && <CheckCircle className="inline h-3 w-3 mr-1 text-green-600"/>}
+                              {(post.status || '').toLowerCase() === 'failed' && <AlertCircle className="inline h-3 w-3 mr-1 text-red-600"/>}
                               {post.content}
                             </span>
                          </button>
@@ -295,8 +308,8 @@ const ContentCalendar: React.FC = () => {
                {!isEditing ? (
                  <>
                    <div className="mb-6">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mb-3 ${selectedPost.status === 'Published' ? 'bg-accent-soft text-green-700' : selectedPost.status === 'Failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {selectedPost.status === 'Published' ? <CheckCircle className="h-3 w-3" /> : selectedPost.status === 'Scheduled' ? <Clock className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mb-3 ${(selectedPost.status || '').toLowerCase() === 'published' ? 'bg-accent-soft text-green-700' : (selectedPost.status || '').toLowerCase() === 'failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                        {(selectedPost.status || '').toLowerCase() === 'published' ? <CheckCircle className="h-3 w-3" /> : (selectedPost.status || '').toLowerCase() === 'scheduled' ? <Clock className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
                         {selectedPost.status}
                       </span>
                       <div className="text-sm text-textMuted mb-1">Scheduled for</div>
@@ -345,7 +358,7 @@ const ContentCalendar: React.FC = () => {
                    )}
 
                    <div className="mt-auto pt-6 border-t border-gray-300 space-y-2">
-                     {selectedPost.status === 'Failed' && (
+                     {(selectedPost.status || '').toLowerCase() === 'failed' && (
                        <button
                          onClick={() => handleRetry(selectedPost)}
                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition text-sm font-medium"

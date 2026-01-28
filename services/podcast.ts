@@ -119,6 +119,41 @@ export async function resyncPodcastRss(): Promise<ResyncRssResponse> {
 }
 
 /**
+ * Response from disconnect endpoint
+ */
+export interface DisconnectPodcastResponse {
+  success: boolean;
+  message: string;
+  podcastTitle: string;
+}
+
+/**
+ * Disconnect the podcast and remove all related data
+ */
+export async function disconnectPodcast(): Promise<DisconnectPodcastResponse> {
+  requireApi();
+  const headers = await getHeaders();
+
+  const res = await fetch(`${API_BASE}/api/podcast/disconnect`, {
+    method: "DELETE",
+    headers,
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      throw new Error("Authentication required. Please log in again.");
+    }
+    if (res.status === 404) {
+      throw new Error("No podcast connected");
+    }
+    throw new Error(data.error || `API ${res.status}: Request failed`);
+  }
+  return (await res.json()) as DisconnectPodcastResponse;
+}
+
+/**
  * Get available analytics sources for the user's podcast
  */
 export async function getAnalyticsSources(): Promise<AnalyticsSourcesResponse> {

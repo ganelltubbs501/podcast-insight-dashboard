@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Linkedin, Check, X, AlertCircle, ExternalLink, Loader2, Unplug } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Linkedin, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast } from 'lucide-react';
 import { getLinkedInStatus, connectLinkedIn, disconnectLinkedIn } from '../services/linkedin';
+import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
 
 interface LinkedInConnection {
   connected: boolean;
@@ -11,12 +12,23 @@ interface LinkedInConnection {
   expiresAt?: string;
 }
 
+interface PodcastStatus {
+  connected: boolean;
+  title?: string;
+  rssUrl?: string;
+  provider?: string;
+}
+
 const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [linkedIn, setLinkedIn] = useState<LinkedInConnection | null>(null);
+  const [podcast, setPodcast] = useState<PodcastStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [podcastLoading, setPodcastLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [disconnectingPodcast, setDisconnectingPodcast] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Handle OAuth callback parameters
@@ -46,9 +58,10 @@ const Settings: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  // Load LinkedIn status
+  // Load LinkedIn and Podcast status
   useEffect(() => {
     loadLinkedInStatus();
+    loadPodcastStatus();
   }, []);
 
   const loadLinkedInStatus = async () => {
@@ -61,6 +74,27 @@ const Settings: React.FC = () => {
       setLinkedIn({ connected: false });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPodcastStatus = async () => {
+    try {
+      setPodcastLoading(true);
+      const sources = await getAnalyticsSources();
+      if (sources.currentConnection) {
+        setPodcast({
+          connected: true,
+          rssUrl: sources.currentConnection.rssUrl,
+          provider: sources.currentConnection.provider,
+        });
+      } else {
+        setPodcast({ connected: false });
+      }
+    } catch (err: any) {
+      console.error('Failed to load podcast status:', err);
+      setPodcast({ connected: false });
+    } finally {
+      setPodcastLoading(false);
     }
   };
 
@@ -94,11 +128,31 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleDisconnectPodcast = async () => {
+    if (!confirm('Are you sure you want to disconnect your podcast? This will remove all podcast data including episodes, metrics, and projections. This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDisconnectingPodcast(true);
+      setMessage(null);
+      const result = await disconnectPodcast();
+      setPodcast({ connected: false });
+      setMessage({ type: 'success', text: `"${result.podcastTitle}" disconnected successfully` });
+      // Clear the onboarding dismissed state so it shows again
+      localStorage.removeItem('loquihq_onboarding_dismissed');
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect podcast' });
+    } finally {
+      setDisconnectingPodcast(false);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-1">Manage your account and connected services</p>
+        <h1 className="text-2xl font-bold text-textPrimary">Settings</h1>
+        <p className="text-textMuted mt-1">Manage your account and connected services</p>
       </div>
 
       {/* Status Message */}
@@ -126,25 +180,25 @@ const Settings: React.FC = () => {
       )}
 
       {/* Connected Accounts Section */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Connected Accounts</h2>
-          <p className="text-sm text-gray-600 mt-1">
+      <div className="bg-gray-100 rounded-xl border border-gray-300 shadow-sm">
+        <div className="p-6 border-b border-gray-300">
+          <h2 className="text-lg font-semibold text-textPrimary">Connected Accounts</h2>
+          <p className="text-sm text-textMuted mt-1">
             Connect your social media accounts to post content directly from LoquiHQ
           </p>
         </div>
 
         <div className="p-6">
           {/* LinkedIn Connection */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
             <div className="flex items-center gap-4">
               <div className="h-12 w-12 bg-[#0A66C2] rounded-lg flex items-center justify-center">
                 <Linkedin className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="font-medium text-gray-900">LinkedIn</h3>
+                <h3 className="font-medium text-textPrimary">LinkedIn</h3>
                 {loading ? (
-                  <p className="text-sm text-gray-500">Checking connection...</p>
+                  <p className="text-sm text-textMuted">Checking connection...</p>
                 ) : linkedIn?.connected ? (
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-green-600 font-medium">
@@ -157,14 +211,14 @@ const Settings: React.FC = () => {
                     )}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">Not connected</p>
+                  <p className="text-sm text-textMuted">Not connected</p>
                 )}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               {loading ? (
-                <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
               ) : linkedIn?.connected ? (
                 <>
                   {linkedIn.tokenExpired && (
@@ -184,7 +238,7 @@ const Settings: React.FC = () => {
                   <button
                     onClick={handleDisconnectLinkedIn}
                     disabled={disconnecting}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition disabled:opacity-50 flex items-center gap-2 border border-gray-300"
+                    className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
                   >
                     {disconnecting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -212,19 +266,94 @@ const Settings: React.FC = () => {
           </div>
 
           {/* More platforms coming soon */}
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-            <p className="text-sm text-gray-500 text-center">
+          <div className="mt-4 p-4 bg-gray-200 rounded-lg border border-dashed border-gray-400">
+            <p className="text-sm text-textMuted text-center">
               More platforms coming soon: Twitter/X, Facebook, Instagram
             </p>
           </div>
         </div>
       </div>
 
+      {/* Podcast Connection Section */}
+      <div className="mt-6 bg-gray-100 rounded-xl border border-gray-300 shadow-sm">
+        <div className="p-6 border-b border-gray-300">
+          <h2 className="text-lg font-semibold text-textPrimary">Podcast Connection</h2>
+          <p className="text-sm text-textMuted mt-1">
+            Manage your connected podcast RSS feed
+          </p>
+        </div>
+
+        <div className="p-6">
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-primary rounded-lg flex items-center justify-center">
+                <Podcast className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Podcast RSS Feed</h3>
+                {podcastLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : podcast?.connected ? (
+                  <div>
+                    <span className="text-sm text-green-600 font-medium">
+                      Connected
+                    </span>
+                    {podcast.provider && (
+                      <p className="text-xs text-textMuted mt-0.5">
+                        Provider: {podcast.provider}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-textMuted">No podcast connected</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {podcastLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : podcast?.connected ? (
+                <button
+                  onClick={handleDisconnectPodcast}
+                  disabled={disconnectingPodcast}
+                  className="px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition disabled:opacity-50 flex items-center gap-2 border border-red-300"
+                >
+                  {disconnectingPodcast ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate('/connect-podcast')}
+                  className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition flex items-center gap-2"
+                >
+                  <Rss className="h-4 w-4" />
+                  Connect Podcast
+                </button>
+              )}
+            </div>
+          </div>
+
+          {podcast?.connected && podcast.rssUrl && (
+            <div className="mt-3 p-3 bg-gray-200 rounded-lg">
+              <p className="text-xs text-textMuted">
+                <span className="font-medium">Feed URL:</span>{' '}
+                <span className="font-mono break-all">{podcast.rssUrl}</span>
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* How it works */}
       {!linkedIn?.connected && !loading && (
-        <div className="mt-6 bg-blue-50 rounded-xl p-6 border border-blue-100">
-          <h3 className="font-medium text-blue-900 mb-2">How LinkedIn Connection Works</h3>
-          <ul className="text-sm text-blue-800 space-y-1">
+        <div className="mt-6 bg-secondary/10 rounded-xl p-6 border border-secondary/20">
+          <h3 className="font-medium text-textPrimary mb-2">How LinkedIn Connection Works</h3>
+          <ul className="text-sm text-textSecondary space-y-1">
             <li>1. Click "Connect LinkedIn" to authorize LoquiHQ</li>
             <li>2. Sign in to your LinkedIn account</li>
             <li>3. Grant permission to post on your behalf</li>

@@ -15,10 +15,12 @@ import {
   updateTranscriptStatus,
   saveTranscriptResult,
   schedulePost,
+  getScheduledPosts,
 } from "../services/transcripts";
 
 
 import { getStoredUser } from '../services/auth';
+import { getLinkedInStatus, connectLinkedIn } from '../services/linkedin';
 
 import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
@@ -28,7 +30,6 @@ import {
   sendEmailExport, exportToGoogleSheets
 } from '../services/downloadService';
 import { MonetizationInputModal } from '../components/MonetizationInputModal';
-import BulkScheduleWizard from '../components/BulkScheduleWizard';
 import SeriesScheduleWizard from '../components/SeriesScheduleWizard';
 import { DataConfidenceDisplay, CompactConfidenceIndicator } from '../components/DataConfidenceDisplay';
 
@@ -59,10 +60,17 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
   const [isScheduling, setIsScheduling] = useState(false);
-  const [showBulkScheduleWizard, setShowBulkScheduleWizard] = useState(false);
+  const [scheduleNotification, setScheduleNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [showSeriesScheduleWizard, setShowSeriesScheduleWizard] = useState(false);
   const [seriesScheduleType, setSeriesScheduleType] = useState<'email' | 'social'>('email');
   const [seriesScheduleItems, setSeriesScheduleItems] = useState<any[]>([]);
+
+  // Track scheduled posts for this transcript by platform
+  const [scheduledByPlatform, setScheduledByPlatform] = useState<Record<string, { scheduledDate: string; status: string } | null>>({});
+
+  // LinkedIn connection check state
+  const [showConnectLinkedInModal, setShowConnectLinkedInModal] = useState(false);
+  const [isCheckingLinkedIn, setIsCheckingLinkedIn] = useState(false);
 
   // Email Export State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -156,6 +164,35 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
       setTranscript(null);
     }
   };
+
+  // Load scheduled posts for this transcript
+  const loadScheduledPosts = async () => {
+    try {
+      const allPosts = await getScheduledPosts();
+      // Filter posts for this transcript and map by platform
+      const postsForTranscript = allPosts.filter(p => p.transcriptId === id);
+      const byPlatform: Record<string, { scheduledDate: string; status: string } | null> = {};
+
+      for (const post of postsForTranscript) {
+        // Only show scheduled (not published or failed) posts
+        if ((post.status || '').toLowerCase() === 'scheduled') {
+          byPlatform[post.platform] = {
+            scheduledDate: post.scheduledDate,
+            status: post.status
+          };
+        }
+      }
+      setScheduledByPlatform(byPlatform);
+    } catch (e) {
+      console.error("Failed to load scheduled posts:", e);
+    }
+  };
+
+  // Load scheduled posts on mount
+  useEffect(() => {
+    loadScheduledPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const handleCopy = (text: string, sectionName: string) => {
     navigator.clipboard.writeText(text);
@@ -290,6 +327,34 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     return '';
   };
 
+  // Check LinkedIn connection before opening schedule modal
+  const handleScheduleClick = async () => {
+    // Only check for LinkedIn platform
+    if (activePlatform === 'linkedin') {
+      setIsCheckingLinkedIn(true);
+      try {
+        const status = await getLinkedInStatus();
+        if (!status.connected) {
+          setShowConnectLinkedInModal(true);
+          return;
+        }
+        if (status.tokenExpired) {
+          setShowConnectLinkedInModal(true);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to check LinkedIn status:', e);
+        // If we can't check status, show connect modal to be safe
+        setShowConnectLinkedInModal(true);
+        return;
+      } finally {
+        setIsCheckingLinkedIn(false);
+      }
+    }
+    // If connected (or not LinkedIn), open the schedule modal
+    setShowScheduleModal(true);
+  };
+
   const handleSchedulePost = async () => {
     if (!scheduleDate || !scheduleTime || !transcript || !transcript.result) return;
 
@@ -307,13 +372,37 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
         transcriptId: transcript.id
       });
 
-      setShowScheduleModal(false);
-      setScheduleDate('');
-      setScheduleTime('');
-      alert(`${activePlatform} post scheduled for ${dateTime.toLocaleString()}`);
+      // Update local state immediately to show the "Scheduled" badge
+      setScheduledByPlatform(prev => ({
+        ...prev,
+        [activePlatform]: {
+          scheduledDate: dateTime.toISOString(),
+          status: 'Scheduled'
+        }
+      }));
+
+      // Also refresh from DB for consistency
+      loadScheduledPosts();
+
+      // Show success notification
+      const platformName = activePlatform === 'teaser' ? 'Newsletter Teaser' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1);
+      const successMessage = `✓ ${platformName} post scheduled for ${dateTime.toLocaleDateString()} at ${dateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      setScheduleNotification({ message: successMessage, type: 'success' });
+
+      // Auto-dismiss notification after 5 seconds
+      setTimeout(() => setScheduleNotification(null), 5000);
+
+      // Close modal and reset form
+      setTimeout(() => {
+        setShowScheduleModal(false);
+        setScheduleDate('');
+        setScheduleTime('');
+      }, 500);
     } catch (e) {
       console.error(e);
-      alert("Failed to schedule post. The backend may not be running.");
+      const errorMessage = "Failed to schedule post. The backend may not be running.";
+      setScheduleNotification({ message: errorMessage, type: 'error' });
+      setTimeout(() => setScheduleNotification(null), 5000);
     } finally {
       setIsScheduling(false);
     }
@@ -1262,18 +1351,6 @@ ${(transcript.content || '').substring(0, 1000)}
                 <h4 className="font-semibold text-textPrimary">Email Series</h4>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
-                  {repurposed.emailSeries && (
-                    <button
-                      onClick={() => {
-                        setSeriesScheduleType('email');
-                        setSeriesScheduleItems(repurposed.emailSeries);
-                        setShowSeriesScheduleWizard(true);
-                      }}
-                      className="px-4 py-1 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
-                    >
-                      <Sparkles className="h-4 w-4" /> Schedule All
-                    </button>
-                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1315,18 +1392,6 @@ ${(transcript.content || '').substring(0, 1000)}
                 <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
                 <div className="flex gap-2">
                   <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
-                  {repurposed.socialCalendar && (
-                    <button
-                      onClick={() => {
-                        setSeriesScheduleType('social');
-                        setSeriesScheduleItems(repurposed.socialCalendar);
-                        setShowSeriesScheduleWizard(true);
-                      }}
-                      className="px-4 py-1 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
-                    >
-                      <Sparkles className="h-4 w-4" /> Schedule All
-                    </button>
-                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1544,17 +1609,6 @@ ${(transcript.content || '').substring(0, 1000)}
 
   const renderPlatformTab = () => (
     <div className="space-y-4">
-      {/* Bulk Schedule Button */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setShowBulkScheduleWizard(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium shadow-md"
-        >
-          <Sparkles className="h-4 w-4" />
-          Bulk Schedule All Platforms
-        </button>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="col-span-1 space-y-2">
           {[
@@ -1569,13 +1623,18 @@ ${(transcript.content || '').substring(0, 1000)}
           <button
             key={platform.id}
             onClick={() => setActivePlatform(platform.id as PlatformType)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition ${
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition ${
               activePlatform === platform.id
                 ? 'bg-primary text-white shadow-md'
                 : 'bg-gray-100 text-textSecondary hover:bg-gray-100 border border-gray-300'
             }`}
           >
-            <platform.icon className="h-4 w-4" /> {platform.label}
+            <span className="flex items-center gap-3">
+              <platform.icon className="h-4 w-4" /> {platform.label}
+            </span>
+            {scheduledByPlatform[platform.id] && (
+              <span className={`w-2 h-2 rounded-full ${activePlatform === platform.id ? 'bg-white' : 'bg-green-500'}`} title="Scheduled" />
+            )}
           </button>
         ))}
       </div>
@@ -1584,19 +1643,30 @@ ${(transcript.content || '').substring(0, 1000)}
         <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 overflow-hidden h-full">
           <div className="p-6 border-b border-gray-300 flex justify-between items-center bg-gray-50">
             <div>
-              <h3 className="font-bold text-textPrimary capitalize">{activePlatform.replace('teaser', 'Newsletter Teaser')}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-textPrimary capitalize">{activePlatform.replace('teaser', 'Newsletter Teaser')}</h3>
+                {scheduledByPlatform[activePlatform] && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full border border-green-200">
+                    <CalendarIcon className="h-3 w-3" />
+                    Scheduled • {new Date(scheduledByPlatform[activePlatform]!.scheduledDate).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-textMuted mt-1">Optimized content ready to post</p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowScheduleModal(true);
-                }}
-                className="text-textSecondary hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 transition"
-              >
-                <CalendarIcon className="h-4 w-4" /> Schedule
-              </button>
+              {activePlatform !== 'tiktok' && activePlatform !== 'youtube' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScheduleClick();
+                  }}
+                  disabled={isCheckingLinkedIn}
+                  className="text-textSecondary hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 transition disabled:opacity-50"
+                >
+                  {isCheckingLinkedIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
+                </button>
+              )}
               <button
                 onClick={() => {
                   const content = getContentForPlatform(activePlatform, socialContent);
@@ -1609,7 +1679,15 @@ ${(transcript.content || '').substring(0, 1000)}
             </div>
           </div>
           <div className="p-6 max-h-[600px] overflow-y-auto">
-            {activePlatform === 'twitter' ? (
+            {(activePlatform === 'tiktok' || activePlatform === 'youtube') ? (
+              <div className="flex items-center justify-center h-[300px]">
+                <div className="text-center">
+                  <Video className="h-12 w-12 text-textMuted mx-auto mb-3 opacity-50" />
+                  <p className="text-textMuted font-medium mb-2">Video publishing not supported yet</p>
+                  <p className="text-sm text-textMuted max-w-sm">Export the script and shot list to manually create and publish video content.</p>
+                </div>
+              </div>
+            ) : activePlatform === 'twitter' ? (
               <div className="space-y-4">
                 {socialContent.twitterThread?.map((tweet: string, idx: number) => (
                   <div key={idx} className="bg-gray-100 p-4 rounded-lg text-sm text-textBody border border-gray-300 relative">
@@ -1624,8 +1702,6 @@ ${(transcript.content || '').substring(0, 1000)}
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
                 {activePlatform === 'linkedin' && socialContent.linkedinPost}
-                {activePlatform === 'tiktok' && socialContent.tiktokScript}
-                {activePlatform === 'youtube' && socialContent.youtubeDescription}
                 {activePlatform === 'email' && `Subject: ${socialContent.emailNewsletter?.subject}\n\n${socialContent.emailNewsletter?.body}`}
                 {activePlatform === 'medium' && socialContent.mediumArticle}
                 {activePlatform === 'teaser' && `Subject: ${socialContent.newsletterTeaser?.subject}\n\n${socialContent.newsletterTeaser?.body}`}
@@ -1929,6 +2005,20 @@ ${(transcript.content || '').substring(0, 1000)}
       className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
       onClick={() => { setShowDownloadMenu(false); setShowStatusMenu(false); setShowScheduleModal(false); }}
     >
+      {/* Schedule Notification Toast */}
+      {scheduleNotification && (
+        <div className={`fixed top-4 right-4 z-60 p-4 rounded-lg shadow-lg border animate-in fade-in slide-in-from-top-4 ${
+          scheduleNotification.type === 'success' 
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <p className="text-sm font-medium">{scheduleNotification.message}</p>
+          {scheduleNotification.type === 'success' && (
+            <p className="text-xs text-emerald-600 mt-1">You can view it in the Content Calendar</p>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
@@ -2091,8 +2181,11 @@ ${(transcript.content || '').substring(0, 1000)}
 
       {/* Schedule Modal */}
       {showScheduleModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6">
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
               <CalendarIcon className="h-5 w-5 text-primary" />
               Schedule Post
@@ -2142,25 +2235,44 @@ ${(transcript.content || '').substring(0, 1000)}
         </div>
       )}
 
-      {/* Bulk Schedule Wizard */}
-      {showBulkScheduleWizard && transcript?.result?.socialContent && (
-        <BulkScheduleWizard
-          content={[
-            { platform: 'linkedin', text: transcript.result.socialContent.linkedinPost },
-            { platform: 'twitter', text: transcript.result.socialContent.twitterThread?.join('\n\n') || '' },
-            { platform: 'tiktok', text: transcript.result.socialContent.tiktokScript },
-            { platform: 'youtube', text: transcript.result.socialContent.youtubeDescription },
-            { platform: 'email', text: `Subject: ${transcript.result.socialContent.emailNewsletter?.subject}\n\n${transcript.result.socialContent.emailNewsletter?.body}` },
-            { platform: 'medium', text: transcript.result.socialContent.mediumArticle },
-            { platform: 'teaser', text: `Subject: ${transcript.result.socialContent.newsletterTeaser?.subject}\n\n${transcript.result.socialContent.newsletterTeaser?.body}` },
-          ]}
-          transcriptId={transcript.id}
-          onClose={() => setShowBulkScheduleWizard(false)}
-          onComplete={() => {
-            alert('Posts scheduled successfully! View them in the Content Calendar.');
-          }}
-        />
+      {/* Connect LinkedIn Modal */}
+      {showConnectLinkedInModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
+              <Linkedin className="h-5 w-5 text-[#0077B5]" />
+              Connect LinkedIn
+            </h3>
+            <p className="text-sm text-textMuted mb-6">
+              Connect your LinkedIn account to schedule and publish posts directly from this dashboard.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowConnectLinkedInModal(false)}
+                className="px-4 py-2 text-textSecondary font-medium hover:bg-gray-200 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowConnectLinkedInModal(false);
+                  connectLinkedIn();
+                }}
+                className="px-4 py-2 bg-[#0077B5] text-white font-medium rounded-lg hover:bg-[#006097] text-sm flex items-center gap-2"
+              >
+                <Linkedin className="h-4 w-4" />
+                Connect LinkedIn
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
+
 
       {/* Series Schedule Wizard */}
       {showSeriesScheduleWizard && seriesScheduleItems.length > 0 && (

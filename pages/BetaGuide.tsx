@@ -186,7 +186,7 @@ const BetaGuide: React.FC = () => {
                 </div>
                 <div className="bg-green-50 p-4 rounded-lg">
                   <p className="text-sm text-green-800">
-                    <strong>Pro tip:</strong> Use the "Schedule All" feature to automatically create and schedule a week's worth of content across all platforms.
+                    <strong>Pro tip:</strong> Schedule individual social posts using the Platform Content scheduler for LinkedIn, Twitter, Medium, and newsletters.
                   </p>
                 </div>
               </div>

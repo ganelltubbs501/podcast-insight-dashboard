@@ -28,6 +28,7 @@ import {
 } from "./validation/schemas.js";
 
 import Parser from "rss-parser";
+import { getSpotifyAuthUrl, removeSpotifyConnection } from "./spotify-oauth.js";
 
 // near top-level
 const rssParser = new Parser({
@@ -409,7 +410,6 @@ app.post("/api/sponsorship", requireAuth, async (req: AuthRequest, res) => {
 app.get("/api/spotify/auth", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-    const { getSpotifyAuthUrl } = require('./spotify-oauth.js');
 
     const clientId = process.env.SPOTIFY_CLIENT_ID || '';
     const clientSecret = process.env.SPOTIFY_CLIENT_SECRET || '';
@@ -534,8 +534,6 @@ app.delete("/api/spotify/disconnect/:userId", requireAuth, async (req: AuthReque
       return res.status(403).json({ error: 'Forbidden: Cannot modify other users data' });
     }
 
-    const { removeSpotifyConnection } = require('./spotify-oauth.js');
-
     removeSpotifyConnection(userId);
 
     return res.json({ success: true, message: 'Spotify disconnected' });
@@ -656,12 +654,22 @@ app.get("/api/integrations/linkedin/status", requireAuth, async (req: AuthReques
       return res.json({ connected: false });
     }
 
+    // Safely format expiresAt - handle invalid dates
+    let expiresAtStr: string | null = null;
+    try {
+      if (connection.tokenExpiresAt && !isNaN(connection.tokenExpiresAt.getTime())) {
+        expiresAtStr = connection.tokenExpiresAt.toISOString();
+      }
+    } catch {
+      // Invalid date - leave as null
+    }
+
     return res.json({
       connected: true,
       accountName: connection.accountName,
       accountId: connection.accountId,
       tokenExpired: isTokenExpired(connection.tokenExpiresAt),
-      expiresAt: connection.tokenExpiresAt.toISOString(),
+      expiresAt: expiresAtStr,
     });
   } catch (err: any) {
     console.error('LinkedIn status check failed:', err);
@@ -807,7 +815,7 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
         // Get LinkedIn connection for this user
         const { data: connection, error: connError } = await supabaseAdmin
           .from("connected_accounts")
-          .select("access_token, token_expires_at, account_id")
+          .select("access_token, expires_at, provider_user_id")
           .eq("user_id", post.user_id)
           .eq("provider", "linkedin")
           .maybeSingle();
@@ -817,12 +825,12 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
         }
 
         // Check token expiry
-        if (connection.token_expires_at && new Date(connection.token_expires_at).getTime() < Date.now()) {
+        if (connection.expires_at && new Date(connection.expires_at).getTime() < Date.now()) {
           throw new Error("LinkedIn token expired - user must reconnect");
         }
 
         // Build LinkedIn post body
-        const personUrn = `urn:li:person:${connection.account_id}`;
+        const personUrn = `urn:li:person:${connection.provider_user_id}`;
         const postBody = {
           author: personUrn,
           lifecycleState: "PUBLISHED",
@@ -1364,6 +1372,69 @@ function mapToProviderEnum(detected: string): string {
   };
   return mapping[detected] || "rss_only";
 }
+
+// DELETE /api/podcast/disconnect - Disconnect podcast and remove all related data
+app.delete("/api/podcast/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    // Get the podcast first to confirm it exists
+    const { data: podcast, error: findError } = await supabaseAdmin
+      .from("podcasts")
+      .select("id, title")
+      .eq("user_id", userId)
+      .single();
+
+    if (findError || !podcast) {
+      return res.status(404).json({ error: "No podcast connected" });
+    }
+
+    // Delete podcast episodes first (foreign key constraint)
+    await supabaseAdmin
+      .from("podcast_episodes")
+      .delete()
+      .eq("podcast_id", podcast.id);
+
+    // Delete podcast metrics
+    await supabaseAdmin
+      .from("podcast_metrics")
+      .delete()
+      .eq("podcast_id", podcast.id);
+
+    // Delete podcast projections
+    await supabaseAdmin
+      .from("podcast_projections")
+      .delete()
+      .eq("podcast_id", podcast.id);
+
+    // Delete the podcast itself
+    const { error: deleteError } = await supabaseAdmin
+      .from("podcasts")
+      .delete()
+      .eq("id", podcast.id)
+      .eq("user_id", userId);
+
+    if (deleteError) {
+      console.error("Failed to delete podcast:", deleteError);
+      return res.status(500).json({ error: "Failed to disconnect podcast" });
+    }
+
+    console.log(`Podcast disconnected: ${podcast.title} (user: ${userId})`);
+
+    res.json({
+      success: true,
+      message: "Podcast disconnected successfully",
+      podcastTitle: podcast.title,
+    });
+  } catch (err) {
+    console.error("Podcast disconnect error:", err);
+    res.status(500).json({ error: "Failed to disconnect podcast" });
+  }
+});
 
 // GET /api/podcast/analytics/sources - Get supported analytics sources
 app.get("/api/podcast/analytics/sources", requireAuth, async (req: AuthRequest, res) => {
@@ -2213,10 +2284,156 @@ function parseDurationToSeconds(value: any): number | null {
   return null;
 }
 
+// ============================================================================
+// AUTO-PUBLISH SCHEDULED POSTS (runs periodically in background)
+// ============================================================================
+let isPublishingInProgress = false;
+
+async function publishScheduledPosts() {
+  // Prevent concurrent publishing attempts
+  if (isPublishingInProgress) return;
+  
+  if (!supabaseAdmin) {
+    console.log("⏭️  Skipping auto-publish: Supabase not configured");
+    return;
+  }
+
+  isPublishingInProgress = true;
+  try {
+    const now = new Date().toISOString();
+    const { data: duePosts, error: fetchError } = await supabaseAdmin
+      .from("scheduled_posts")
+      .select("*")
+      .eq("platform", "linkedin")
+      .eq("status", "Scheduled")
+      .lte("scheduled_date", now)
+      .limit(25);
+
+    if (fetchError) {
+      console.error("❌ Failed to fetch due posts:", fetchError);
+      return;
+    }
+
+    if (!duePosts?.length) {
+      return; // Silent return if no posts
+    }
+
+    console.log(`📤 Auto-publishing ${duePosts.length} scheduled LinkedIn posts...`);
+    let processed = 0;
+    let failed = 0;
+
+    for (const post of duePosts) {
+      try {
+        // Get LinkedIn connection for this user
+        const { data: connection, error: connError } = await supabaseAdmin
+          .from("connected_accounts")
+          .select("access_token, expires_at, provider_user_id")
+          .eq("user_id", post.user_id)
+          .eq("provider", "linkedin")
+          .maybeSingle();
+
+        if (connError || !connection) {
+          throw new Error("LinkedIn not connected for this user");
+        }
+
+        // Check token expiry
+        if (connection.expires_at && new Date(connection.expires_at).getTime() < Date.now()) {
+          throw new Error("LinkedIn token expired - user must reconnect");
+        }
+
+        // Build LinkedIn post body
+        const personUrn = `urn:li:person:${connection.provider_user_id}`;
+        const postBody = {
+          author: personUrn,
+          lifecycleState: "PUBLISHED",
+          specificContent: {
+            "com.linkedin.ugc.ShareContent": {
+              shareCommentary: { text: post.content },
+              shareMediaCategory: "NONE",
+            },
+          },
+          visibility: {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+          },
+        };
+
+        // Post to LinkedIn
+        const linkedInResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${connection.access_token}`,
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+          body: JSON.stringify(postBody),
+        });
+
+        if (!linkedInResponse.ok) {
+          const errorText = await linkedInResponse.text();
+          throw new Error(`LinkedIn API error: ${linkedInResponse.status} - ${errorText}`);
+        }
+
+        // Get post ID from response header
+        const postId = linkedInResponse.headers.get("x-restli-id") || "";
+
+        // Update post status to Published
+        await supabaseAdmin
+          .from("scheduled_posts")
+          .update({
+            status: "Published",
+            metrics: { linkedin_post_id: postId, posted_at: new Date().toISOString() },
+          })
+          .eq("id", post.id);
+
+        console.log(`✅ Auto-published post ${post.id} to LinkedIn`);
+        processed++;
+      } catch (postError: any) {
+        console.error(`❌ Failed to auto-publish post ${post.id}:`, postError.message);
+
+        // Update post status to Failed
+        await supabaseAdmin
+          .from("scheduled_posts")
+          .update({
+            status: "Failed",
+            metrics: { error: postError.message, failed_at: new Date().toISOString() },
+          })
+          .eq("id", post.id);
+
+        failed++;
+      }
+    }
+
+    console.log(`✅ Auto-publishing completed: ${processed} published, ${failed} failed`);
+  } catch (err: any) {
+    console.error("❌ Auto-publisher error:", err.message);
+  } finally {
+    isPublishingInProgress = false;
+  }
+}
+
+// Start periodic auto-publishing (check every 5 minutes for due posts)
+let publishInterval: NodeJS.Timeout;
+
+function startAutoPublisher() {
+  // Run immediately on startup
+  console.log("🚀 Starting auto-publisher for scheduled posts...");
+  publishScheduledPosts().catch(err => console.error("Initial auto-publish failed:", err));
+  
+  // Then run every 5 minutes (300000 ms)
+  publishInterval = setInterval(() => {
+    publishScheduledPosts().catch(err => console.error("Periodic auto-publish failed:", err));
+  }, 5 * 60 * 1000);
+
+  console.log("📅 Auto-publisher will check for due posts every 5 minutes");
+}
+
 const server = app.listen(backendEnv.port, '0.0.0.0', () => {
   console.log(`✅ Server running on port ${backendEnv.port}`);
   console.log(`   Environment: ${backendEnv.nodeEnv}`);
   console.log(`   CORS Origins: ${backendEnv.cors.allowedOrigins.join(', ')}`);
+  
+  // Start auto-publisher for scheduled posts
+  startAutoPublisher();
 });
 
 server.on('error', (err: any) => {
@@ -2226,4 +2443,14 @@ server.on('error', (err: any) => {
   } else {
     console.error('Server error:', err);
   }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  if (publishInterval) clearInterval(publishInterval);
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
