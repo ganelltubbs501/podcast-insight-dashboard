@@ -44,7 +44,7 @@ async function getAuthToken(): Promise<string> {
 export async function getTwitterAuthUrl(): Promise<string> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_BASE}/api/integrations/twitter/auth-url`, {
+  const response = await fetch(`${API_BASE}/api/integrations/x/auth-url`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
@@ -65,7 +65,7 @@ export async function getTwitterAuthUrl(): Promise<string> {
 export async function getTwitterStatus(): Promise<TwitterStatus> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_BASE}/api/integrations/twitter/status`, {
+  const response = await fetch(`${API_BASE}/api/integrations/x/status`, {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
@@ -85,7 +85,7 @@ export async function getTwitterStatus(): Promise<TwitterStatus> {
 export async function disconnectTwitter(): Promise<void> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_BASE}/api/integrations/twitter/disconnect`, {
+  const response = await fetch(`${API_BASE}/api/integrations/x/disconnect`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -110,7 +110,7 @@ export async function postToTwitter(
 ): Promise<TwitterPostResult> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_BASE}/api/integrations/twitter/post`, {
+  const response = await fetch(`${API_BASE}/api/integrations/x/post`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,

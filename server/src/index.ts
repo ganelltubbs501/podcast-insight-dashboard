@@ -1044,7 +1044,7 @@ app.post("/api/integrations/facebook/post", requireAuth, async (req: AuthRequest
 // Uses OAuth 2.0 with PKCE (Proof Key for Code Exchange)
 // ============================================================================
 
-app.get("/api/integrations/twitter/auth-url", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/integrations/x/auth-url", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
     const {
@@ -1054,12 +1054,12 @@ app.get("/api/integrations/twitter/auth-url", requireAuth, async (req: AuthReque
       storeOAuthState
     } = await import('./oauth/twitter.js');
 
-    const clientId = process.env.TWITTER_CLIENT_ID || '';
-    const clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
+    const clientId = process.env.X_CLIENT_ID || '';
+    const clientSecret = process.env.X_CLIENT_SECRET || '';
     const apiPublicUrl = process.env.API_PUBLIC_URL || '';
 
     if (!clientId || !clientSecret) {
-      return res.status(500).json({ error: 'Twitter OAuth not configured' });
+      return res.status(500).json({ error: 'X OAuth not configured' });
     }
 
     if (!apiPublicUrl) {
@@ -1092,7 +1092,7 @@ app.get("/api/integrations/twitter/auth-url", requireAuth, async (req: AuthReque
 });
 
 // Twitter OAuth callback - handles redirect from Twitter
-app.get("/api/integrations/twitter/callback", async (req, res) => {
+app.get("/api/integrations/x/callback", async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
 
@@ -1123,10 +1123,10 @@ app.get("/api/integrations/twitter/callback", async (req, res) => {
 
     const { userId, codeVerifier } = storedState;
 
-    const clientId = process.env.TWITTER_CLIENT_ID || '';
-    const clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
+    const clientId = process.env.X_CLIENT_ID || '';
+    const clientSecret = process.env.X_CLIENT_SECRET || '';
     const apiPublicUrl = process.env.API_PUBLIC_URL || '';
-    const redirectUri = `${apiPublicUrl}/api/integrations/twitter/callback`;
+    const redirectUri = `${apiPublicUrl}/api/integrations/x/callback`;
 
     const config = { clientId, clientSecret, redirectUri };
 
@@ -1151,7 +1151,7 @@ app.get("/api/integrations/twitter/callback", async (req, res) => {
 });
 
 // Get Twitter connection status
-app.get("/api/integrations/twitter/status", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/integrations/x/status", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
     const { getTwitterConnection, isTokenExpired } = await import('./oauth/twitter.js');
@@ -1187,7 +1187,7 @@ app.get("/api/integrations/twitter/status", requireAuth, async (req: AuthRequest
 });
 
 // Disconnect Twitter
-app.delete("/api/integrations/twitter/disconnect", requireAuth, async (req: AuthRequest, res) => {
+app.delete("/api/integrations/x/disconnect", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
     const { removeTwitterConnection } = await import('./oauth/twitter.js');
@@ -1204,7 +1204,7 @@ app.delete("/api/integrations/twitter/disconnect", requireAuth, async (req: Auth
 });
 
 // Post to Twitter
-app.post("/api/integrations/twitter/post", requireAuth, async (req: AuthRequest, res) => {
+app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
     const { content, replyToTweetId, quoteTweetId } = req.body;
@@ -1226,10 +1226,10 @@ app.post("/api/integrations/twitter/post", requireAuth, async (req: AuthRequest,
       return res.status(400).json({ error: 'Twitter not connected. Please connect your account first.' });
     }
 
-    const clientId = process.env.TWITTER_CLIENT_ID || '';
-    const clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
+    const clientId = process.env.X_CLIENT_ID || '';
+    const clientSecret = process.env.X_CLIENT_SECRET || '';
     const apiPublicUrl = process.env.API_PUBLIC_URL || '';
-    const redirectUri = `${apiPublicUrl}/api/integrations/twitter/callback`;
+    const redirectUri = `${apiPublicUrl}/api/integrations/x/callback`;
     const config = { clientId, clientSecret, redirectUri };
 
     // Get valid token (refresh if needed)
