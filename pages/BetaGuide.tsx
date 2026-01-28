@@ -13,7 +13,7 @@ const BetaGuide: React.FC = () => {
       </div>
 
       {/* Quick Start Steps */}
-      <div className="bg-gradient-to-r from-primary/10 to-blue-50 rounded-lg p-8 mb-12">
+      <div className="bg-linear-to-r from-primary/10 to-blue-50 rounded-lg p-8 mb-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">🚀 Quick Start (3 Steps)</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="text-center">
@@ -169,7 +169,7 @@ const BetaGuide: React.FC = () => {
                     </div>
                     <div className="text-center p-4 border border-gray-200 rounded-lg">
                       <Twitter className="h-8 w-8 text-sky-600 mx-auto mb-2" />
-                      <h5 className="font-medium text-gray-900">Twitter/X</h5>
+                      <h5 className="font-medium text-gray-900">X</h5>
                       <p className="text-xs text-gray-600">Thread posts</p>
                     </div>
                     <div className="text-center p-4 border border-gray-200 rounded-lg">
@@ -196,26 +196,26 @@ const BetaGuide: React.FC = () => {
       </div>
 
       {/* What Success Looks Like */}
-      <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-8 mt-12">
+      <div className="bg-linear-to-r from-green-50 to-emerald-50 rounded-lg p-8 mt-12">
         <h2 className="text-2xl font-bold text-gray-900 mb-6">🎯 What Success Looks Like</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
             <h3 className="font-semibold text-gray-900 mb-3">Your Dashboard Will Show:</h3>
             <ul className="space-y-2">
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Content performance metrics</span>
               </li>
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Audience engagement insights</span>
               </li>
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Monetization recommendations</span>
               </li>
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Ready-to-publish content</span>
               </li>
             </ul>
@@ -224,19 +224,19 @@ const BetaGuide: React.FC = () => {
             <h3 className="font-semibold text-gray-900 mb-3">You'll Be Able To:</h3>
             <ul className="space-y-2">
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Understand what content works</span>
               </li>
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Plan better episodes</span>
               </li>
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Maximize sponsorship revenue</span>
               </li>
               <li className="flex items-start">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="h-5 w-5 text-green-600 mr-2 mt-0.5 shrink-0" />
                 <span className="text-gray-700">Save hours on content creation</span>
               </li>
             </ul>

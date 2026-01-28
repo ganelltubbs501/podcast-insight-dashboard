@@ -66,7 +66,7 @@ LoquiHQ analyzes podcast transcripts using Gemini AI, extracts structured insigh
 - Automatic retry logic with exponential backoff for API resilience
 
 ✅ **Platform Content Generation**
-- LinkedIn, Twitter/X, TikTok, YouTube optimized content
+- LinkedIn, X, TikTok, YouTube optimized content
 - Email newsletters with subject lines
 - Medium articles in Markdown
 - Newsletter teasers for Substack/Beehiiv
@@ -137,7 +137,7 @@ LoquiHQ analyzes podcast transcripts using Gemini AI, extracts structured insigh
 
 ### Platform-Ready Content (100% Coverage)
 - **LinkedIn Post**: 150-300 words with hashtags and engagement questions
-- **Twitter/X Thread**: 5-10 numbered tweets optimized for engagement
+- **X Thread**: 5-10 numbered posts optimized for engagement
 - **TikTok/Reels Script**: 30-second script with visual cues and hooks
 - **YouTube Description**: SEO-optimized description (100-150 chars)
 - **Email Newsletter**: Full draft (500-800 words) with subject line

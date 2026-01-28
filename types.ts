@@ -55,7 +55,7 @@ export interface Comment {
 export type WorkflowStatus = 'Draft' | 'In Review' | 'Approved' | 'Published';
 
 // Content Calendar Types
-export type Platform = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium';
+export type Platform = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium' | 'facebook';
 
 export interface PostMetrics {
   likes: number;
@@ -168,6 +168,7 @@ export interface SocialPlatformContent {
     subject: string;
     body: string;
   };
+  facebookPost: string;
 }
 
 export interface FAQItem {

@@ -4,7 +4,7 @@ import {
   Linkedin, Twitter, Video, Mail, Youtube, FileType, Send, File, Link2, Loader2,
   Sparkles, Activity, MessageSquare, ChevronDown, Calendar as CalendarIcon,
   DollarSign, Target, Briefcase, Calculator, ExternalLink, Settings, FileJson,
-  Table
+  Table, Facebook
 } from 'lucide-react';
 
 import { useNavigate } from 'react-router-dom';
@@ -39,7 +39,7 @@ interface ResultsPageProps {
 }
 
 type TabType = 'overview' | 'platform' | 'blog' | 'speakers' | 'collaboration' | 'monetization' | 'repurpose';
-type PlatformType = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium' | 'teaser';
+type PlatformType = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium' | 'teaser' | 'facebook';
 type BlogSubTab = 'article' | 'shownotes' | 'seo' | 'faq';
 
 const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
@@ -319,6 +319,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const getContentForPlatform = (platform: PlatformType, socialContent: any) => {
     if (platform === 'linkedin') return socialContent.linkedinPost;
     if (platform === 'twitter') return socialContent.twitterThread?.join('\n\n') || '';
+    if (platform === 'facebook') return socialContent.facebookPost;
     if (platform === 'tiktok') return socialContent.tiktokScript;
     if (platform === 'youtube') return socialContent.youtubeDescription;
     if (platform === 'email') return `Subject: ${socialContent.emailNewsletter?.subject}\n\n${socialContent.emailNewsletter?.body}`;
@@ -677,9 +678,9 @@ ${(transcript.content || '').substring(0, 1000)}
 
           {/* Truth Statement & Data Confidence */}
           {sponsorship.truthStatement && (
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
+            <div className="bg-linear-to-r from-blue-600 to-purple-600 rounded-xl p-6 text-white">
               <div className="flex items-start gap-3 mb-4">
-                <Target className="h-6 w-6 flex-shrink-0 mt-1" />
+                <Target className="h-6 w-6 shrink-0 mt-1" />
                 <div>
                   <h3 className="text-lg font-bold mb-2">The Truth About Your Monetization</h3>
                   <p className="text-xl font-semibold leading-relaxed">{sponsorship.truthStatement}</p>
@@ -697,7 +698,7 @@ ${(transcript.content || '').substring(0, 1000)}
                   <ul className="space-y-1.5">
                     {sponsorship.whyThisWorksNow.map((reason: string, i: number) => (
                       <li key={i} className="flex items-start gap-2">
-                        <Check className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <Check className="h-4 w-4 shrink-0 mt-0.5" />
                         <span className="text-sm">{reason}</span>
                       </li>
                     ))}
@@ -836,7 +837,7 @@ ${(transcript.content || '').substring(0, 1000)}
           )}
 
           <div className="bg-gray-100 rounded-xl border border-gray-300 p-6 flex flex-col md:flex-row gap-6 items-center">
-            <div className="relative w-32 h-32 flex-shrink-0">
+            <div className="relative w-32 h-32 shrink-0">
               <svg className="w-full h-full transform -rotate-90">
                 <circle cx="64" cy="64" r="56" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
                 <circle
@@ -944,7 +945,7 @@ ${(transcript.content || '').substring(0, 1000)}
                         e.stopPropagation();
                         handleCopyJSON(rec, `copy-sponsor-${i}`);
                       }}
-                      className="px-2 py-1 bg-gray-100 border rounded-md text-xs flex-shrink-0 ml-3"
+                      className="px-2 py-1 bg-gray-100 border rounded-md text-xs shrink-0 ml-3"
                     >
                       {copiedSection === `copy-sponsor-${i}` ? 'Copied' : 'Copy'}
                     </button>
@@ -981,7 +982,7 @@ ${(transcript.content || '').substring(0, 1000)}
               <ol className="space-y-3">
                 {sponsorship.actionableNextSteps.map((step: string, i: number) => (
                   <li key={i} className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
+                    <span className="shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
                     <span className="text-sm text-textSecondary pt-0.5">{step}</span>
                   </li>
                 ))}
@@ -1534,7 +1535,7 @@ ${(transcript.content || '').substring(0, 1000)}
           </div>
 
           <div className="flex flex-col md:flex-row items-center gap-8 mb-8 border-b border-gray-300 pb-8">
-            <div className="relative w-40 h-40 flex items-center justify-center flex-shrink-0">
+            <div className="relative w-40 h-40 flex items-center justify-center shrink-0">
               <svg className="w-full h-full transform -rotate-90">
                 <circle cx="80" cy="80" r="70" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
                 <circle
@@ -1614,6 +1615,7 @@ ${(transcript.content || '').substring(0, 1000)}
           {[
             { id: 'linkedin', icon: Linkedin, label: 'LinkedIn' },
             { id: 'twitter', icon: Twitter, label: 'Twitter / X' },
+            { id: 'facebook', icon: Facebook, label: 'Facebook' },
             { id: 'tiktok', icon: Video, label: 'TikTok / Reels' },
             { id: 'youtube', icon: Youtube, label: 'YouTube Shorts' },
             { id: 'email', icon: Mail, label: 'Newsletter' },
@@ -1678,9 +1680,9 @@ ${(transcript.content || '').substring(0, 1000)}
               </button>
             </div>
           </div>
-          <div className="p-6 max-h-[600px] overflow-y-auto">
+          <div className="p-6 max-h-150 overflow-y-auto">
             {(activePlatform === 'tiktok' || activePlatform === 'youtube') ? (
-              <div className="flex items-center justify-center h-[300px]">
+              <div className="flex items-center justify-center h-75">
                 <div className="text-center">
                   <Video className="h-12 w-12 text-textMuted mx-auto mb-3 opacity-50" />
                   <p className="text-textMuted font-medium mb-2">Video publishing not supported yet</p>
@@ -1732,7 +1734,7 @@ ${(transcript.content || '').substring(0, 1000)}
 
             {comments.map((comment: any) => (
               <div key={comment.id} className="flex gap-4">
-                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary font-bold text-xs flex-shrink-0">
+                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary font-bold text-xs shrink-0">
                   {(comment.userName || "U").charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
@@ -1749,7 +1751,7 @@ ${(transcript.content || '').substring(0, 1000)}
           </div>
 
           <div className="flex gap-3 items-start">
-            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-textMuted font-bold text-xs flex-shrink-0">
+            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-textMuted font-bold text-xs shrink-0">
               Y
             </div>
             <div className="flex-1">
@@ -2169,7 +2171,7 @@ ${(transcript.content || '').substring(0, 1000)}
       </div>
 
       {/* Tab Content */}
-      <div className="min-h-[500px]">
+      <div className="min-h-125">
         {activeTab === 'overview' && renderOverviewTab()}
         {activeTab === 'platform' && renderPlatformTab()}
         {activeTab === 'blog' && renderBlogTab()}

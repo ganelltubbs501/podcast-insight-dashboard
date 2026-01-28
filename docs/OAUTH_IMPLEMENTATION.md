@@ -9,7 +9,7 @@ Currently, the application supports **scheduling** posts to various platforms. T
 ## Supported Platforms
 
 1. **LinkedIn** - LinkedIn API v2
-2. **Twitter/X** - Twitter API v2
+2. **X** - X API v2
 3. **YouTube** - YouTube Data API v3
 4. **Medium** - Medium API
 5. **Email** - SMTP or email service APIs (SendGrid, Mailchimp, etc.)
@@ -145,7 +145,7 @@ async function publishToLinkedIn(content: string, accessToken: string) {
 
 ---
 
-## Twitter/X
+## X
 
 **OAuth Flow:**
 - OAuth 2.0 with PKCE

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Linkedin, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast } from 'lucide-react';
+import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter } from 'lucide-react';
 import { getLinkedInStatus, connectLinkedIn, disconnectLinkedIn } from '../services/linkedin';
+import { getTwitterStatus, connectTwitter, disconnectTwitter, TwitterStatus } from '../services/twitter';
 import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
 
 interface LinkedInConnection {
@@ -22,17 +23,30 @@ interface PodcastStatus {
 const Settings: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // LinkedIn state
   const [linkedIn, setLinkedIn] = useState<LinkedInConnection | null>(null);
+  const [linkedInLoading, setLinkedInLoading] = useState(true);
+  const [linkedInConnecting, setLinkedInConnecting] = useState(false);
+  const [linkedInDisconnecting, setLinkedInDisconnecting] = useState(false);
+
+  // Twitter state
+  const [twitter, setTwitter] = useState<TwitterStatus | null>(null);
+  const [twitterLoading, setTwitterLoading] = useState(true);
+  const [twitterConnecting, setTwitterConnecting] = useState(false);
+  const [twitterDisconnecting, setTwitterDisconnecting] = useState(false);
+
+  // Podcast state
   const [podcast, setPodcast] = useState<PodcastStatus | null>(null);
-  const [loading, setLoading] = useState(true);
   const [podcastLoading, setPodcastLoading] = useState(true);
-  const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
   const [disconnectingPodcast, setDisconnectingPodcast] = useState(false);
+
+  // General state
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Handle OAuth callback parameters
   useEffect(() => {
+    // LinkedIn callback
     const linkedInStatus = searchParams.get('linkedin');
     const linkedInName = searchParams.get('name');
     const linkedInMessage = searchParams.get('message');
@@ -42,6 +56,7 @@ const Settings: React.FC = () => {
         type: 'success',
         text: linkedInName ? `Successfully connected as ${linkedInName}!` : 'LinkedIn connected successfully!',
       });
+      loadLinkedInStatus();
       // Clear the URL params
       searchParams.delete('linkedin');
       searchParams.delete('name');
@@ -51,29 +66,72 @@ const Settings: React.FC = () => {
         type: 'error',
         text: linkedInMessage || 'Failed to connect LinkedIn. Please try again.',
       });
-      // Clear the URL params
       searchParams.delete('linkedin');
       searchParams.delete('message');
       setSearchParams(searchParams, { replace: true });
     }
+
+    // Twitter callback
+    const twitterStatus = searchParams.get('twitter');
+    const twitterName = searchParams.get('name');
+    const twitterUsername = searchParams.get('username');
+    const twitterMessage = searchParams.get('message');
+
+    if (twitterStatus === 'connected') {
+      setMessage({
+        type: 'success',
+        text: twitterName
+          ? `Successfully connected as ${twitterName} (@${twitterUsername})!`
+          : 'Twitter connected successfully!',
+      });
+      loadTwitterStatus();
+      // Clear the URL params
+      searchParams.delete('twitter');
+      searchParams.delete('name');
+      searchParams.delete('username');
+      setSearchParams(searchParams, { replace: true });
+    } else if (twitterStatus === 'error') {
+      setMessage({
+        type: 'error',
+        text: twitterMessage || 'Failed to connect Twitter. Please try again.',
+      });
+      searchParams.delete('twitter');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
+    }
+
   }, [searchParams, setSearchParams]);
 
-  // Load LinkedIn and Podcast status
+  // Load all statuses on mount
   useEffect(() => {
     loadLinkedInStatus();
+    loadTwitterStatus();
     loadPodcastStatus();
   }, []);
 
   const loadLinkedInStatus = async () => {
     try {
-      setLoading(true);
+      setLinkedInLoading(true);
       const status = await getLinkedInStatus();
       setLinkedIn(status);
     } catch (err: any) {
       console.error('Failed to load LinkedIn status:', err);
       setLinkedIn({ connected: false });
     } finally {
-      setLoading(false);
+      setLinkedInLoading(false);
+    }
+  };
+
+  const loadTwitterStatus = async () => {
+    try {
+      setTwitterLoading(true);
+      const status = await getTwitterStatus();
+      setTwitter(status);
+    } catch (err: any) {
+      console.error('Failed to load Twitter status:', err);
+      setTwitter({ connected: false });
+    } finally {
+      setTwitterLoading(false);
     }
   };
 
@@ -98,15 +156,15 @@ const Settings: React.FC = () => {
     }
   };
 
+  // LinkedIn handlers
   const handleConnectLinkedIn = async () => {
     try {
-      setConnecting(true);
+      setLinkedInConnecting(true);
       setMessage(null);
       await connectLinkedIn();
-      // User will be redirected to LinkedIn
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to start LinkedIn connection' });
-      setConnecting(false);
+      setLinkedInConnecting(false);
     }
   };
 
@@ -116,7 +174,7 @@ const Settings: React.FC = () => {
     }
 
     try {
-      setDisconnecting(true);
+      setLinkedInDisconnecting(true);
       setMessage(null);
       await disconnectLinkedIn();
       setLinkedIn({ connected: false });
@@ -124,10 +182,41 @@ const Settings: React.FC = () => {
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to disconnect LinkedIn' });
     } finally {
-      setDisconnecting(false);
+      setLinkedInDisconnecting(false);
     }
   };
 
+  // Twitter handlers
+  const handleConnectTwitter = async () => {
+    try {
+      setTwitterConnecting(true);
+      setMessage(null);
+      await connectTwitter();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to start Twitter connection' });
+      setTwitterConnecting(false);
+    }
+  };
+
+  const handleDisconnectTwitter = async () => {
+    if (!confirm('Are you sure you want to disconnect Twitter? You will need to reconnect to post content.')) {
+      return;
+    }
+
+    try {
+      setTwitterDisconnecting(true);
+      setMessage(null);
+      await disconnectTwitter();
+      setTwitter({ connected: false });
+      setMessage({ type: 'success', text: 'Twitter disconnected successfully' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Twitter' });
+    } finally {
+      setTwitterDisconnecting(false);
+    }
+  };
+
+  // Podcast handlers
   const handleDisconnectPodcast = async () => {
     if (!confirm('Are you sure you want to disconnect your podcast? This will remove all podcast data including episodes, metrics, and projections. This action cannot be undone.')) {
       return;
@@ -139,7 +228,6 @@ const Settings: React.FC = () => {
       const result = await disconnectPodcast();
       setPodcast({ connected: false });
       setMessage({ type: 'success', text: `"${result.podcastTitle}" disconnected successfully` });
-      // Clear the onboarding dismissed state so it shows again
       localStorage.removeItem('loquihq_onboarding_dismissed');
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to disconnect podcast' });
@@ -165,9 +253,9 @@ const Settings: React.FC = () => {
           }`}
         >
           {message.type === 'success' ? (
-            <Check className="h-5 w-5 flex-shrink-0" />
+            <Check className="h-5 w-5 shrink-0" />
           ) : (
-            <AlertCircle className="h-5 w-5 flex-shrink-0" />
+            <AlertCircle className="h-5 w-5 shrink-0" />
           )}
           <span>{message.text}</span>
           <button
@@ -188,7 +276,7 @@ const Settings: React.FC = () => {
           </p>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 space-y-4">
           {/* LinkedIn Connection */}
           <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
             <div className="flex items-center gap-4">
@@ -197,7 +285,7 @@ const Settings: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-medium text-textPrimary">LinkedIn</h3>
-                {loading ? (
+                {linkedInLoading ? (
                   <p className="text-sm text-textMuted">Checking connection...</p>
                 ) : linkedIn?.connected ? (
                   <div className="flex items-center gap-2">
@@ -217,17 +305,17 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              {loading ? (
+              {linkedInLoading ? (
                 <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
               ) : linkedIn?.connected ? (
                 <>
                   {linkedIn.tokenExpired && (
                     <button
                       onClick={handleConnectLinkedIn}
-                      disabled={connecting}
+                      disabled={linkedInConnecting}
                       className="px-4 py-2 bg-[#0A66C2] text-white text-sm font-medium rounded-lg hover:bg-[#004182] transition disabled:opacity-50 flex items-center gap-2"
                     >
-                      {connecting ? (
+                      {linkedInConnecting ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <ExternalLink className="h-4 w-4" />
@@ -237,10 +325,10 @@ const Settings: React.FC = () => {
                   )}
                   <button
                     onClick={handleDisconnectLinkedIn}
-                    disabled={disconnecting}
+                    disabled={linkedInDisconnecting}
                     className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
                   >
-                    {disconnecting ? (
+                    {linkedInDisconnecting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Unplug className="h-4 w-4" />
@@ -251,10 +339,10 @@ const Settings: React.FC = () => {
               ) : (
                 <button
                   onClick={handleConnectLinkedIn}
-                  disabled={connecting}
+                  disabled={linkedInConnecting}
                   className="px-4 py-2 bg-[#0A66C2] text-white text-sm font-medium rounded-lg hover:bg-[#004182] transition disabled:opacity-50 flex items-center gap-2"
                 >
-                  {connecting ? (
+                  {linkedInConnecting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Linkedin className="h-4 w-4" />
@@ -265,10 +353,105 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
+          {/* Twitter Connection */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-black rounded-lg flex items-center justify-center">
+                <Twitter className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Twitter / X</h3>
+                {twitterLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : twitter?.connected ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-green-600 font-medium">
+                      Connected as {twitter.accountName} (@{twitter.username})
+                    </span>
+                    {twitter.tokenExpired && (
+                      <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+                        Token expired
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-textMuted">Not connected</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {twitterLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : twitter?.connected ? (
+                <>
+                  {twitter.tokenExpired && (
+                    <button
+                      onClick={handleConnectTwitter}
+                      disabled={twitterConnecting}
+                      className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {twitterConnecting ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ExternalLink className="h-4 w-4" />
+                      )}
+                      Reconnect
+                    </button>
+                  )}
+                  <button
+                    onClick={handleDisconnectTwitter}
+                    disabled={twitterDisconnecting}
+                    className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                  >
+                    {twitterDisconnecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Unplug className="h-4 w-4" />
+                    )}
+                    Disconnect
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleConnectTwitter}
+                  disabled={twitterConnecting}
+                  className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {twitterConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Twitter className="h-4 w-4" />
+                  )}
+                  Connect Twitter
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Facebook Connection - Coming Soon */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300 opacity-75">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-[#1877F2] rounded-lg flex items-center justify-center">
+                <Facebook className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Facebook</h3>
+                <p className="text-sm text-textMuted">Post to your Facebook Pages</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1.5 bg-amber-100 text-amber-800 text-xs font-medium rounded-full flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Coming Soon
+              </span>
+            </div>
+          </div>
+
           {/* More platforms coming soon */}
-          <div className="mt-4 p-4 bg-gray-200 rounded-lg border border-dashed border-gray-400">
+          <div className="p-4 bg-gray-200 rounded-lg border border-dashed border-gray-400">
             <p className="text-sm text-textMuted text-center">
-              More platforms coming soon: Twitter/X, Facebook, Instagram
+              More platforms coming soon: Instagram, Medium
             </p>
           </div>
         </div>
@@ -350,15 +533,14 @@ const Settings: React.FC = () => {
       </div>
 
       {/* How it works */}
-      {!linkedIn?.connected && !loading && (
+      {!linkedIn?.connected && !linkedInLoading && (
         <div className="mt-6 bg-secondary/10 rounded-xl p-6 border border-secondary/20">
-          <h3 className="font-medium text-textPrimary mb-2">How LinkedIn Connection Works</h3>
+          <h3 className="font-medium text-textPrimary mb-2">How Social Media Connection Works</h3>
           <ul className="text-sm text-textSecondary space-y-1">
-            <li>1. Click "Connect LinkedIn" to authorize LoquiHQ</li>
-            <li>2. Sign in to your LinkedIn account</li>
+            <li>1. Click "Connect" to authorize LoquiHQ</li>
+            <li>2. Sign in to your social media account</li>
             <li>3. Grant permission to post on your behalf</li>
-            <li>4. You'll be redirected back here</li>
-            <li>5. Schedule and post content directly from the calendar!</li>
+            <li>4. Schedule and post content directly from the calendar!</li>
           </ul>
         </div>
       )}

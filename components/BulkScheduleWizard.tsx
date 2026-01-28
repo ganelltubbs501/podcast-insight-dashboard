@@ -134,7 +134,7 @@ const BulkScheduleWizard: React.FC<BulkScheduleWizardProps> = ({
           {/* Start Date & Time */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-textMuted uppercase mb-2 block flex items-center gap-2">
+              <label className="text-xs font-bold text-textMuted uppercase mb-2 flex items-center gap-2">
                 <Calendar className="h-4 w-4" /> Start Date
               </label>
               <input
@@ -145,7 +145,7 @@ const BulkScheduleWizard: React.FC<BulkScheduleWizardProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-textMuted uppercase mb-2 block flex items-center gap-2">
+              <label className="text-xs font-bold text-textMuted uppercase mb-2 flex items-center gap-2">
                 <Clock className="h-4 w-4" /> Start Time
               </label>
               <input

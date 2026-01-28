@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getScheduledPosts, deleteScheduledPost, updateScheduledPost } from '../services/transcripts';
 import { ScheduledPost, Platform } from '../types';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Linkedin, Twitter, Video, Mail, FileType, Plus, Trash2, BarChart2, CheckCircle, Clock, AlertCircle, Edit2, Filter, RotateCcw } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Linkedin, Twitter, Video, Mail, FileType, Plus, Trash2, BarChart2, CheckCircle, Clock, AlertCircle, Edit2, Filter, RotateCcw, Facebook } from 'lucide-react';
 import MetricsTracker from '../components/MetricsTracker';
 
 const ContentCalendar: React.FC = () => {
@@ -156,6 +156,7 @@ const ContentCalendar: React.FC = () => {
     switch (platform) {
       case 'linkedin': return <Linkedin className="h-3 w-3 text-[#0077b5]" />;
       case 'twitter': return <Twitter className="h-3 w-3 text-[#1DA1F2]" />;
+      case 'facebook': return <Facebook className="h-3 w-3 text-[#1877F2]" />;
       case 'tiktok': return <Video className="h-3 w-3 text-[#000000]" />; // Simplified TikTok icon
       case 'youtube': return <Video className="h-3 w-3 text-[#FF0000]" />; // Simplified YouTube icon
       case 'email': return <Mail className="h-3 w-3 text-orange-500" />;
@@ -168,6 +169,7 @@ const ContentCalendar: React.FC = () => {
      switch (platform) {
       case 'linkedin': return 'bg-[#0077b5]/10 text-[#0077b5] border-[#0077b5]/20';
       case 'twitter': return 'bg-[#1DA1F2]/10 text-[#1DA1F2] border-[#1DA1F2]/20';
+      case 'facebook': return 'bg-[#1877F2]/10 text-[#1877F2] border-[#1877F2]/20';
       case 'email': return 'bg-orange-50 text-orange-600 border-orange-200';
       default: return 'bg-gray-100 text-textSecondary border-gray-300';
      }
@@ -196,6 +198,7 @@ const ContentCalendar: React.FC = () => {
               <option value="all">All Platforms</option>
               <option value="linkedin">LinkedIn</option>
               <option value="twitter">Twitter</option>
+              <option value="facebook">Facebook</option>
               <option value="email">Email</option>
               <option value="tiktok">TikTok</option>
               <option value="youtube">YouTube</option>
@@ -242,7 +245,7 @@ const ContentCalendar: React.FC = () => {
            <div className="grid grid-cols-7 flex-1 auto-rows-fr">
              {/* Padding for previous month */}
              {Array.from({ length: firstDay }).map((_, i) => (
-               <div key={`empty-${i}`} className="bg-gray-50/30 border-b border-r border-gray-300 min-h-[100px]"></div>
+               <div key={`empty-${i}`} className="bg-gray-50/30 border-b border-r border-gray-300 min-h-25"></div>
              ))}
              
              {/* Days */}
@@ -261,7 +264,7 @@ const ContentCalendar: React.FC = () => {
                return (
                  <div
                    key={day}
-                   className={`border-b border-r border-gray-300 p-2 min-h-[100px] relative hover:bg-gray-100 transition group ${isToday ? 'bg-accent-soft/30' : ''} ${draggedPost ? 'hover:bg-blue-50' : ''}`}
+                   className={`border-b border-r border-gray-300 p-2 min-h-25 relative hover:bg-gray-100 transition group ${isToday ? 'bg-accent-soft/30' : ''} ${draggedPost ? 'hover:bg-blue-50' : ''}`}
                    onDragOver={handleDragOver}
                    onDrop={(e) => handleDrop(e, day)}
                  >
@@ -291,7 +294,7 @@ const ContentCalendar: React.FC = () => {
              
              {/* Padding for end of grid (optional, filling remaining cells) */}
              {Array.from({ length: 42 - (daysInMonth + firstDay) }).map((_, i) => (
-               <div key={`end-empty-${i}`} className="bg-gray-50/30 border-b border-r border-gray-300 min-h-[100px]"></div>
+               <div key={`end-empty-${i}`} className="bg-gray-50/30 border-b border-r border-gray-300 min-h-25"></div>
              ))}
            </div>
         </div>

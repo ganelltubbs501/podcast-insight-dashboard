@@ -756,6 +756,514 @@ app.post("/api/integrations/linkedin/post", requireAuth, async (req: AuthRequest
 });
 
 // ============================================================================
+// FACEBOOK OAUTH ENDPOINTS (Social Media Posting to Pages)
+// ============================================================================
+
+app.get("/api/integrations/facebook/auth-url", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getFacebookAuthUrl } = await import('./oauth/facebook.js');
+
+    const appId = process.env.FACEBOOK_APP_ID || '';
+    const appSecret = process.env.FACEBOOK_APP_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+
+    if (!appId || !appSecret) {
+      return res.status(500).json({ error: 'Facebook OAuth not configured' });
+    }
+
+    if (!apiPublicUrl) {
+      return res.status(500).json({ error: 'API_PUBLIC_URL not configured' });
+    }
+
+    const redirectUri = `${apiPublicUrl}/api/integrations/facebook/callback`;
+    const config = { appId, appSecret, redirectUri };
+
+    // Use userId as state for CSRF protection
+    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString('base64url');
+
+    console.log(`🔗 Facebook auth request from user: ${userId.substring(0, 8)}...`);
+
+    const authUrl = getFacebookAuthUrl(config, state);
+    return res.json({ authUrl });
+  } catch (err: any) {
+    console.error('Facebook auth URL generation failed:', err);
+    return res.status(500).json({
+      error: backendEnv.isDevelopment ? err.message : 'Authentication service error'
+    });
+  }
+});
+
+// Facebook OAuth callback - handles redirect from Facebook
+app.get("/api/integrations/facebook/callback", async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
+
+    // Handle OAuth errors
+    if (error) {
+      console.error('Facebook OAuth error:', error, error_description);
+      return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+    }
+
+    if (!code || !state) {
+      return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent('Missing authorization code')}`);
+    }
+
+    // Decode state to get userId
+    let userId: string;
+    try {
+      const stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
+      userId = stateData.userId;
+
+      // Check state isn't too old (10 minute max)
+      if (Date.now() - stateData.ts > 10 * 60 * 1000) {
+        return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent('Authorization expired, please try again')}`);
+      }
+    } catch {
+      return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent('Invalid state parameter')}`);
+    }
+
+    const {
+      exchangeFacebookCode,
+      exchangeForLongLivedToken,
+      getFacebookProfile,
+      getFacebookPages,
+      storeFacebookConnection
+    } = await import('./oauth/facebook.js');
+
+    const appId = process.env.FACEBOOK_APP_ID || '';
+    const appSecret = process.env.FACEBOOK_APP_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+    const redirectUri = `${apiPublicUrl}/api/integrations/facebook/callback`;
+
+    const config = { appId, appSecret, redirectUri };
+
+    // Exchange code for short-lived token
+    const shortLivedTokens = await exchangeFacebookCode(config, code as string);
+
+    // Exchange for long-lived token (60 days)
+    const tokens = await exchangeForLongLivedToken(config, shortLivedTokens.accessToken);
+
+    // Get user profile
+    const profile = await getFacebookProfile(tokens.accessToken);
+
+    // Get user's pages
+    const pages = await getFacebookPages(tokens.accessToken);
+
+    // Store connection with first page selected by default (if any)
+    const defaultPage = pages.length > 0 ? pages[0] : undefined;
+    await storeFacebookConnection(userId, tokens, profile, defaultPage);
+
+    console.log(`✅ Facebook connected for user: ${userId.substring(0, 8)}... (${profile.name}, ${pages.length} pages)`);
+
+    // Redirect back to frontend settings page with page count
+    return res.redirect(`${appPublicUrl}/#/settings?facebook=connected&name=${encodeURIComponent(profile.name)}&pages=${pages.length}`);
+  } catch (err: any) {
+    console.error('Facebook callback failed:', err);
+    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
+    return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+  }
+});
+
+// Get Facebook connection status
+app.get("/api/integrations/facebook/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getFacebookConnection, isTokenExpired } = await import('./oauth/facebook.js');
+
+    const connection = await getFacebookConnection(userId);
+
+    if (!connection) {
+      return res.json({ connected: false });
+    }
+
+    // Safely format expiresAt
+    let expiresAtStr: string | null = null;
+    try {
+      if (connection.tokenExpiresAt && !isNaN(connection.tokenExpiresAt.getTime())) {
+        expiresAtStr = connection.tokenExpiresAt.toISOString();
+      }
+    } catch {
+      // Invalid date - leave as null
+    }
+
+    return res.json({
+      connected: true,
+      accountName: connection.accountName,
+      accountId: connection.accountId,
+      tokenExpired: isTokenExpired(connection.tokenExpiresAt),
+      expiresAt: expiresAtStr,
+      selectedPage: connection.selectedPage ? {
+        id: connection.selectedPage.id,
+        name: connection.selectedPage.name,
+      } : null,
+    });
+  } catch (err: any) {
+    console.error('Facebook status check failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Get user's Facebook pages
+app.get("/api/integrations/facebook/pages", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getFacebookConnection, getFacebookPages } = await import('./oauth/facebook.js');
+
+    const connection = await getFacebookConnection(userId);
+
+    if (!connection) {
+      return res.status(400).json({ error: 'Facebook not connected' });
+    }
+
+    const pages = await getFacebookPages(connection.accessToken);
+
+    return res.json({ pages });
+  } catch (err: any) {
+    console.error('Facebook pages fetch failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Select Facebook page for posting
+app.post("/api/integrations/facebook/select-page", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { pageId } = req.body;
+
+    if (!pageId) {
+      return res.status(400).json({ error: 'Page ID is required' });
+    }
+
+    const { getFacebookConnection, getFacebookPages, updateSelectedFacebookPage } = await import('./oauth/facebook.js');
+
+    const connection = await getFacebookConnection(userId);
+
+    if (!connection) {
+      return res.status(400).json({ error: 'Facebook not connected' });
+    }
+
+    // Get fresh pages list to get the page access token
+    const pages = await getFacebookPages(connection.accessToken);
+    const selectedPage = pages.find(p => p.id === pageId);
+
+    if (!selectedPage) {
+      return res.status(400).json({ error: 'Page not found or you do not have access' });
+    }
+
+    await updateSelectedFacebookPage(userId, selectedPage);
+
+    console.log(`📄 Facebook page selected for user: ${userId.substring(0, 8)}... (${selectedPage.name})`);
+
+    return res.json({
+      success: true,
+      selectedPage: {
+        id: selectedPage.id,
+        name: selectedPage.name,
+      }
+    });
+  } catch (err: any) {
+    console.error('Facebook page selection failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Disconnect Facebook
+app.delete("/api/integrations/facebook/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { removeFacebookConnection } = await import('./oauth/facebook.js');
+
+    await removeFacebookConnection(userId);
+
+    console.log(`🔌 Facebook disconnected for user: ${userId.substring(0, 8)}...`);
+
+    return res.json({ success: true, message: 'Facebook disconnected' });
+  } catch (err: any) {
+    console.error('Facebook disconnect failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Post to Facebook Page
+app.post("/api/integrations/facebook/post", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { content, link } = req.body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Post content is required' });
+    }
+
+    const { getFacebookConnection, getValidFacebookPageToken, postToFacebookPage } = await import('./oauth/facebook.js');
+
+    const connection = await getFacebookConnection(userId);
+
+    if (!connection) {
+      return res.status(400).json({ error: 'Facebook not connected. Please connect your account first.' });
+    }
+
+    if (!connection.selectedPage) {
+      return res.status(400).json({ error: 'No Facebook page selected. Please select a page first.' });
+    }
+
+    // Get valid page token
+    const { pageId, pageAccessToken } = await getValidFacebookPageToken(connection);
+
+    // Post to Facebook Page
+    const result = await postToFacebookPage(pageAccessToken, pageId, content.trim(), {
+      link,
+    });
+
+    console.log(`📤 Facebook post created for user: ${userId.substring(0, 8)}... (postId: ${result.postId})`);
+
+    return res.json({
+      success: true,
+      postId: result.postId,
+      postUrl: result.postUrl,
+    });
+  } catch (err: any) {
+    console.error('Facebook post failed:', err);
+
+    // Handle token expiration
+    if (err.message.includes('expired') || err.message.includes('reconnect')) {
+      return res.status(401).json({
+        error: 'Facebook session expired. Please reconnect your account.',
+        reconnectRequired: true,
+      });
+    }
+
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// X OAUTH ENDPOINTS (Social Media Posting)
+// Uses OAuth 2.0 with PKCE (Proof Key for Code Exchange)
+// ============================================================================
+
+app.get("/api/integrations/twitter/auth-url", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const {
+      getTwitterAuthUrl,
+      generateCodeVerifier,
+      generateCodeChallenge,
+      storeOAuthState
+    } = await import('./oauth/twitter.js');
+
+    const clientId = process.env.TWITTER_CLIENT_ID || '';
+    const clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ error: 'Twitter OAuth not configured' });
+    }
+
+    if (!apiPublicUrl) {
+      return res.status(500).json({ error: 'API_PUBLIC_URL not configured' });
+    }
+
+    const redirectUri = `${apiPublicUrl}/api/integrations/twitter/callback`;
+    const config = { clientId, clientSecret, redirectUri };
+
+    // Generate PKCE code verifier and challenge
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = generateCodeChallenge(codeVerifier);
+
+    // Generate state with userId
+    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString('base64url');
+
+    // Store state and code verifier for callback
+    await storeOAuthState(userId, state, codeVerifier);
+
+    console.log(`🔗 Twitter auth request from user: ${userId.substring(0, 8)}...`);
+
+    const authUrl = getTwitterAuthUrl(config, state, codeChallenge);
+    return res.json({ authUrl });
+  } catch (err: any) {
+    console.error('Twitter auth URL generation failed:', err);
+    return res.status(500).json({
+      error: backendEnv.isDevelopment ? err.message : 'Authentication service error'
+    });
+  }
+});
+
+// Twitter OAuth callback - handles redirect from Twitter
+app.get("/api/integrations/twitter/callback", async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
+
+    // Handle OAuth errors
+    if (error) {
+      console.error('Twitter OAuth error:', error, error_description);
+      return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+    }
+
+    if (!code || !state) {
+      return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent('Missing authorization code')}`);
+    }
+
+    const {
+      getOAuthState,
+      exchangeTwitterCode,
+      getTwitterProfile,
+      storeTwitterConnection
+    } = await import('./oauth/twitter.js');
+
+    // Get stored state and code verifier
+    const storedState = await getOAuthState(state as string);
+    if (!storedState) {
+      return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent('Invalid or expired state. Please try again.')}`);
+    }
+
+    const { userId, codeVerifier } = storedState;
+
+    const clientId = process.env.TWITTER_CLIENT_ID || '';
+    const clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+    const redirectUri = `${apiPublicUrl}/api/integrations/twitter/callback`;
+
+    const config = { clientId, clientSecret, redirectUri };
+
+    // Exchange code for tokens using PKCE
+    const tokens = await exchangeTwitterCode(config, code as string, codeVerifier);
+
+    // Get user profile
+    const profile = await getTwitterProfile(tokens.accessToken);
+
+    // Store connection
+    await storeTwitterConnection(userId, tokens, profile);
+
+    console.log(`✅ Twitter connected for user: ${userId.substring(0, 8)}... (@${profile.username})`);
+
+    // Redirect back to frontend settings page
+    return res.redirect(`${appPublicUrl}/#/settings?twitter=connected&name=${encodeURIComponent(profile.name)}&username=${encodeURIComponent(profile.username)}`);
+  } catch (err: any) {
+    console.error('Twitter callback failed:', err);
+    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
+    return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+  }
+});
+
+// Get Twitter connection status
+app.get("/api/integrations/twitter/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getTwitterConnection, isTokenExpired } = await import('./oauth/twitter.js');
+
+    const connection = await getTwitterConnection(userId);
+
+    if (!connection) {
+      return res.json({ connected: false });
+    }
+
+    // Safely format expiresAt
+    let expiresAtStr: string | null = null;
+    try {
+      if (connection.tokenExpiresAt && !isNaN(connection.tokenExpiresAt.getTime())) {
+        expiresAtStr = connection.tokenExpiresAt.toISOString();
+      }
+    } catch {
+      // Invalid date - leave as null
+    }
+
+    return res.json({
+      connected: true,
+      accountName: connection.accountName,
+      username: connection.username,
+      accountId: connection.accountId,
+      tokenExpired: isTokenExpired(connection.tokenExpiresAt),
+      expiresAt: expiresAtStr,
+    });
+  } catch (err: any) {
+    console.error('Twitter status check failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Disconnect Twitter
+app.delete("/api/integrations/twitter/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { removeTwitterConnection } = await import('./oauth/twitter.js');
+
+    await removeTwitterConnection(userId);
+
+    console.log(`🔌 Twitter disconnected for user: ${userId.substring(0, 8)}...`);
+
+    return res.json({ success: true, message: 'Twitter disconnected' });
+  } catch (err: any) {
+    console.error('Twitter disconnect failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Post to Twitter
+app.post("/api/integrations/twitter/post", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { content, replyToTweetId, quoteTweetId } = req.body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Tweet content is required' });
+    }
+
+    // Twitter has a 280 character limit
+    if (content.trim().length > 280) {
+      return res.status(400).json({ error: 'Tweet exceeds 280 character limit' });
+    }
+
+    const { getTwitterConnection, getValidTwitterToken, postTweet } = await import('./oauth/twitter.js');
+
+    const connection = await getTwitterConnection(userId);
+
+    if (!connection) {
+      return res.status(400).json({ error: 'Twitter not connected. Please connect your account first.' });
+    }
+
+    const clientId = process.env.TWITTER_CLIENT_ID || '';
+    const clientSecret = process.env.TWITTER_CLIENT_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+    const redirectUri = `${apiPublicUrl}/api/integrations/twitter/callback`;
+    const config = { clientId, clientSecret, redirectUri };
+
+    // Get valid token (refresh if needed)
+    const accessToken = await getValidTwitterToken(config, connection);
+
+    // Post tweet
+    const result = await postTweet(accessToken, content.trim(), {
+      replyToTweetId,
+      quoteTweetId,
+    });
+
+    console.log(`📤 Twitter post created for user: ${userId.substring(0, 8)}... (tweetId: ${result.tweetId})`);
+
+    return res.json({
+      success: true,
+      postId: result.tweetId,
+      postUrl: result.tweetUrl,
+    });
+  } catch (err: any) {
+    console.error('Twitter post failed:', err);
+
+    // Handle token expiration
+    if (err.message.includes('expired') || err.message.includes('reconnect')) {
+      return res.status(401).json({
+        error: 'Twitter session expired. Please reconnect your account.',
+        reconnectRequired: true,
+      });
+    }
+
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
 // SCHEDULED POSTS PUBLISHER (Cloud Scheduler cron job endpoint)
 // ============================================================================
 
