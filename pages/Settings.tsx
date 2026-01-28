@@ -71,31 +71,31 @@ const Settings: React.FC = () => {
       setSearchParams(searchParams, { replace: true });
     }
 
-    // Twitter callback
-    const twitterStatus = searchParams.get('twitter');
-    const twitterName = searchParams.get('name');
-    const twitterUsername = searchParams.get('username');
-    const twitterMessage = searchParams.get('message');
+    // X callback
+    const xStatus = searchParams.get('x');
+    const xName = searchParams.get('name');
+    const xUsername = searchParams.get('username');
+    const xMessage = searchParams.get('message');
 
-    if (twitterStatus === 'connected') {
+    if (xStatus === 'connected') {
       setMessage({
         type: 'success',
-        text: twitterName
-          ? `Successfully connected as ${twitterName} (@${twitterUsername})!`
-          : 'Twitter connected successfully!',
+        text: xName
+          ? `Successfully connected as ${xName} (@${xUsername})!`
+          : 'X connected successfully!',
       });
       loadTwitterStatus();
       // Clear the URL params
-      searchParams.delete('twitter');
+      searchParams.delete('x');
       searchParams.delete('name');
       searchParams.delete('username');
       setSearchParams(searchParams, { replace: true });
-    } else if (twitterStatus === 'error') {
+    } else if (xStatus === 'error') {
       setMessage({
         type: 'error',
-        text: twitterMessage || 'Failed to connect Twitter. Please try again.',
+        text: xMessage || 'Failed to connect X. Please try again.',
       });
-      searchParams.delete('twitter');
+      searchParams.delete('x');
       searchParams.delete('message');
       setSearchParams(searchParams, { replace: true });
     }

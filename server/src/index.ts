@@ -1066,7 +1066,7 @@ app.get("/api/integrations/x/auth-url", requireAuth, async (req: AuthRequest, re
       return res.status(500).json({ error: 'API_PUBLIC_URL not configured' });
     }
 
-    const redirectUri = `${apiPublicUrl}/api/integrations/twitter/callback`;
+    const redirectUri = `${apiPublicUrl}/api/integrations/x/callback`;
     const config = { clientId, clientSecret, redirectUri };
 
     // Generate PKCE code verifier and challenge
@@ -1079,19 +1079,19 @@ app.get("/api/integrations/x/auth-url", requireAuth, async (req: AuthRequest, re
     // Store state and code verifier for callback
     await storeOAuthState(userId, state, codeVerifier);
 
-    console.log(`🔗 Twitter auth request from user: ${userId.substring(0, 8)}...`);
+    console.log(`🔗 X auth request from user: ${userId.substring(0, 8)}...`);
 
     const authUrl = getTwitterAuthUrl(config, state, codeChallenge);
     return res.json({ authUrl });
   } catch (err: any) {
-    console.error('Twitter auth URL generation failed:', err);
+    console.error('X auth URL generation failed:', err);
     return res.status(500).json({
       error: backendEnv.isDevelopment ? err.message : 'Authentication service error'
     });
   }
 });
 
-// Twitter OAuth callback - handles redirect from Twitter
+// X OAuth callback - handles redirect from X
 app.get("/api/integrations/x/callback", async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
@@ -1100,12 +1100,12 @@ app.get("/api/integrations/x/callback", async (req, res) => {
 
     // Handle OAuth errors
     if (error) {
-      console.error('Twitter OAuth error:', error, error_description);
-      return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+      console.error('X OAuth error:', error, error_description);
+      return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
     }
 
     if (!code || !state) {
-      return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent('Missing authorization code')}`);
+      return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent('Missing authorization code')}`);
     }
 
     const {
@@ -1118,7 +1118,7 @@ app.get("/api/integrations/x/callback", async (req, res) => {
     // Get stored state and code verifier
     const storedState = await getOAuthState(state as string);
     if (!storedState) {
-      return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent('Invalid or expired state. Please try again.')}`);
+      return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent('Invalid or expired state. Please try again.')}`);
     }
 
     const { userId, codeVerifier } = storedState;
@@ -1139,18 +1139,18 @@ app.get("/api/integrations/x/callback", async (req, res) => {
     // Store connection
     await storeTwitterConnection(userId, tokens, profile);
 
-    console.log(`✅ Twitter connected for user: ${userId.substring(0, 8)}... (@${profile.username})`);
+    console.log(`✅ X connected for user: ${userId.substring(0, 8)}... (@${profile.username})`);
 
     // Redirect back to frontend settings page
-    return res.redirect(`${appPublicUrl}/#/settings?twitter=connected&name=${encodeURIComponent(profile.name)}&username=${encodeURIComponent(profile.username)}`);
+    return res.redirect(`${appPublicUrl}/#/settings?x=connected&name=${encodeURIComponent(profile.name)}&username=${encodeURIComponent(profile.username)}`);
   } catch (err: any) {
-    console.error('Twitter callback failed:', err);
+    console.error('X callback failed:', err);
     const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
-    return res.redirect(`${appPublicUrl}/#/settings?twitter=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+    return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
   }
 });
 
-// Get Twitter connection status
+// Get X connection status
 app.get("/api/integrations/x/status", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
@@ -1181,12 +1181,12 @@ app.get("/api/integrations/x/status", requireAuth, async (req: AuthRequest, res)
       expiresAt: expiresAtStr,
     });
   } catch (err: any) {
-    console.error('Twitter status check failed:', err);
+    console.error('X status check failed:', err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-// Disconnect Twitter
+// Disconnect X
 app.delete("/api/integrations/x/disconnect", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
@@ -1194,28 +1194,28 @@ app.delete("/api/integrations/x/disconnect", requireAuth, async (req: AuthReques
 
     await removeTwitterConnection(userId);
 
-    console.log(`🔌 Twitter disconnected for user: ${userId.substring(0, 8)}...`);
+    console.log(`🔌 X disconnected for user: ${userId.substring(0, 8)}...`);
 
-    return res.json({ success: true, message: 'Twitter disconnected' });
+    return res.json({ success: true, message: 'X disconnected' });
   } catch (err: any) {
-    console.error('Twitter disconnect failed:', err);
+    console.error('X disconnect failed:', err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-// Post to Twitter
+// Post to X
 app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
     const { content, replyToTweetId, quoteTweetId } = req.body;
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Tweet content is required' });
+      return res.status(400).json({ error: 'Post content is required' });
     }
 
-    // Twitter has a 280 character limit
+    // X has a 280 character limit
     if (content.trim().length > 280) {
-      return res.status(400).json({ error: 'Tweet exceeds 280 character limit' });
+      return res.status(400).json({ error: 'Post exceeds 280 character limit' });
     }
 
     const { getTwitterConnection, getValidTwitterToken, postTweet } = await import('./oauth/twitter.js');
@@ -1223,7 +1223,7 @@ app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) 
     const connection = await getTwitterConnection(userId);
 
     if (!connection) {
-      return res.status(400).json({ error: 'Twitter not connected. Please connect your account first.' });
+      return res.status(400).json({ error: 'X not connected. Please connect your account first.' });
     }
 
     const clientId = process.env.X_CLIENT_ID || '';
@@ -1241,7 +1241,7 @@ app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) 
       quoteTweetId,
     });
 
-    console.log(`📤 Twitter post created for user: ${userId.substring(0, 8)}... (tweetId: ${result.tweetId})`);
+    console.log(`📤 X post created for user: ${userId.substring(0, 8)}... (tweetId: ${result.tweetId})`);
 
     return res.json({
       success: true,
@@ -1249,12 +1249,12 @@ app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) 
       postUrl: result.tweetUrl,
     });
   } catch (err: any) {
-    console.error('Twitter post failed:', err);
+    console.error('X post failed:', err);
 
     // Handle token expiration
     if (err.message.includes('expired') || err.message.includes('reconnect')) {
       return res.status(401).json({
-        error: 'Twitter session expired. Please reconnect your account.',
+        error: 'X session expired. Please reconnect your account.',
         reconnectRequired: true,
       });
     }
