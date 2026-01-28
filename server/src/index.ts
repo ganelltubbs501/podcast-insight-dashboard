@@ -1270,10 +1270,10 @@ app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) 
 app.post("/api/jobs/publish-scheduled", async (req, res) => {
   // Verify cron secret
   const secret = req.header("x-cron-secret");
-  const expectedSecret = process.env.PUBLISHER_CRON_SECRET;
+  const expectedSecret = process.env.CRON_SECRET || process.env.PUBLISHER_CRON_SECRET;
 
   if (!expectedSecret) {
-    console.error("PUBLISHER_CRON_SECRET not configured");
+    console.error("CRON_SECRET not configured");
     return res.status(500).json({ error: "Publisher not configured" });
   }
 
@@ -1299,7 +1299,7 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
     const { data: duePosts, error: fetchError } = await supabaseAdmin
       .from("scheduled_posts")
       .select("*")
-      .eq("platform", "linkedin")
+      .in("platform", ["linkedin", "twitter"])
       .eq("status", "Scheduled")
       .lte("scheduled_date", now)
       .limit(25);
@@ -1320,68 +1320,16 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
 
     for (const post of duePosts) {
       try {
-        // Get LinkedIn connection for this user
-        const { data: connection, error: connError } = await supabaseAdmin
-          .from("connected_accounts")
-          .select("access_token, expires_at, provider_user_id")
-          .eq("user_id", post.user_id)
-          .eq("provider", "linkedin")
-          .maybeSingle();
-
-        if (connError || !connection) {
-          throw new Error("LinkedIn not connected for this user");
+        // Handle different platforms
+        if (post.platform === 'linkedin') {
+          await publishToLinkedIn(post, supabaseAdmin);
+        } else if (post.platform === 'twitter') {
+          await publishToX(post, supabaseAdmin);
+        } else {
+          throw new Error(`Unsupported platform: ${post.platform}`);
         }
 
-        // Check token expiry
-        if (connection.expires_at && new Date(connection.expires_at).getTime() < Date.now()) {
-          throw new Error("LinkedIn token expired - user must reconnect");
-        }
-
-        // Build LinkedIn post body
-        const personUrn = `urn:li:person:${connection.provider_user_id}`;
-        const postBody = {
-          author: personUrn,
-          lifecycleState: "PUBLISHED",
-          specificContent: {
-            "com.linkedin.ugc.ShareContent": {
-              shareCommentary: { text: post.content },
-              shareMediaCategory: "NONE",
-            },
-          },
-          visibility: {
-            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-          },
-        };
-
-        // Post to LinkedIn
-        const linkedInResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${connection.access_token}`,
-            "Content-Type": "application/json",
-            "X-Restli-Protocol-Version": "2.0.0",
-          },
-          body: JSON.stringify(postBody),
-        });
-
-        if (!linkedInResponse.ok) {
-          const errorText = await linkedInResponse.text();
-          throw new Error(`LinkedIn API error: ${linkedInResponse.status} - ${errorText}`);
-        }
-
-        // Get post ID from response header
-        const postId = linkedInResponse.headers.get("x-restli-id") || "";
-
-        // Update post status to Published
-        await supabaseAdmin
-          .from("scheduled_posts")
-          .update({
-            status: "Published",
-            metrics: { linkedin_post_id: postId, posted_at: new Date().toISOString() },
-          })
-          .eq("id", post.id);
-
-        console.log(`✅ Published post ${post.id} to LinkedIn (postId: ${postId})`);
+        console.log(`✅ Published post ${post.id} to ${post.platform}`);
         processed++;
       } catch (postError: any) {
         console.error(`❌ Failed to publish post ${post.id}:`, postError.message);
@@ -1406,6 +1354,107 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+// Helper function to publish to LinkedIn
+async function publishToLinkedIn(post: any, supabaseAdmin: any) {
+  // Get LinkedIn connection for this user
+  const { data: connection, error: connError } = await supabaseAdmin
+    .from("connected_accounts")
+    .select("access_token, expires_at, provider_user_id")
+    .eq("user_id", post.user_id)
+    .eq("provider", "linkedin")
+    .maybeSingle();
+
+  if (connError || !connection) {
+    throw new Error("LinkedIn not connected for this user");
+  }
+
+  // Check token expiry
+  if (connection.expires_at && new Date(connection.expires_at).getTime() < Date.now()) {
+    throw new Error("LinkedIn token expired - user must reconnect");
+  }
+
+  // Build LinkedIn post body
+  const personUrn = `urn:li:person:${connection.provider_user_id}`;
+  const postBody = {
+    author: personUrn,
+    lifecycleState: "PUBLISHED",
+    specificContent: {
+      "com.linkedin.ugc.ShareContent": {
+        shareCommentary: { text: post.content },
+        shareMediaCategory: "NONE",
+      },
+    },
+    visibility: {
+      "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+    },
+  };
+
+  // Post to LinkedIn
+  const linkedInResponse = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${connection.access_token}`,
+      "Content-Type": "application/json",
+      "X-Restli-Protocol-Version": "2.0.0",
+    },
+    body: JSON.stringify(postBody),
+  });
+
+  if (!linkedInResponse.ok) {
+    const errorText = await linkedInResponse.text();
+    throw new Error(`LinkedIn API error: ${linkedInResponse.status} - ${errorText}`);
+  }
+
+  // Get post ID from response header
+  const postId = linkedInResponse.headers.get("x-restli-id") || "";
+
+  // Update post status to Published
+  await supabaseAdmin
+    .from("scheduled_posts")
+    .update({
+      status: "Published",
+      metrics: { linkedin_post_id: postId, posted_at: new Date().toISOString() },
+    })
+    .eq("id", post.id);
+}
+
+// Helper function to publish to X
+async function publishToX(post: any, supabaseAdmin: any) {
+  const { getTwitterConnection, getValidTwitterToken, postTweet } = await import('./oauth/twitter.js');
+
+  // Get X connection for this user
+  const connection = await getTwitterConnection(post.user_id);
+
+  if (!connection) {
+    throw new Error("X not connected for this user");
+  }
+
+  const clientId = process.env.X_CLIENT_ID || '';
+  const clientSecret = process.env.X_CLIENT_SECRET || '';
+  const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+  const redirectUri = `${apiPublicUrl}/api/integrations/x/callback`;
+  const config = { clientId, clientSecret, redirectUri };
+
+  // Get valid token (refresh if needed)
+  const accessToken = await getValidTwitterToken(config, connection);
+
+  // Post to X
+  const result = await postTweet(accessToken, post.content.trim(), {});
+
+  // Update post status to Published
+  await supabaseAdmin
+    .from("scheduled_posts")
+    .update({
+      status: "Published",
+      metrics: {
+        tweet_id: result.tweetId,
+        tweet_url: result.tweetUrl,
+        posted_at: new Date().toISOString()
+      },
+    })
+    .eq("id", post.id);
+}
 
 // In-memory storage for scheduled posts (in production, use Supabase)
 // TODO: Move to database with user_id column for proper isolation
