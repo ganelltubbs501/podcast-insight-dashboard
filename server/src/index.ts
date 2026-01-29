@@ -1269,7 +1269,7 @@ app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) 
 
 app.post("/api/integrations/medium/connect", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId;
+    const userId = getUserId(req);
     const { token } = req.body;
 
     if (!token || typeof token !== 'string') {
@@ -1305,7 +1305,7 @@ app.post("/api/integrations/medium/connect", requireAuth, async (req: AuthReques
 
 app.get("/api/integrations/medium/status", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId;
+    const userId = getUserId(req);
     const { getMediumConnection } = await import('./oauth/medium.js');
 
     const connection = await getMediumConnection(userId);
@@ -1332,7 +1332,7 @@ app.get("/api/integrations/medium/status", requireAuth, async (req: AuthRequest,
 
 app.delete("/api/integrations/medium/disconnect", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId;
+    const userId = getUserId(req);
     const { removeMediumConnection } = await import('./oauth/medium.js');
 
     await removeMediumConnection(userId);
@@ -1348,7 +1348,7 @@ app.delete("/api/integrations/medium/disconnect", requireAuth, async (req: AuthR
 
 app.post("/api/integrations/medium/post", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = req.userId;
+    const userId = getUserId(req);
     const { title, content, contentFormat = 'markdown' } = req.body;
 
     if (!title || !content) {
