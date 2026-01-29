@@ -222,7 +222,7 @@ const Settings: React.FC = () => {
   };
 
   const handleDisconnectTwitter = async () => {
-    if (!confirm('Are you sure you want to disconnect Twitter? You will need to reconnect to post content.')) {
+    if (!confirm('Are you sure you want to disconnect X? You will need to reconnect to post content.')) {
       return;
     }
 
@@ -231,9 +231,9 @@ const Settings: React.FC = () => {
       setMessage(null);
       await disconnectTwitter();
       setTwitter({ connected: false });
-      setMessage({ type: 'success', text: 'Twitter disconnected successfully' });
+      setMessage({ type: 'success', text: 'X disconnected successfully' });
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Twitter' });
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect X' });
     } finally {
       setTwitterDisconnecting(false);
     }
@@ -439,7 +439,7 @@ const Settings: React.FC = () => {
                 <Twitter className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h3 className="font-medium text-textPrimary">Twitter / X</h3>
+                <h3 className="font-medium text-textPrimary">X</h3>
                 {twitterLoading ? (
                   <p className="text-sm text-textMuted">Checking connection...</p>
                 ) : twitter?.connected ? (
@@ -502,7 +502,7 @@ const Settings: React.FC = () => {
                   ) : (
                     <Twitter className="h-4 w-4" />
                   )}
-                  Connect Twitter
+                  Connect X
                 </button>
               )}
             </div>
