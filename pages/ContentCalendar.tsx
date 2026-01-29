@@ -170,6 +170,7 @@ const ContentCalendar: React.FC = () => {
       case 'linkedin': return 'bg-[#0077b5]/10 text-[#0077b5] border-[#0077b5]/20';
       case 'twitter': return 'bg-[#1DA1F2]/10 text-[#1DA1F2] border-[#1DA1F2]/20';
       case 'facebook': return 'bg-[#1877F2]/10 text-[#1877F2] border-[#1877F2]/20';
+      case 'medium': return 'bg-gray-900/10 text-gray-900 border-gray-900/20';
       case 'email': return 'bg-orange-50 text-orange-600 border-orange-200';
       default: return 'bg-gray-100 text-textSecondary border-gray-300';
      }

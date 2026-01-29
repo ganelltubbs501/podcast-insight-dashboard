@@ -4,6 +4,7 @@ import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplu
 import { getLinkedInStatus, connectLinkedIn, disconnectLinkedIn } from '../services/linkedin';
 import { getTwitterStatus, connectTwitter, disconnectTwitter, TwitterStatus } from '../services/twitter';
 import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
+import { getMediumStatus, connectMedium, disconnectMedium, MediumStatus } from '../services/medium';
 
 interface LinkedInConnection {
   connected: boolean;
@@ -35,6 +36,14 @@ const Settings: React.FC = () => {
   const [twitterLoading, setTwitterLoading] = useState(true);
   const [twitterConnecting, setTwitterConnecting] = useState(false);
   const [twitterDisconnecting, setTwitterDisconnecting] = useState(false);
+
+  // Medium state
+  const [medium, setMedium] = useState<MediumStatus | null>(null);
+  const [mediumLoading, setMediumLoading] = useState(true);
+  const [mediumConnecting, setMediumConnecting] = useState(false);
+  const [mediumDisconnecting, setMediumDisconnecting] = useState(false);
+  const [showMediumModal, setShowMediumModal] = useState(false);
+  const [mediumToken, setMediumToken] = useState('');
 
   // Podcast state
   const [podcast, setPodcast] = useState<PodcastStatus | null>(null);
@@ -106,6 +115,7 @@ const Settings: React.FC = () => {
   useEffect(() => {
     loadLinkedInStatus();
     loadTwitterStatus();
+    loadMediumStatus();
     loadPodcastStatus();
   }, []);
 
@@ -132,6 +142,19 @@ const Settings: React.FC = () => {
       setTwitter({ connected: false });
     } finally {
       setTwitterLoading(false);
+    }
+  };
+
+  const loadMediumStatus = async () => {
+    try {
+      setMediumLoading(true);
+      const status = await getMediumStatus();
+      setMedium(status);
+    } catch (err: any) {
+      console.error('Failed to load Medium status:', err);
+      setMedium({ connected: false });
+    } finally {
+      setMediumLoading(false);
     }
   };
 
@@ -213,6 +236,62 @@ const Settings: React.FC = () => {
       setMessage({ type: 'error', text: err.message || 'Failed to disconnect Twitter' });
     } finally {
       setTwitterDisconnecting(false);
+    }
+  };
+
+  // Medium handlers
+  const handleConnectMedium = async () => {
+    if (!mediumToken.trim()) {
+      setMessage({ type: 'error', text: 'Please enter your Medium integration token' });
+      return;
+    }
+
+    try {
+      setMediumConnecting(true);
+      setMessage(null);
+      const result = await connectMedium(mediumToken);
+      
+      if (result.success) {
+        setMedium({
+          connected: true,
+          accountName: result.profile?.name,
+          username: result.profile?.username,
+        });
+        setMessage({ type: 'success', text: result.message });
+        setShowMediumModal(false);
+        setMediumToken('');
+        loadMediumStatus();
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to connect Medium' });
+    } finally {
+      setMediumConnecting(false);
+    }
+  };
+
+  const handleDisconnectMedium = async () => {
+    if (!confirm('Are you sure you want to disconnect Medium? You will need to reconnect to post content.')) {
+      return;
+    }
+
+    try {
+      setMediumDisconnecting(true);
+      setMessage(null);
+      const result = await disconnectMedium();
+      
+      if (result.success) {
+        setMedium({ connected: false });
+        setMessage({ type: 'success', text: result.message });
+        loadMediumStatus();
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Medium' });
+    } finally {
+      setMediumDisconnecting(false);
     }
   };
 
@@ -429,6 +508,58 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
+          {/* Medium Connection */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-black rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">M</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Medium</h3>
+                {mediumLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : medium?.connected ? (
+                  <p className="text-sm text-green-600 font-medium">
+                    Connected as {medium.accountName} (@{medium.username})
+                  </p>
+                ) : (
+                  <p className="text-sm text-textMuted">Publish articles to Medium</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {mediumLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : medium?.connected ? (
+                <button
+                  onClick={handleDisconnectMedium}
+                  disabled={mediumDisconnecting}
+                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                >
+                  {mediumDisconnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowMediumModal(true)}
+                  disabled={mediumConnecting}
+                  className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {mediumConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <span>Connect Medium</span>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Facebook Connection - Coming Soon */}
           <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300 opacity-75">
             <div className="flex items-center gap-4">
@@ -443,7 +574,7 @@ const Settings: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="px-3 py-1.5 bg-amber-100 text-amber-800 text-xs font-medium rounded-full flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
-                Coming Soon
+                Coming 02/27/2026
               </span>
             </div>
           </div>
@@ -451,9 +582,64 @@ const Settings: React.FC = () => {
           {/* More platforms coming soon */}
           <div className="p-4 bg-gray-200 rounded-lg border border-dashed border-gray-400">
             <p className="text-sm text-textMuted text-center">
-              More platforms coming soon: Instagram, Medium
+              More platforms coming soon: Instagram (02/27/2026)
             </p>
           </div>
+
+          {/* Medium Token Modal */}
+          {showMediumModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+                <h2 className="text-xl font-semibold text-textPrimary mb-2">Connect Medium</h2>
+                <p className="text-sm text-textMuted mb-4">
+                  Generate a Medium integration token to connect your account.
+                </p>
+
+                {/* Step-by-step instructions */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <h3 className="font-medium text-blue-900 mb-2">How to get your token:</h3>
+                  <ol className="text-sm text-blue-800 space-y-1">
+                    <li>1. Go to: <a href="https://medium.com/me/settings/security" target="_blank" rel="noopener noreferrer" className="underline font-medium">https://medium.com/me/settings/security</a></li>
+                    <li>2. Scroll to "Integration Tokens"</li>
+                    <li>3. Click "New integration token"</li>
+                    <li>4. Name it "LoquiHQ"</li>
+                    <li>5. Copy the token and paste it below</li>
+                  </ol>
+                </div>
+
+                <input
+                  type="password"
+                  placeholder="Paste your Medium integration token here"
+                  value={mediumToken}
+                  onChange={(e) => setMediumToken(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowMediumModal(false);
+                      setMediumToken('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConnectMedium}
+                    disabled={mediumConnecting || !mediumToken.trim()}
+                    className="flex-1 px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {mediumConnecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Connect'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

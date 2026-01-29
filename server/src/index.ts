@@ -1264,6 +1264,126 @@ app.post("/api/integrations/x/post", requireAuth, async (req: AuthRequest, res) 
 });
 
 // ============================================================================
+// MEDIUM INTEGRATION (Token-based, not OAuth)
+// ============================================================================
+
+app.post("/api/integrations/medium/connect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId;
+    const { token } = req.body;
+
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ message: 'Integration token is required' });
+    }
+
+    const { validateMediumToken, storeMediumConnection } = await import('./oauth/medium.js');
+
+    // Validate token by fetching user profile
+    const profile = await validateMediumToken(token);
+
+    // Store connection
+    await storeMediumConnection(userId, token, profile);
+
+    console.log(`✅ Medium connected for user: ${userId.substring(0, 8)}... (username: ${profile.username})`);
+
+    return res.json({
+      success: true,
+      message: 'Medium account connected successfully!',
+      profile: {
+        name: profile.name,
+        username: profile.username,
+      },
+    });
+  } catch (err: any) {
+    console.error('Medium connection failed:', err);
+
+    return res.status(400).json({
+      message: err.message || 'Failed to connect Medium account',
+    });
+  }
+});
+
+app.get("/api/integrations/medium/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId;
+    const { getMediumConnection } = await import('./oauth/medium.js');
+
+    const connection = await getMediumConnection(userId);
+
+    if (!connection) {
+      return res.json({
+        status: { connected: false },
+      });
+    }
+
+    return res.json({
+      status: {
+        connected: true,
+        accountName: connection.accountName,
+        username: connection.username,
+        userId: connection.accountId,
+      },
+    });
+  } catch (err: any) {
+    console.error('Failed to fetch Medium status:', err);
+    return res.status(500).json({ error: 'Failed to fetch Medium status' });
+  }
+});
+
+app.delete("/api/integrations/medium/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId;
+    const { removeMediumConnection } = await import('./oauth/medium.js');
+
+    await removeMediumConnection(userId);
+
+    console.log(`🔌 Medium disconnected for user: ${userId.substring(0, 8)}...`);
+
+    return res.json({ success: true, message: 'Medium account disconnected' });
+  } catch (err: any) {
+    console.error('Failed to disconnect Medium:', err);
+    return res.status(500).json({ error: 'Failed to disconnect Medium account' });
+  }
+});
+
+app.post("/api/integrations/medium/post", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId;
+    const { title, content, contentFormat = 'markdown' } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Title and content are required' });
+    }
+
+    const { getMediumConnection, createMediumPost } = await import('./oauth/medium.js');
+
+    const connection = await getMediumConnection(userId);
+    if (!connection) {
+      return res.status(401).json({ error: 'Medium account not connected' });
+    }
+
+    const result = await createMediumPost(connection.accessToken, connection.accountId, {
+      title: title.substring(0, 300),
+      content,
+      contentFormat,
+      publishStatus: 'public',
+    });
+
+    console.log(`📤 Medium post created for user: ${userId.substring(0, 8)}... (postId: ${result.id})`);
+
+    return res.json({
+      success: true,
+      postId: result.id,
+      postUrl: result.url,
+    });
+  } catch (err: any) {
+    console.error('Medium post failed:', err);
+
+    return res.status(500).json({ error: err.message || 'Failed to publish to Medium' });
+  }
+});
+
+// ============================================================================
 // SCHEDULED POSTS PUBLISHER (Cloud Scheduler cron job endpoint)
 // ============================================================================
 
@@ -1317,7 +1437,6 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
     console.log(`📅 Processing ${duePosts.length} scheduled posts...`);
     let processed = 0;
     let failed = 0;
-
     for (const post of duePosts) {
       try {
         // Handle different platforms
@@ -1325,6 +1444,8 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
           await publishToLinkedIn(post, supabaseAdmin);
         } else if (post.platform === 'twitter') {
           await publishToX(post, supabaseAdmin);
+        } else if (post.platform === 'medium') {
+          await publishToMedium(post, supabaseAdmin);
         } else {
           throw new Error(`Unsupported platform: ${post.platform}`);
         }
@@ -1450,6 +1571,39 @@ async function publishToX(post: any, supabaseAdmin: any) {
       metrics: {
         tweet_id: result.tweetId,
         tweet_url: result.tweetUrl,
+        posted_at: new Date().toISOString()
+      },
+    })
+    .eq("id", post.id);
+}
+
+// Helper function to publish to Medium
+async function publishToMedium(post: any, supabaseAdmin: any) {
+  const { getMediumConnection, createMediumPost } = await import('./oauth/medium.js');
+
+  // Get Medium connection for this user
+  const connection = await getMediumConnection(post.user_id);
+
+  if (!connection) {
+    throw new Error("Medium not connected for this user");
+  }
+
+  // Post to Medium
+  const result = await createMediumPost(connection.accessToken, connection.accountId, {
+    title: post.title || post.content.substring(0, 100),
+    content: post.content,
+    contentFormat: 'markdown',
+    publishStatus: 'public',
+  });
+
+  // Update post status to Published
+  await supabaseAdmin
+    .from("scheduled_posts")
+    .update({
+      status: "Published",
+      metrics: {
+        medium_post_id: result.id,
+        medium_url: result.url,
         posted_at: new Date().toISOString()
       },
     })
