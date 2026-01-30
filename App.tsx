@@ -17,6 +17,8 @@ import KnownIssues from './pages/KnownIssues';
 import BetaGuide from './pages/BetaGuide';
 import BetaFeedback from './pages/BetaFeedback';
 import Settings from './pages/Settings';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -476,6 +478,10 @@ const AppContent: React.FC = () => {
         <Route path="/beta-feedback" element={<BetaFeedback />} />
 
         <Route path="/known-issues" element={<KnownIssues />} />
+
+        {/* Public legal pages */}
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

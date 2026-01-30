@@ -137,7 +137,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNewAnalysis, onViewResults }) =
         </div>
 
         {isNearLimit ? (
-          <div className="bg-gradient-to-br from-indigo-900 to-purple-900 p-6 rounded-xl border border-indigo-700 shadow-sm text-white flex flex-col justify-between relative overflow-hidden">
+          <div className="bg-linear-to-br from-indigo-900 to-purple-900 p-6 rounded-xl border border-indigo-700 shadow-sm text-white flex flex-col justify-between relative overflow-hidden">
             <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 bg-gray-100 opacity-10 rounded-full blur-xl"></div>
             <div className="z-10">
               <div className="flex items-center gap-2 mb-2 text-yellow-300 font-bold uppercase text-xs tracking-wider">
@@ -208,7 +208,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNewAnalysis, onViewResults }) =
               >
                 <div className="px-6 py-4 flex items-center justify-between">
                   <div className="flex items-center min-w-0 flex-1">
-                    <div className="flex-shrink-0 bg-indigo-50 p-2 rounded-lg">
+                    <div className="shrink-0 bg-indigo-50 p-2 rounded-lg">
                       <FileText className="h-6 w-6 text-primary" />
                     </div>
                     <div className="ml-4 min-w-0 flex-1 pr-4">

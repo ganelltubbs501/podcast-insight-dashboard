@@ -945,3 +945,170 @@ IMPORTANT RULES:
 
   return { response: text };
 }
+
+/**
+ * Suggest potential podcast guests based on episode context
+ */
+export async function suggestGuestsWithGemini(context: string): Promise<{
+  id: string;
+  name: string;
+  title: string;
+  bio: string;
+  expertise: string[];
+  status: string;
+  matchReason: string;
+}[]> {
+  const ai = getClient();
+  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const prompt = `You are an expert podcast guest researcher. Based on the following episode context, suggest 3-5 REAL, specific experts who would be excellent podcast guests.
+
+EPISODE CONTEXT:
+${context}
+
+IMPORTANT GUIDELINES:
+1. Suggest REAL people who are publicly known experts in the relevant field
+2. Include their actual title/role and a brief accurate bio
+3. Explain specifically why they'd be a good fit for THIS episode's topics
+4. Focus on people who:
+   - Are active speakers/authors/thought leaders
+   - Have publicly available contact info or are reachable through LinkedIn
+   - Would bring unique insights to the topics discussed
+5. Mix different types: academics, practitioners, authors, entrepreneurs, etc.
+
+Return suggestions as a JSON array with this exact structure for each guest.`;
+
+  const response = await retryWithBackoff(() =>
+    ai.models.generateContent({
+      model: modelId,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        temperature: 0.8,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: {
+                type: Type.STRING,
+                description: "Full name of the suggested guest"
+              },
+              title: {
+                type: Type.STRING,
+                description: "Current job title or role"
+              },
+              bio: {
+                type: Type.STRING,
+                description: "Brief bio (2-3 sentences) about their expertise and background"
+              },
+              expertise: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "List of 3-5 areas of expertise"
+              },
+              matchReason: {
+                type: Type.STRING,
+                description: "Specific reason why they'd be great for THIS episode's topics"
+              }
+            },
+            required: ["name", "title", "bio", "expertise", "matchReason"]
+          }
+        }
+      }
+    })
+  );
+
+  const text = response.text;
+  if (!text) throw new Error("No response from Gemini for guest suggestions.");
+
+  const suggestions = JSON.parse(text);
+
+  // Add id and status to each suggestion
+  return suggestions.map((guest: any, index: number) => ({
+    id: `suggested-${Date.now()}-${index}`,
+    name: guest.name,
+    title: guest.title,
+    bio: guest.bio,
+    expertise: guest.expertise || [],
+    status: 'Suggested',
+    matchReason: guest.matchReason
+  }));
+}
+
+/**
+ * Generate a personalized outreach email for a potential podcast guest
+ */
+export async function generateOutreachEmail(payload: {
+  guestName: string;
+  guestBio: string;
+  context: string;
+  podcastName?: string;
+  hostName?: string;
+}): Promise<{ subject: string; body: string }> {
+  const ai = getClient();
+  const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
+  const { guestName, guestBio, context, podcastName, hostName } = payload;
+
+  const systemPrompt = `You are an expert at writing personalized, professional podcast guest outreach emails. Your emails are:
+- Warm and genuine, not salesy or generic
+- Specific to the guest's background and expertise
+- Clear about why they'd be a great fit
+- Concise (under 200 words for the body)
+- Professional but conversational in tone
+
+IMPORTANT: Do NOT use placeholder brackets like [Your Name] or [Podcast Name]. If you don't have specific information, write something generic like "our podcast" or "Best regards".`;
+
+  const userPrompt = `Write a personalized outreach email to invite someone to be a guest on a podcast.
+
+GUEST INFORMATION:
+- Name: ${guestName}
+- Bio/Background: ${guestBio || "Expert in their field"}
+
+PODCAST CONTEXT:
+${context || "A podcast covering industry insights and expert perspectives"}
+
+${podcastName ? `Podcast Name: ${podcastName}` : ""}
+${hostName ? `Host Name: ${hostName}` : ""}
+
+Generate a compelling subject line and email body that:
+1. Shows you've done research on the guest (reference their specific work/expertise from their bio)
+2. Explains why they'd be valuable to the audience
+3. Mentions what topics you'd like to discuss (based on context)
+4. Includes a clear call-to-action
+5. Is warm and professional
+
+Return as JSON with "subject" and "body" fields.`;
+
+  const response = await retryWithBackoff(() =>
+    ai.models.generateContent({
+      model: modelId,
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.8,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            subject: {
+              type: Type.STRING,
+              description: "A compelling, personalized email subject line (under 60 characters)"
+            },
+            body: {
+              type: Type.STRING,
+              description: "The email body - professional, warm, and personalized (under 200 words)"
+            }
+          },
+          required: ["subject", "body"]
+        }
+      }
+    })
+  );
+
+  const text = response.text;
+  if (!text) throw new Error("No response from Gemini for outreach email.");
+
+  return JSON.parse(text);
+}

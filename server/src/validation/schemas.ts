@@ -27,7 +27,13 @@ const supportedAudioTypes = [
   'audio/x-m4a',
 ] as const;
 
-const allSupportedMimeTypes = [...supportedImageTypes, ...supportedAudioTypes] as const;
+const supportedDocumentTypes = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const;
+
+const allSupportedMimeTypes = [...supportedImageTypes, ...supportedAudioTypes, ...supportedDocumentTypes] as const;
 
 // Content input can be text or media (image/audio)
 const contentInputSchema = z.union([
@@ -38,7 +44,7 @@ const contentInputSchema = z.union([
   z.object({
     inlineData: z.object({
       mimeType: z.enum(allSupportedMimeTypes, {
-        message: 'Unsupported file type. Supported: images (PNG, JPEG, WebP) and audio (MP3, WAV, M4A)'
+        message: 'Unsupported file type. Supported: images (PNG, JPEG, WebP), audio (MP3, WAV, M4A), and documents (PDF, DOC, DOCX)'
       }),
       // Validate base64 format and size (max ~25MB base64 = ~18.75MB file)
       data: z.string()

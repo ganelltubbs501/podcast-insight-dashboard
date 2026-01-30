@@ -249,6 +249,7 @@ export async function schedulePost(post: {
   scheduledDate: string;
   status?: string;
   transcriptId?: string;
+  metadata?: Record<string, any>;
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -262,7 +263,7 @@ export async function schedulePost(post: {
       content: post.content,
       scheduled_date: post.scheduledDate,
       status: post.status || 'Scheduled',
-      metrics: null
+      metrics: post.metadata || null
     })
     .select(SCHEDULED_POST_SELECT)
     .single();

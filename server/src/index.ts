@@ -258,22 +258,194 @@ app.post("/api/chat", requireAuth, generalLimiter, async (req: AuthRequest, res)
   }
 });
 
-// Guest suggestions (based on transcript context) + auth
-app.post("/api/guests", requireAuth, async (req: AuthRequest, res) => {
+// AI Guest suggestions (based on transcript context) + auth
+app.post("/api/suggest-guests", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
+    const { context } = req.body ?? {};
+
     console.log(`👥 Guest suggestions request from user: ${userId.substring(0, 8)}...`);
 
-    const guests = [
-      { id: 'g1', name: 'Industry Expert A', title: 'Founder & CEO', bio: 'Thought leader in the space', expertise: ['strategy', 'growth'], status: 'Suggested', matchReason: 'Topical alignment' },
-      { id: 'g2', name: 'Practitioner B', title: 'Director', bio: 'Hands-on experience with implementation', expertise: ['implementation', 'tools'], status: 'Suggested', matchReason: 'Audience fit' }
-    ];
+    if (!context) {
+      return res.status(400).json({ error: "Context is required for guest suggestions" });
+    }
+
+    const { suggestGuestsWithGemini } = await import("./gemini.js");
+    const guests = await suggestGuestsWithGemini(context);
+
+    console.log(`✅ Generated ${guests.length} guest suggestions`);
     return res.json(guests);
   } catch (err: any) {
-    console.error("GUESTS ERROR:", err?.message);
+    console.error("GUESTS SUGGEST ERROR:", err?.message);
     return res.status(500).json({
       error: backendEnv.isDevelopment ? err?.message : "Server error"
     });
+  }
+});
+
+// ============================================================================
+// GUEST CRUD ENDPOINTS
+// ============================================================================
+
+// GET /api/guests - List all guests for user
+app.get("/api/guests", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const { data: guests, error } = await supabaseAdmin
+      .from('guests')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("GET GUESTS ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Transform snake_case to camelCase for frontend
+    const transformed = (guests || []).map((g: any) => ({
+      id: g.id,
+      name: g.name,
+      title: g.title,
+      bio: g.bio,
+      expertise: g.expertise || [],
+      status: g.status,
+      email: g.email,
+      website: g.website,
+      notes: g.notes,
+      matchReason: g.match_reason,
+      sourceTranscriptId: g.source_transcript_id,
+      createdAt: g.created_at,
+      updatedAt: g.updated_at,
+    }));
+
+    return res.json(transformed);
+  } catch (err: any) {
+    console.error("GET GUESTS ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/guests - Add a new guest
+app.post("/api/guests", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const guest = req.body;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    if (!guest.name) {
+      return res.status(400).json({ error: "Guest name is required" });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('guests')
+      .insert({
+        user_id: userId,
+        name: guest.name,
+        title: guest.title || null,
+        bio: guest.bio || null,
+        expertise: guest.expertise || [],
+        status: guest.status || 'Suggested',
+        email: guest.email || null,
+        website: guest.website || null,
+        notes: guest.notes || null,
+        match_reason: guest.matchReason || null,
+        source_transcript_id: guest.sourceTranscriptId || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("ADD GUEST ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ Guest added for user: ${userId.substring(0, 8)}... - ${guest.name}`);
+    return res.json(data);
+  } catch (err: any) {
+    console.error("ADD GUEST ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/guests/:id - Update a guest
+app.post("/api/guests/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const guestId = req.params.id;
+    const updates = req.body;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Build update object with snake_case
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.bio !== undefined) updateData.bio = updates.bio;
+    if (updates.expertise !== undefined) updateData.expertise = updates.expertise;
+    if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.email !== undefined) updateData.email = updates.email;
+    if (updates.website !== undefined) updateData.website = updates.website;
+    if (updates.notes !== undefined) updateData.notes = updates.notes;
+    if (updates.matchReason !== undefined) updateData.match_reason = updates.matchReason;
+
+    const { data, error } = await supabaseAdmin
+      .from('guests')
+      .update(updateData)
+      .eq('id', guestId)
+      .eq('user_id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("UPDATE GUEST ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ Guest updated: ${guestId}`);
+    return res.json(data);
+  } catch (err: any) {
+    console.error("UPDATE GUEST ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/guests/:id/delete - Delete a guest
+app.post("/api/guests/:id/delete", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const guestId = req.params.id;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('guests')
+      .delete()
+      .eq('id', guestId)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error("DELETE GUEST ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ Guest deleted: ${guestId}`);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("DELETE GUEST ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -281,14 +453,24 @@ app.post("/api/guests", requireAuth, async (req: AuthRequest, res) => {
 app.post("/api/outreach", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-    const { guestName, guestBio, context } = req.body ?? {};
+    const { guestName, guestBio, context, podcastName, hostName } = req.body ?? {};
 
     console.log(`📧 Outreach email request from user: ${userId.substring(0, 8)}...`);
 
-    const email = {
-      subject: `Invitation to be a guest on our podcast`,
-      body: `Hi ${guestName || 'there'},\n\nI've been following your work on ${guestBio || 'your expertise'} and think you'd be a perfect fit for our audience.\n\nWould you be interested in joining us to discuss ${(context || 'this topic').split('\n')[0]}?\n\nLooking forward to hearing from you!\n\nBest regards,\nPodcast Team`
-    };
+    if (!guestName) {
+      return res.status(400).json({ error: "Missing guestName" });
+    }
+
+    // Use Gemini to generate a personalized outreach email
+    const { generateOutreachEmail } = await import("./gemini.js");
+    const email = await generateOutreachEmail({
+      guestName,
+      guestBio: guestBio || "",
+      context: context || "",
+      podcastName,
+      hostName
+    });
+
     return res.json(email);
   } catch (err: any) {
     console.error("OUTREACH ERROR:", err?.message);
@@ -747,6 +929,162 @@ app.post("/api/integrations/linkedin/post", requireAuth, async (req: AuthRequest
     if (err.message.includes('expired') || err.message.includes('reconnect')) {
       return res.status(401).json({
         error: 'LinkedIn session expired. Please reconnect your account.',
+        reconnectRequired: true,
+      });
+    }
+
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// GMAIL OAUTH ENDPOINTS (Send Emails via Gmail)
+// ============================================================================
+
+app.get("/api/integrations/gmail/auth-url", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getGmailAuthUrl } = await import('./oauth/gmail.js');
+
+    const clientId = process.env.GOOGLE_CLIENT_ID || '';
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ error: 'Gmail OAuth not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.' });
+    }
+
+    const redirectUri = `${apiPublicUrl}/api/integrations/gmail/callback`;
+    const config = { clientId, clientSecret, redirectUri };
+
+    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString('base64url');
+
+    console.log(`📧 Gmail auth request from user: ${userId.substring(0, 8)}...`);
+
+    const authUrl = getGmailAuthUrl(config, state);
+    return res.json({ authUrl });
+  } catch (err: any) {
+    console.error('Gmail auth URL generation failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/integrations/gmail/callback", async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
+
+    if (error) {
+      console.error('Gmail OAuth error:', error, error_description);
+      return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+    }
+
+    if (!code || !state) {
+      return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent('Missing authorization code')}`);
+    }
+
+    let userId: string;
+    try {
+      const stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
+      userId = stateData.userId;
+      if (Date.now() - stateData.ts > 10 * 60 * 1000) {
+        return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent('Authorization expired')}`);
+      }
+    } catch {
+      return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent('Invalid state')}`);
+    }
+
+    const { exchangeGmailCode, getGmailProfile, storeGmailConnection } = await import('./oauth/gmail.js');
+
+    const clientId = process.env.GOOGLE_CLIENT_ID || '';
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+    const redirectUri = `${apiPublicUrl}/api/integrations/gmail/callback`;
+    const config = { clientId, clientSecret, redirectUri };
+
+    const tokens = await exchangeGmailCode(config, code as string);
+    const profile = await getGmailProfile(tokens.accessToken);
+    await storeGmailConnection(userId, tokens, profile);
+
+    console.log(`✅ Gmail connected for user: ${userId.substring(0, 8)}... (${profile.email})`);
+    return res.redirect(`${appPublicUrl}/#/settings?gmail=connected&email=${encodeURIComponent(profile.email)}`);
+  } catch (err: any) {
+    console.error('Gmail callback failed:', err);
+    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
+    return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+  }
+});
+
+app.get("/api/integrations/gmail/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getGmailConnection } = await import('./oauth/gmail.js');
+
+    const connection = await getGmailConnection(userId);
+
+    if (!connection) {
+      return res.json({ connected: false });
+    }
+
+    return res.json({
+      connected: true,
+      email: connection.email,
+      name: connection.name,
+    });
+  } catch (err: any) {
+    console.error('Gmail status check failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/integrations/gmail/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { removeGmailConnection } = await import('./oauth/gmail.js');
+
+    await removeGmailConnection(userId);
+    console.log(`🔌 Gmail disconnected for user: ${userId.substring(0, 8)}...`);
+
+    return res.json({ success: true, message: 'Gmail disconnected' });
+  } catch (err: any) {
+    console.error('Gmail disconnect failed:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/integrations/gmail/send", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { to, subject, body } = req.body;
+
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'Missing required fields: to, subject, body' });
+    }
+
+    const { getValidGmailToken, sendGmailEmail } = await import('./oauth/gmail.js');
+
+    const clientId = process.env.GOOGLE_CLIENT_ID || '';
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+    const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+    const redirectUri = `${apiPublicUrl}/api/integrations/gmail/callback`;
+    const config = { clientId, clientSecret, redirectUri };
+
+    const accessToken = await getValidGmailToken(config, userId);
+    const result = await sendGmailEmail(accessToken, to, subject, body);
+
+    console.log(`📤 Email sent via Gmail for user: ${userId.substring(0, 8)}... to: ${to}`);
+
+    return res.json({
+      success: true,
+      messageId: result.messageId,
+      threadId: result.threadId,
+    });
+  } catch (err: any) {
+    console.error('Gmail send failed:', err);
+
+    if (err.message.includes('not connected')) {
+      return res.status(401).json({
+        error: 'Gmail not connected. Please connect your account first.',
         reconnectRequired: true,
       });
     }
@@ -1384,6 +1722,129 @@ app.post("/api/integrations/medium/post", requireAuth, async (req: AuthRequest, 
 });
 
 // ============================================================================
+// EMAIL LISTS MANAGEMENT
+// ============================================================================
+
+// Get all email lists for the current user
+app.get("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    const { data, error } = await supabase
+      .from("email_lists")
+      .select("id, name, email_count, created_at, updated_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    return res.json(data || []);
+  } catch (err: any) {
+    console.error("Email lists fetch error:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch email lists" });
+  }
+});
+
+// Get a single email list with all emails
+app.get("/api/email-lists/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+
+    const { data, error } = await supabase
+      .from("email_lists")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: "Email list not found" });
+
+    return res.json(data);
+  } catch (err: any) {
+    console.error("Email list fetch error:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch email list" });
+  }
+});
+
+// Create a new email list (from CSV data)
+app.post("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { name, emails } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({ error: "List name is required" });
+    }
+
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ error: "At least one email is required" });
+    }
+
+    // Validate and clean emails
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const validEmails = emails
+      .map((e: string) => e.trim().toLowerCase())
+      .filter((e: string) => emailRegex.test(e));
+
+    if (validEmails.length === 0) {
+      return res.status(400).json({ error: "No valid email addresses found" });
+    }
+
+    // Remove duplicates
+    const uniqueEmails = [...new Set(validEmails)];
+
+    const { data, error } = await supabase
+      .from("email_lists")
+      .insert({
+        user_id: userId,
+        name: name.trim(),
+        emails: uniqueEmails,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    console.log(`📧 Email list created: "${name}" with ${uniqueEmails.length} emails for user ${userId.substring(0, 8)}...`);
+
+    return res.json({
+      id: data.id,
+      name: data.name,
+      email_count: uniqueEmails.length,
+      created_at: data.created_at,
+    });
+  } catch (err: any) {
+    console.error("Email list create error:", err);
+    return res.status(500).json({ error: err.message || "Failed to create email list" });
+  }
+});
+
+// Delete an email list
+app.delete("/api/email-lists/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+
+    const { error } = await supabase
+      .from("email_lists")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
+    if (error) throw error;
+
+    console.log(`📧 Email list deleted: ${id} for user ${userId.substring(0, 8)}...`);
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("Email list delete error:", err);
+    return res.status(500).json({ error: err.message || "Failed to delete email list" });
+  }
+});
+
+// ============================================================================
 // SCHEDULED POSTS PUBLISHER (Cloud Scheduler cron job endpoint)
 // ============================================================================
 
@@ -1419,7 +1880,7 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
     const { data: duePosts, error: fetchError } = await supabaseAdmin
       .from("scheduled_posts")
       .select("*")
-      .in("platform", ["linkedin", "twitter"])
+      .in("platform", ["linkedin", "twitter", "email"])
       .eq("status", "Scheduled")
       .lte("scheduled_date", now)
       .limit(25);
@@ -1446,6 +1907,8 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
           await publishToX(post, supabaseAdmin);
         } else if (post.platform === 'medium') {
           await publishToMedium(post, supabaseAdmin);
+        } else if (post.platform === 'email') {
+          await publishToEmail(post, supabaseAdmin);
         } else {
           throw new Error(`Unsupported platform: ${post.platform}`);
         }
@@ -1608,6 +2071,93 @@ async function publishToMedium(post: any, supabaseAdmin: any) {
       },
     })
     .eq("id", post.id);
+}
+
+// Helper function to publish email via Gmail
+async function publishToEmail(post: any, supabaseAdmin: any) {
+  const { getGmailConnection, getValidGmailToken, sendGmailEmail } = await import('./oauth/gmail.js');
+
+  // Get recipients from metrics (stored during scheduling)
+  // Support both array (recipientEmails) and single email (recipientEmail) for backwards compatibility
+  const recipientEmails: string[] = post.metrics?.recipientEmails || [];
+  const singleRecipient = post.metrics?.recipientEmail;
+
+  // Build final recipient list
+  const recipients = recipientEmails.length > 0 ? recipientEmails : (singleRecipient ? [singleRecipient] : []);
+
+  if (recipients.length === 0) {
+    throw new Error("No recipient email specified for scheduled email");
+  }
+
+  // Get Gmail connection for this user
+  const connection = await getGmailConnection(post.user_id);
+  if (!connection) {
+    throw new Error("Gmail not connected for this user");
+  }
+
+  // Get config for token refresh
+  const clientId = process.env.GOOGLE_CLIENT_ID || '';
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+  const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+  const redirectUri = `${apiPublicUrl}/api/integrations/gmail/callback`;
+  const config = { clientId, clientSecret, redirectUri };
+
+  // Get valid token (refresh if needed)
+  const accessToken = await getValidGmailToken(config, post.user_id);
+
+  // Parse subject and body from content (format: "Subject: {subject}\n\n{body}")
+  const content = post.content || '';
+  const subjectMatch = content.match(/^Subject:\s*(.+?)(?:\n|$)/);
+  const subject = subjectMatch ? subjectMatch[1].trim() : 'Scheduled Email';
+  const body = content.replace(/^Subject:\s*.+?\n\n?/, '').trim();
+
+  // Send email to all recipients
+  const results: { email: string; messageId?: string; error?: string }[] = [];
+
+  for (const recipientEmail of recipients) {
+    try {
+      const result = await sendGmailEmail(accessToken, recipientEmail, subject, body);
+      results.push({
+        email: recipientEmail,
+        messageId: result.messageId,
+      });
+      console.log(`📧 Email sent to ${recipientEmail} (messageId: ${result.messageId})`);
+    } catch (err: any) {
+      console.error(`📧 Failed to send email to ${recipientEmail}:`, err.message);
+      results.push({
+        email: recipientEmail,
+        error: err.message,
+      });
+    }
+  }
+
+  // Count successes and failures
+  const successCount = results.filter(r => r.messageId).length;
+  const failureCount = results.filter(r => r.error).length;
+
+  // Update post status to Published (or Failed if all failed)
+  const finalStatus = successCount > 0 ? "Published" : "Failed";
+
+  await supabaseAdmin
+    .from("scheduled_posts")
+    .update({
+      status: finalStatus,
+      metrics: {
+        ...post.metrics,
+        results,
+        sent_count: successCount,
+        failed_count: failureCount,
+        sent_to: recipients,
+        posted_at: new Date().toISOString()
+      },
+    })
+    .eq("id", post.id);
+
+  if (failureCount > 0 && successCount > 0) {
+    console.log(`📧 Email partially sent: ${successCount} succeeded, ${failureCount} failed`);
+  } else if (failureCount > 0) {
+    throw new Error(`Failed to send email to all ${failureCount} recipients`);
+  }
 }
 
 // In-memory storage for scheduled posts (in production, use Supabase)

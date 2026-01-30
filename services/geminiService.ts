@@ -73,7 +73,7 @@ export const analyzeTranscript = async (
  * We'll wire them after we confirm the analysis path is stable.
  */
 export const suggestGuests = async (_context: string): Promise<Guest[]> => {
-  return postJSON<Guest[]>('/api/guests', { context: _context });
+  return postJSON<Guest[]>('/api/suggest-guests', { context: _context });
 };
 
 export const generateOutreachEmail = async (

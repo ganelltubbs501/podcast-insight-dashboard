@@ -182,10 +182,10 @@ const ConnectPodcast: React.FC = () => {
               <img
                 src={connectionResult.podcast.imageUrl}
                 alt={connectionResult.podcast.title}
-                className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+                className="w-20 h-20 rounded-lg object-cover shrink-0"
               />
             ) : (
-              <div className="w-20 h-20 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <div className="w-20 h-20 bg-green-100 rounded-lg flex items-center justify-center shrink-0">
                 <Headphones className="w-10 h-10 text-green-600" />
               </div>
             )}
@@ -300,8 +300,7 @@ const ConnectPodcast: React.FC = () => {
         </button>
         <button
           onClick={handleContinue}
-          disabled={!selectedSource}
-          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 flex items-center justify-center gap-2 bg-primary text-white px-6 py-3 rounded-lg font-medium hover:bg-primary/90 transition"
         >
           Continue to Dashboard
           <ArrowRight className="w-5 h-5" />
@@ -309,22 +308,13 @@ const ConnectPodcast: React.FC = () => {
       </div>
 
       {/* Skip option */}
-      <div className="mt-6 text-center space-y-3">
+      <div className="mt-4 text-center">
         <button
           onClick={() => navigate("/podcast-analytics")}
           className="text-sm text-primary hover:text-primary/80 underline transition"
         >
           Skip for now — go to Podcast Analytics
         </button>
-        <p className="text-xs text-textMuted">
-          or{" "}
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="text-primary hover:text-primary/80 underline"
-          >
-            go to Main Dashboard
-          </button>
-        </p>
       </div>
     </div>
   );

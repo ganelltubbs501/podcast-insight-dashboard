@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter } from 'lucide-react';
+import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter, Mail, Upload, Trash2, Users, FileSpreadsheet } from 'lucide-react';
 import { getLinkedInStatus, connectLinkedIn, disconnectLinkedIn } from '../services/linkedin';
 import { getTwitterStatus, connectTwitter, disconnectTwitter, TwitterStatus } from '../services/twitter';
 import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
 import { getMediumStatus, connectMedium, disconnectMedium, MediumStatus } from '../services/medium';
+import { getGmailStatus, getGmailAuthUrl, disconnectGmail, GmailStatus } from '../services/gmail';
+import { getEmailLists, createEmailList, deleteEmailList, parseCSVForEmails, EmailList } from '../services/emailLists';
 
 interface LinkedInConnection {
   connected: boolean;
@@ -45,10 +47,26 @@ const Settings: React.FC = () => {
   const [showMediumModal, setShowMediumModal] = useState(false);
   const [mediumToken, setMediumToken] = useState('');
 
+  // Gmail state
+  const [gmail, setGmail] = useState<GmailStatus | null>(null);
+  const [gmailLoading, setGmailLoading] = useState(true);
+  const [gmailConnecting, setGmailConnecting] = useState(false);
+  const [gmailDisconnecting, setGmailDisconnecting] = useState(false);
+
   // Podcast state
   const [podcast, setPodcast] = useState<PodcastStatus | null>(null);
   const [podcastLoading, setPodcastLoading] = useState(true);
   const [disconnectingPodcast, setDisconnectingPodcast] = useState(false);
+
+  // Email Lists state
+  const [emailLists, setEmailLists] = useState<EmailList[]>([]);
+  const [emailListsLoading, setEmailListsLoading] = useState(true);
+  const [showEmailListModal, setShowEmailListModal] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [parsedEmails, setParsedEmails] = useState<string[]>([]);
+  const [creatingList, setCreatingList] = useState(false);
+  const [deletingListId, setDeletingListId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // General state
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -109,6 +127,30 @@ const Settings: React.FC = () => {
       setSearchParams(searchParams, { replace: true });
     }
 
+    // Gmail callback
+    const gmailStatus = searchParams.get('gmail');
+    const gmailEmail = searchParams.get('email');
+    const gmailMessage = searchParams.get('message');
+
+    if (gmailStatus === 'connected') {
+      setMessage({
+        type: 'success',
+        text: gmailEmail ? `Gmail connected as ${gmailEmail}!` : 'Gmail connected successfully!',
+      });
+      loadGmailStatus();
+      searchParams.delete('gmail');
+      searchParams.delete('email');
+      setSearchParams(searchParams, { replace: true });
+    } else if (gmailStatus === 'error') {
+      setMessage({
+        type: 'error',
+        text: gmailMessage || 'Failed to connect Gmail. Please try again.',
+      });
+      searchParams.delete('gmail');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
+    }
+
   }, [searchParams, setSearchParams]);
 
   // Load all statuses on mount
@@ -116,7 +158,9 @@ const Settings: React.FC = () => {
     loadLinkedInStatus();
     loadTwitterStatus();
     loadMediumStatus();
+    loadGmailStatus();
     loadPodcastStatus();
+    loadEmailLists();
   }, []);
 
   const loadLinkedInStatus = async () => {
@@ -155,6 +199,19 @@ const Settings: React.FC = () => {
       setMedium({ connected: false });
     } finally {
       setMediumLoading(false);
+    }
+  };
+
+  const loadGmailStatus = async () => {
+    try {
+      setGmailLoading(true);
+      const status = await getGmailStatus();
+      setGmail(status);
+    } catch (err: any) {
+      console.error('Failed to load Gmail status:', err);
+      setGmail({ connected: false });
+    } finally {
+      setGmailLoading(false);
     }
   };
 
@@ -295,6 +352,37 @@ const Settings: React.FC = () => {
     }
   };
 
+  // Gmail handlers
+  const handleConnectGmail = async () => {
+    try {
+      setGmailConnecting(true);
+      setMessage(null);
+      const authUrl = await getGmailAuthUrl();
+      window.location.href = authUrl;
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to start Gmail connection' });
+      setGmailConnecting(false);
+    }
+  };
+
+  const handleDisconnectGmail = async () => {
+    if (!confirm('Are you sure you want to disconnect Gmail? You will need to reconnect to send emails.')) {
+      return;
+    }
+
+    try {
+      setGmailDisconnecting(true);
+      setMessage(null);
+      await disconnectGmail();
+      setGmail({ connected: false });
+      setMessage({ type: 'success', text: 'Gmail disconnected successfully' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Gmail' });
+    } finally {
+      setGmailDisconnecting(false);
+    }
+  };
+
   // Podcast handlers
   const handleDisconnectPodcast = async () => {
     if (!confirm('Are you sure you want to disconnect your podcast? This will remove all podcast data including episodes, metrics, and projections. This action cannot be undone.')) {
@@ -312,6 +400,84 @@ const Settings: React.FC = () => {
       setMessage({ type: 'error', text: err.message || 'Failed to disconnect podcast' });
     } finally {
       setDisconnectingPodcast(false);
+    }
+  };
+
+  // Email Lists handlers
+  const loadEmailLists = async () => {
+    try {
+      setEmailListsLoading(true);
+      const lists = await getEmailLists();
+      setEmailLists(lists);
+    } catch (err: any) {
+      console.error('Failed to load email lists:', err);
+    } finally {
+      setEmailListsLoading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const emails = parseCSVForEmails(content);
+      setParsedEmails(emails);
+
+      // Auto-suggest list name from file name
+      const fileName = file.name.replace(/\.[^/.]+$/, '');
+      if (!newListName) {
+        setNewListName(fileName);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCreateEmailList = async () => {
+    if (!newListName.trim()) {
+      setMessage({ type: 'error', text: 'Please enter a name for the email list' });
+      return;
+    }
+
+    if (parsedEmails.length === 0) {
+      setMessage({ type: 'error', text: 'No valid emails found in the uploaded file' });
+      return;
+    }
+
+    try {
+      setCreatingList(true);
+      setMessage(null);
+      await createEmailList(newListName.trim(), parsedEmails);
+      setMessage({ type: 'success', text: `Email list "${newListName}" created with ${parsedEmails.length} emails` });
+      setShowEmailListModal(false);
+      setNewListName('');
+      setParsedEmails([]);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      loadEmailLists();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to create email list' });
+    } finally {
+      setCreatingList(false);
+    }
+  };
+
+  const handleDeleteEmailList = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeletingListId(id);
+      setMessage(null);
+      await deleteEmailList(id);
+      setMessage({ type: 'success', text: `Email list "${name}" deleted` });
+      loadEmailLists();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to delete email list' });
+    } finally {
+      setDeletingListId(null);
     }
   };
 
@@ -560,6 +726,59 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
+          {/* Gmail Connection */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-red-500 rounded-lg flex items-center justify-center">
+                <Mail className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Gmail</h3>
+                {gmailLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : gmail?.connected ? (
+                  <p className="text-sm text-green-600 font-medium">
+                    Connected as {gmail.email}
+                  </p>
+                ) : (
+                  <p className="text-sm text-textMuted">Send outreach emails directly</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {gmailLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : gmail?.connected ? (
+                <button
+                  onClick={handleDisconnectGmail}
+                  disabled={gmailDisconnecting}
+                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                >
+                  {gmailDisconnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={handleConnectGmail}
+                  disabled={gmailConnecting}
+                  className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {gmailConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
+                  )}
+                  Connect Gmail
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Facebook Connection - Coming Soon */}
           <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300 opacity-75">
             <div className="flex items-center gap-4">
@@ -717,6 +936,176 @@ const Settings: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Email Lists Section */}
+      <div className="mt-6 bg-gray-100 rounded-xl border border-gray-300 shadow-sm">
+        <div className="p-6 border-b border-gray-300 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-textPrimary">Email Lists</h2>
+            <p className="text-sm text-textMuted mt-1">
+              Import CSV files with email addresses for email series campaigns
+            </p>
+          </div>
+          <button
+            onClick={() => setShowEmailListModal(true)}
+            className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Import CSV
+          </button>
+        </div>
+
+        <div className="p-6">
+          {emailListsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 text-textMuted animate-spin" />
+            </div>
+          ) : emailLists.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-textMuted">No email lists yet</p>
+              <p className="text-sm text-textMuted mt-1">Import a CSV file to create your first list</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {emailLists.map((list) => (
+                <div
+                  key={list.id}
+                  className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <FileSpreadsheet className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-textPrimary">{list.name}</h3>
+                      <p className="text-sm text-textMuted">
+                        {list.email_count} email{list.email_count !== 1 ? 's' : ''} • Created {new Date(list.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteEmailList(list.id, list.name)}
+                    disabled={deletingListId === list.id}
+                    className="p-2 text-textMuted hover:text-red-600 transition disabled:opacity-50"
+                    title="Delete list"
+                  >
+                    {deletingListId === list.id ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-5 w-5" />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Email List Import Modal */}
+      {showEmailListModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-textPrimary">Import Email List</h2>
+              <button
+                onClick={() => {
+                  setShowEmailListModal(false);
+                  setNewListName('');
+                  setParsedEmails([]);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
+                }}
+                className="text-textMuted hover:text-textPrimary"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* File Upload */}
+              <div>
+                <label className="block text-sm font-medium text-textSecondary mb-2">
+                  CSV File
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-primary transition cursor-pointer"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <Upload className="h-8 w-8 text-textMuted mx-auto mb-2" />
+                  <p className="text-sm text-textSecondary">Click to upload CSV</p>
+                  <p className="text-xs text-textMuted mt-1">Supports CSV with "email" column or single column of emails</p>
+                </div>
+              </div>
+
+              {/* Parsed Results */}
+              {parsedEmails.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-green-700">
+                    <Check className="h-4 w-4" />
+                    <span className="text-sm font-medium">Found {parsedEmails.length} valid email{parsedEmails.length !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="mt-2 max-h-24 overflow-y-auto">
+                    <p className="text-xs text-green-600">
+                      {parsedEmails.slice(0, 5).join(', ')}
+                      {parsedEmails.length > 5 && ` ... and ${parsedEmails.length - 5} more`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* List Name */}
+              <div>
+                <label className="block text-sm font-medium text-textSecondary mb-2">
+                  List Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Newsletter Subscribers"
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-200 border border-gray-300 rounded-lg text-textPrimary outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowEmailListModal(false);
+                    setNewListName('');
+                    setParsedEmails([]);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-textSecondary text-sm font-medium rounded-lg hover:bg-gray-300 transition border border-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateEmailList}
+                  disabled={creatingList || parsedEmails.length === 0 || !newListName.trim()}
+                  className="flex-1 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {creatingList ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Create List
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* How it works */}
       {!linkedIn?.connected && !linkedInLoading && (

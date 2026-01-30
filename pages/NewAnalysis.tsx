@@ -39,14 +39,63 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
   // Handle Text/File Upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+    const fileExtension = fileName.split('.').pop();
+
+    // For PDF files, send as binary to Gemini (it supports PDF natively)
+    if (fileExtension === 'pdf') {
       const reader = new FileReader();
       reader.onload = (event) => {
-        setContent(event.target?.result as string);
-        setMediaData(null);
+        const base64String = (event.target?.result as string).split(',')[1];
+        setMediaData({
+          mimeType: 'application/pdf',
+          data: base64String
+        });
+        setContent(`[PDF Uploaded: ${file.name}]`);
       };
-      reader.readAsText(file);
+      reader.readAsDataURL(file);
+      return;
     }
+
+    // For DOCX files, send as binary to Gemini
+    if (fileExtension === 'docx') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = (event.target?.result as string).split(',')[1];
+        setMediaData({
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          data: base64String
+        });
+        setContent(`[DOCX Uploaded: ${file.name}]`);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // For DOC files (legacy Word format), send as binary
+    if (fileExtension === 'doc') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = (event.target?.result as string).split(',')[1];
+        setMediaData({
+          mimeType: 'application/msword',
+          data: base64String
+        });
+        setContent(`[DOC Uploaded: ${file.name}]`);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // For text files, read as text (original behavior)
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setContent(event.target?.result as string);
+      setMediaData(null);
+    };
+    reader.readAsText(file);
   };
 
   // Handle Image Capture/Upload
@@ -273,17 +322,17 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
           
           {activeTab === 'upload' && (
             <div className="mb-6 h-64 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center bg-gray-100 hover:bg-gray-100 transition">
-              <input 
-                type="file" 
-                accept=".txt" 
-                onChange={handleFileUpload} 
-                className="hidden" 
+              <input
+                type="file"
+                accept=".txt,.pdf,.doc,.docx"
+                onChange={handleFileUpload}
+                className="hidden"
                 id="file-upload"
               />
               <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
                  <FileUp className="h-10 w-10 text-textMuted mb-3" />
                  <span className="text-sm font-medium text-textSecondary">Click to upload transcript</span>
-                 <span className="text-xs text-textMuted mt-1">.txt files only</span>
+                 <span className="text-xs text-textMuted mt-1">Supports .txt, .pdf, .doc, .docx</span>
               </label>
               {content && <p className="mt-4 text-sm text-accent-emerald font-medium truncate max-w-xs px-4">File loaded successfully!</p>}
             </div>
@@ -436,7 +485,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                   {/* Language & Dialect */}
                   <div className="grid grid-cols-2 gap-4">
                      <div>
-                        <label className="block text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
+                        <label className="text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
                            <Globe className="h-4 w-4" /> Language
                         </label>
                         <select 
@@ -454,7 +503,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
                         </select>
                      </div>
                      <div>
-                        <label className="block text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
+                        <label className="text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
                            <Mic2 className="h-4 w-4" /> Dialect/Accent
                         </label>
                         <input 
@@ -469,7 +518,7 @@ const NewAnalysis: React.FC<NewAnalysisProps> = ({ onBack, onComplete }) => {
 
                   {/* Custom Keywords */}
                   <div>
-                     <label className="block text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
+                     <label className="text-sm font-bold text-textSecondary mb-2 flex items-center gap-1">
                         <Tag className="h-4 w-4" /> Custom Keywords
                      </label>
                      <div className="flex gap-2 mb-2">

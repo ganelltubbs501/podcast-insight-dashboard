@@ -21,6 +21,7 @@ import {
 
 import { getStoredUser } from '../services/auth';
 import { getLinkedInStatus, connectLinkedIn } from '../services/linkedin';
+import { getTwitterStatus, connectTwitter } from '../services/twitter';
 
 import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
@@ -71,6 +72,10 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   // LinkedIn connection check state
   const [showConnectLinkedInModal, setShowConnectLinkedInModal] = useState(false);
   const [isCheckingLinkedIn, setIsCheckingLinkedIn] = useState(false);
+
+  // X/Twitter connection check state
+  const [showConnectXModal, setShowConnectXModal] = useState(false);
+  const [isCheckingX, setIsCheckingX] = useState(false);
 
   // Email Export State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -328,9 +333,9 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     return '';
   };
 
-  // Check LinkedIn connection before opening schedule modal
+  // Check LinkedIn/X connection before opening schedule modal
   const handleScheduleClick = async () => {
-    // Only check for LinkedIn platform
+    // Check for LinkedIn platform
     if (activePlatform === 'linkedin') {
       setIsCheckingLinkedIn(true);
       try {
@@ -352,7 +357,31 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
         setIsCheckingLinkedIn(false);
       }
     }
-    // If connected (or not LinkedIn), open the schedule modal
+
+    // Check for X/Twitter platform
+    if (activePlatform === 'twitter') {
+      setIsCheckingX(true);
+      try {
+        const status = await getTwitterStatus();
+        if (!status.connected) {
+          setShowConnectXModal(true);
+          return;
+        }
+        if (status.tokenExpired) {
+          setShowConnectXModal(true);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to check X status:', e);
+        // If we can't check status, show connect modal to be safe
+        setShowConnectXModal(true);
+        return;
+      } finally {
+        setIsCheckingX(false);
+      }
+    }
+
+    // If connected (or platform doesn't require connection), open the schedule modal
     setShowScheduleModal(true);
   };
 
@@ -361,34 +390,70 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
 
     setIsScheduling(true);
     try {
-      const dateTime = new Date(`${scheduleDate}T${scheduleTime}`);
-      const content = getContentForPlatform(activePlatform, transcript.result.socialContent);
+      const startDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
 
-      // Call the backend API to schedule the post
-      await schedulePost({
-        platform: activePlatform,
-        content: content,
-        scheduledDate: dateTime.toISOString(),
-        status: 'Scheduled',
-        transcriptId: transcript.id
-      });
+      // Special handling for Twitter threads - schedule 1 tweet per day
+      if (activePlatform === 'twitter' && transcript.result.socialContent.twitterThread && transcript.result.socialContent.twitterThread.length > 1) {
+        const tweets = transcript.result.socialContent.twitterThread;
 
-      // Update local state immediately to show the "Scheduled" badge
-      setScheduledByPlatform(prev => ({
-        ...prev,
-        [activePlatform]: {
-          scheduledDate: dateTime.toISOString(),
-          status: 'Scheduled'
+        // Schedule each tweet on a different day
+        for (let i = 0; i < tweets.length; i++) {
+          const tweetDateTime = new Date(startDateTime.getTime() + (i * 24 * 60 * 60 * 1000)); // Add i days
+          await schedulePost({
+            platform: 'twitter',
+            content: tweets[i],
+            scheduledDate: tweetDateTime.toISOString(),
+            status: 'Scheduled',
+            transcriptId: transcript.id,
+            metadata: {
+              threadIndex: i + 1,
+              totalTweets: tweets.length
+            }
+          });
         }
-      }));
+
+        // Update local state
+        setScheduledByPlatform(prev => ({
+          ...prev,
+          [activePlatform]: {
+            scheduledDate: startDateTime.toISOString(),
+            status: 'Scheduled'
+          }
+        }));
+
+        // Show success notification
+        const endDate = new Date(startDateTime.getTime() + ((tweets.length - 1) * 24 * 60 * 60 * 1000));
+        const successMessage = `✓ ${tweets.length} X posts scheduled from ${startDateTime.toLocaleDateString()} to ${endDate.toLocaleDateString()} (1 per day)`;
+        setScheduleNotification({ message: successMessage, type: 'success' });
+      } else {
+        // Standard single post scheduling for other platforms
+        const content = getContentForPlatform(activePlatform, transcript.result.socialContent);
+
+        await schedulePost({
+          platform: activePlatform,
+          content: content,
+          scheduledDate: startDateTime.toISOString(),
+          status: 'Scheduled',
+          transcriptId: transcript.id
+        });
+
+        // Update local state immediately to show the "Scheduled" badge
+        setScheduledByPlatform(prev => ({
+          ...prev,
+          [activePlatform]: {
+            scheduledDate: startDateTime.toISOString(),
+            status: 'Scheduled'
+          }
+        }));
+
+        // Show success notification
+        const platformName = activePlatform === 'teaser' ? 'Newsletter Teaser' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1);
+        const successMessage = `✓ ${platformName} post scheduled for ${startDateTime.toLocaleDateString()} at ${startDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        setScheduleNotification({ message: successMessage, type: 'success' });
+      }
 
       // Also refresh from DB for consistency
       loadScheduledPosts();
-
-      // Show success notification
-      const platformName = activePlatform === 'teaser' ? 'Newsletter Teaser' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1);
-      const successMessage = `✓ ${platformName} post scheduled for ${dateTime.toLocaleDateString()} at ${dateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-      setScheduleNotification({ message: successMessage, type: 'success' });
 
       // Auto-dismiss notification after 5 seconds
       setTimeout(() => setScheduleNotification(null), 5000);
@@ -1361,6 +1426,20 @@ ${(transcript.content || '').substring(0, 1000)}
                   >
                     {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
                   </button>
+                  {repurposed.emailSeries && repurposed.emailSeries.length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSeriesScheduleType('email');
+                        setSeriesScheduleItems(repurposed.emailSeries || []);
+                        setShowSeriesScheduleWizard(true);
+                      }}
+                      className="px-3 py-1 bg-primary text-white rounded-md text-sm hover:bg-primary/90 transition flex items-center gap-1"
+                    >
+                      <CalendarIcon className="h-3 w-3" />
+                      Schedule Series
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1657,16 +1736,20 @@ ${(transcript.content || '').substring(0, 1000)}
               <p className="text-xs text-textMuted mt-1">Optimized content ready to post</p>
             </div>
             <div className="flex items-center gap-2">
-              {activePlatform !== 'tiktok' && activePlatform !== 'youtube' && (
+              {(activePlatform === 'facebook' || activePlatform === 'tiktok' || activePlatform === 'youtube') ? (
+                <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg font-medium">
+                  Scheduling Coming Soon
+                </span>
+              ) : (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     handleScheduleClick();
                   }}
-                  disabled={isCheckingLinkedIn}
+                  disabled={isCheckingLinkedIn || isCheckingX}
                   className="text-textSecondary hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 transition disabled:opacity-50"
                 >
-                  {isCheckingLinkedIn ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
+                  {(isCheckingLinkedIn || isCheckingX) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
                 </button>
               )}
               <button
@@ -1681,15 +1764,7 @@ ${(transcript.content || '').substring(0, 1000)}
             </div>
           </div>
           <div className="p-6 max-h-150 overflow-y-auto">
-            {(activePlatform === 'tiktok' || activePlatform === 'youtube') ? (
-              <div className="flex items-center justify-center h-75">
-                <div className="text-center">
-                  <Video className="h-12 w-12 text-textMuted mx-auto mb-3 opacity-50" />
-                  <p className="text-textMuted font-medium mb-2">Video publishing not supported yet</p>
-                  <p className="text-sm text-textMuted max-w-sm">Export the script and shot list to manually create and publish video content.</p>
-                </div>
-              </div>
-            ) : activePlatform === 'twitter' ? (
+            {activePlatform === 'twitter' ? (
               <div className="space-y-4">
                 {socialContent.twitterThread?.map((tweet: string, idx: number) => (
                   <div key={idx} className="bg-gray-100 p-4 rounded-lg text-sm text-textBody border border-gray-300 relative">
@@ -1704,6 +1779,9 @@ ${(transcript.content || '').substring(0, 1000)}
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
                 {activePlatform === 'linkedin' && socialContent.linkedinPost}
+                {activePlatform === 'facebook' && socialContent.facebookPost}
+                {activePlatform === 'tiktok' && socialContent.tiktokScript}
+                {activePlatform === 'youtube' && socialContent.youtubeDescription}
                 {activePlatform === 'email' && `Subject: ${socialContent.emailNewsletter?.subject}\n\n${socialContent.emailNewsletter?.body}`}
                 {activePlatform === 'medium' && socialContent.mediumArticle}
                 {activePlatform === 'teaser' && `Subject: ${socialContent.newsletterTeaser?.subject}\n\n${socialContent.newsletterTeaser?.body}`}
@@ -2192,9 +2270,18 @@ ${(transcript.content || '').substring(0, 1000)}
               <CalendarIcon className="h-5 w-5 text-primary" />
               Schedule Post
             </h3>
-            <p className="text-sm text-textMuted mb-6">
-              Choose a date and time to publish this {activePlatform} post.
+            <p className="text-sm text-textMuted mb-4">
+              Choose a date and time to publish this {activePlatform === 'twitter' ? 'X' : activePlatform} post.
             </p>
+
+            {/* Twitter thread info */}
+            {activePlatform === 'twitter' && transcript?.result?.socialContent?.twitterThread && transcript.result.socialContent.twitterThread.length > 1 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-blue-800">
+                  <strong>{transcript.result.socialContent.twitterThread.length} posts</strong> will be scheduled, one per day starting from your selected date.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-4 mb-6">
               <div>
@@ -2268,6 +2355,43 @@ ${(transcript.content || '').substring(0, 1000)}
               >
                 <Linkedin className="h-4 w-4" />
                 Connect LinkedIn
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connect X Modal */}
+      {showConnectXModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
+              <Twitter className="h-5 w-5" />
+              Connect X
+            </h3>
+            <p className="text-sm text-textMuted mb-6">
+              Connect your X account to schedule and publish posts directly from this dashboard.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowConnectXModal(false)}
+                className="px-4 py-2 text-textSecondary font-medium hover:bg-gray-200 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowConnectXModal(false);
+                  connectTwitter();
+                }}
+                className="px-4 py-2 bg-black text-white font-medium rounded-lg hover:bg-gray-800 text-sm flex items-center gap-2"
+              >
+                <Twitter className="h-4 w-4" />
+                Connect X
               </button>
             </div>
           </div>

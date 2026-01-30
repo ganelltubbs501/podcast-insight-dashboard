@@ -142,8 +142,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
         </div>
       </div>
       
-      <footer className="bg-gray-200 py-12 text-center">
-        <p className="text-textMuted">© 2026 LoquiHQ. Where podcasters get the truth.</p>
+      <footer className="bg-gray-200 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-textMuted">© 2026 LoquiHQ. Where podcasters get the truth.</p>
+            <div className="flex items-center gap-6">
+              <a href="/#/privacy" className="text-textMuted hover:text-textSecondary transition">Privacy Policy</a>
+              <a href="/#/terms" className="text-textMuted hover:text-textSecondary transition">Terms of Service</a>
+            </div>
+          </div>
+        </div>
       </footer>
     </div>
   );

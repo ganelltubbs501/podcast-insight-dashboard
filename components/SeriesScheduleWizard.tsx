@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Calendar, Clock, Sparkles, X, Mail, Hash } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Clock, Sparkles, X, Mail, Hash, Users, ChevronDown, Loader2 } from 'lucide-react';
 import { schedulePost } from '../services/transcripts';
+import { getEmailLists, getEmailList, EmailList } from '../services/emailLists';
 
 interface EmailSeriesItem {
   day: number;
@@ -31,7 +32,57 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
 }) => {
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
+  const [recipientEmail, setRecipientEmail] = useState('');
   const [isScheduling, setIsScheduling] = useState(false);
+
+  // Email list state
+  const [emailLists, setEmailLists] = useState<EmailList[]>([]);
+  const [emailListsLoading, setEmailListsLoading] = useState(false);
+  const [selectedListId, setSelectedListId] = useState<string>('');
+  const [selectedListEmails, setSelectedListEmails] = useState<string[]>([]);
+  const [loadingListEmails, setLoadingListEmails] = useState(false);
+
+  // Load email lists on mount for email type
+  useEffect(() => {
+    if (type === 'email') {
+      loadEmailLists();
+    }
+  }, [type]);
+
+  const loadEmailLists = async () => {
+    try {
+      setEmailListsLoading(true);
+      const lists = await getEmailLists();
+      setEmailLists(lists);
+    } catch (err) {
+      console.error('Failed to load email lists:', err);
+    } finally {
+      setEmailListsLoading(false);
+    }
+  };
+
+  const handleListSelect = async (listId: string) => {
+    setSelectedListId(listId);
+    setRecipientEmail(''); // Clear single email when list is selected
+
+    if (!listId) {
+      setSelectedListEmails([]);
+      return;
+    }
+
+    try {
+      setLoadingListEmails(true);
+      const list = await getEmailList(listId);
+      setSelectedListEmails(list.emails || []);
+    } catch (err) {
+      console.error('Failed to load email list:', err);
+      setSelectedListEmails([]);
+    } finally {
+      setLoadingListEmails(false);
+    }
+  };
+
+  const hasValidRecipients = selectedListEmails.length > 0 || recipientEmail.trim().length > 0;
 
   const handleSchedule = async () => {
     if (!startDate || !startTime) {
@@ -39,9 +90,19 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
       return;
     }
 
+    if (type === 'email' && !hasValidRecipients) {
+      alert('Please select an email list or enter a recipient email address');
+      return;
+    }
+
     setIsScheduling(true);
     try {
       const startDateTime = new Date(`${startDate}T${startTime}`);
+
+      // Determine recipients
+      const recipients = selectedListEmails.length > 0
+        ? selectedListEmails
+        : [recipientEmail.trim()];
 
       for (const item of items) {
         // Calculate date based on day number (day 1 = start date, day 2 = start date + 1 day, etc.)
@@ -54,7 +115,11 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
             content: `Subject: ${emailItem.subject}\n\n${emailItem.body}`,
             scheduledDate: scheduleTime.toISOString(),
             status: 'Scheduled',
-            transcriptId
+            transcriptId,
+            metadata: {
+              recipientEmails: recipients,
+              recipientEmail: recipients[0] // Keep for backwards compatibility
+            }
           });
         } else {
           const socialItem = item as SocialCalendarItem;
@@ -111,10 +176,106 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
             </p>
           </div>
 
+          {/* Recipients (for email series only) */}
+          {type === 'email' && (
+            <div className="space-y-4">
+              {/* Email List Selector */}
+              <div>
+                <label className="text-xs font-bold text-textMuted uppercase mb-2 flex items-center gap-2">
+                  <Users className="h-4 w-4" /> Email List
+                </label>
+                {emailListsLoading ? (
+                  <div className="flex items-center gap-2 text-textMuted text-sm py-3">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading lists...
+                  </div>
+                ) : emailLists.length > 0 ? (
+                  <div className="relative">
+                    <select
+                      value={selectedListId}
+                      onChange={(e) => handleListSelect(e.target.value)}
+                      disabled={recipientEmail.length > 0}
+                      className="w-full bg-gray-200 border border-gray-300 rounded-lg p-3 text-textBody appearance-none cursor-pointer disabled:opacity-50"
+                    >
+                      <option value="">Select an email list...</option>
+                      {emailLists.map((list) => (
+                        <option key={list.id} value={list.id}>
+                          {list.name} ({list.email_count} emails)
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-textMuted pointer-events-none" />
+                  </div>
+                ) : (
+                  <p className="text-sm text-textMuted py-2">
+                    No email lists yet.{' '}
+                    <a href="/#/settings" className="text-primary hover:underline">
+                      Import a CSV in Settings
+                    </a>
+                  </p>
+                )}
+
+                {/* Show selected list emails */}
+                {loadingListEmails && (
+                  <div className="flex items-center gap-2 text-textMuted text-sm mt-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading emails...
+                  </div>
+                )}
+                {selectedListEmails.length > 0 && !loadingListEmails && (
+                  <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-700 font-medium">
+                      {selectedListEmails.length} recipient{selectedListEmails.length !== 1 ? 's' : ''} selected
+                    </p>
+                    <p className="text-xs text-green-600 mt-1">
+                      {selectedListEmails.slice(0, 3).join(', ')}
+                      {selectedListEmails.length > 3 && ` ... and ${selectedListEmails.length - 3} more`}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* OR divider */}
+              {emailLists.length > 0 && (
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 border-t border-gray-300"></div>
+                  <span className="text-xs text-textMuted uppercase">or</span>
+                  <div className="flex-1 border-t border-gray-300"></div>
+                </div>
+              )}
+
+              {/* Single Email Input */}
+              <div>
+                <label className="text-xs font-bold text-textMuted uppercase mb-2 flex items-center gap-2">
+                  <Mail className="h-4 w-4" /> Single Recipient Email
+                </label>
+                <input
+                  type="email"
+                  placeholder="recipient@example.com"
+                  value={recipientEmail}
+                  onChange={(e) => {
+                    setRecipientEmail(e.target.value);
+                    if (e.target.value) {
+                      setSelectedListId('');
+                      setSelectedListEmails([]);
+                    }
+                  }}
+                  disabled={selectedListId.length > 0}
+                  className="w-full bg-gray-200 border border-gray-300 rounded-lg p-3 text-textBody disabled:opacity-50"
+                />
+                <p className="text-xs text-textMuted mt-1">
+                  {selectedListEmails.length > 0
+                    ? 'Clear the email list selection above to use a single email'
+                    : 'All emails in the series will be sent to this address via Gmail.'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Start Date & Time */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold text-textMuted uppercase mb-2 block flex items-center gap-2">
+              <label className="text-xs font-bold text-textMuted uppercase mb-2 flex items-center gap-2">
                 <Calendar className="h-4 w-4" /> Start Date
               </label>
               <input
@@ -125,7 +286,7 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold text-textMuted uppercase mb-2 block flex items-center gap-2">
+              <label className="text-xs font-bold text-textMuted uppercase mb-2 flex items-center gap-2">
                 <Clock className="h-4 w-4" /> Time (Daily)
               </label>
               <input
@@ -183,7 +344,7 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
             </button>
             <button
               onClick={handleSchedule}
-              disabled={isScheduling || !startDate || !startTime}
+              disabled={isScheduling || !startDate || !startTime || (type === 'email' && !hasValidRecipients)}
               className="flex-1 px-4 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isScheduling ? (

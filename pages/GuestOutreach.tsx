@@ -2,18 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { getGuests, addGuest, updateGuest, deleteGuest } from '../services/backend';
 import { getTranscripts } from '../services/transcripts';
 import { suggestGuests, generateOutreachEmail } from '../services/geminiService';
+import { getGmailStatus, sendGmailEmail, GmailStatus } from '../services/gmail';
 import { Guest, Transcript } from '../types';
-import { Users, Mail, Search, Plus, UserCheck, Trash2, ExternalLink, Loader2, Sparkles, X, Copy, Check } from 'lucide-react';
+import { Users, Mail, Search, Plus, UserCheck, Trash2, ExternalLink, Loader2, Sparkles, X, Copy, Check, Send, AlertCircle } from 'lucide-react';
 
 const GuestOutreach: React.FC = () => {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Modals
   const [showFindModal, setShowFindModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
-  
+
   // Find Guests State
   const [selectedTranscriptId, setSelectedTranscriptId] = useState('');
   const [isFinding, setIsFinding] = useState(false);
@@ -25,8 +26,16 @@ const GuestOutreach: React.FC = () => {
   const [emailDraft, setEmailDraft] = useState<{subject: string, body: string} | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
+  // Gmail State
+  const [gmail, setGmail] = useState<GmailStatus | null>(null);
+  const [isSendingGmail, setIsSendingGmail] = useState(false);
+  const [gmailSent, setGmailSent] = useState(false);
+  const [gmailError, setGmailError] = useState<string | null>(null);
+  const [recipientEmail, setRecipientEmail] = useState('');
+
   useEffect(() => {
     loadData();
+    loadGmailStatus();
   }, []);
 
   const loadData = async () => {
@@ -36,6 +45,16 @@ const GuestOutreach: React.FC = () => {
     setGuests(g);
     setTranscripts(t);
     setLoading(false);
+  };
+
+  const loadGmailStatus = async () => {
+    try {
+      const status = await getGmailStatus();
+      setGmail(status);
+    } catch (err) {
+      console.error('Failed to load Gmail status:', err);
+      setGmail({ connected: false });
+    }
   };
 
   const handleFindGuests = async () => {
@@ -93,11 +112,32 @@ const GuestOutreach: React.FC = () => {
     setIsDrafting(true);
 
     try {
-      // Find context from source transcript if available, or just use general context
+      // Build rich context from source transcript if available
       const transcript = transcripts.find(t => t.id === guest.sourceTranscriptId);
-      const context = transcript ? transcript.title : "our podcast about industry trends";
-      
-      const draft = await generateOutreachEmail(guest.name, guest.bio, context);
+      let context = "a podcast about industry insights and expert perspectives";
+
+      if (transcript) {
+        const parts = [`Episode: "${transcript.title}"`];
+
+        if (transcript.result?.keyTakeaways?.length) {
+          parts.push(`Key topics discussed: ${transcript.result.keyTakeaways.slice(0, 3).join('; ')}`);
+        }
+
+        if (transcript.result?.seo?.keywords?.length) {
+          parts.push(`Keywords: ${transcript.result.seo.keywords.slice(0, 5).join(', ')}`);
+        }
+
+        if (transcript.result?.summary) {
+          parts.push(`Episode summary: ${transcript.result.summary.substring(0, 300)}`);
+        }
+
+        context = parts.join('\n');
+      }
+
+      // Use guest bio, or fall back to match reason for context
+      const guestBio = guest.bio || guest.matchReason || '';
+
+      const draft = await generateOutreachEmail(guest.name, guestBio, context);
       setEmailDraft(draft);
     } catch (e) {
        console.error(e);
@@ -113,11 +153,58 @@ const GuestOutreach: React.FC = () => {
       navigator.clipboard.writeText(`Subject: ${emailDraft.subject}\n\n${emailDraft.body}`);
       setCopiedEmail(true);
       setTimeout(() => setCopiedEmail(false), 2000);
-      
+
       // Auto-update status to Contacted if still suggested
       if(selectedGuest && selectedGuest.status === 'Suggested') {
         handleStatusChange(selectedGuest.id, 'Contacted');
       }
+    }
+  };
+
+  const handleSendEmail = () => {
+    if(emailDraft && selectedGuest) {
+      // Create mailto link with pre-filled content
+      const to = selectedGuest.email || recipientEmail || '';
+      const subject = encodeURIComponent(emailDraft.subject);
+      const body = encodeURIComponent(emailDraft.body);
+
+      const mailtoLink = `mailto:${to}?subject=${subject}&body=${body}`;
+      window.location.href = mailtoLink;
+
+      // Auto-update status to Contacted if still suggested
+      if(selectedGuest.status === 'Suggested') {
+        handleStatusChange(selectedGuest.id, 'Contacted');
+      }
+    }
+  };
+
+  const handleSendViaGmail = async () => {
+    if (!emailDraft || !selectedGuest) return;
+
+    const to = selectedGuest.email || recipientEmail;
+    if (!to) {
+      setGmailError('Please enter a recipient email address');
+      return;
+    }
+
+    try {
+      setIsSendingGmail(true);
+      setGmailError(null);
+      setGmailSent(false);
+
+      await sendGmailEmail(to, emailDraft.subject, emailDraft.body);
+
+      setGmailSent(true);
+      setTimeout(() => setGmailSent(false), 3000);
+
+      // Auto-update status to Contacted
+      if (selectedGuest.status === 'Suggested') {
+        handleStatusChange(selectedGuest.id, 'Contacted');
+      }
+    } catch (err: any) {
+      setGmailError(err.message || 'Failed to send email');
+    } finally {
+      setIsSendingGmail(false);
     }
   };
 
@@ -344,26 +431,85 @@ const GuestOutreach: React.FC = () => {
                   </div>
                ) : emailDraft ? (
                   <div className="space-y-4">
+                     {/* Recipient Email Input */}
+                     <div>
+                        <label className="block text-xs font-bold text-textMuted uppercase mb-1">To</label>
+                        <input
+                          type="email"
+                          placeholder={selectedGuest.email || "Enter recipient email..."}
+                          value={recipientEmail}
+                          onChange={(e) => setRecipientEmail(e.target.value)}
+                          className="w-full bg-gray-800 p-3 rounded border border-gray-600 text-white placeholder-gray-400 outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        {selectedGuest.email && !recipientEmail && (
+                          <p className="text-xs text-textMuted mt-1">Will use: {selectedGuest.email}</p>
+                        )}
+                     </div>
                      <div>
                         <label className="block text-xs font-bold text-textMuted uppercase mb-1">Subject</label>
-                        <div className="bg-gray-100 p-3 rounded border border-gray-300 text-textPrimary font-medium">{emailDraft.subject}</div>
+                        <div className="bg-gray-800 p-3 rounded border border-gray-600 text-white font-medium">{emailDraft.subject}</div>
                      </div>
                      <div>
                         <label className="block text-xs font-bold text-textMuted uppercase mb-1">Body</label>
-                        <textarea 
-                          className="w-full h-48 bg-gray-100 p-3 rounded border border-gray-300 text-textBody text-sm outline-none focus:ring-1 focus:ring-primary"
+                        <textarea
+                          className="w-full h-40 bg-gray-800 p-3 rounded border border-gray-600 text-white text-sm outline-none focus:ring-1 focus:ring-primary"
                           value={emailDraft.body}
                           readOnly
                         ></textarea>
                      </div>
-                     <div className="flex justify-end gap-3 pt-2">
-                        <button 
+
+                     {/* Gmail Status & Error Messages */}
+                     {gmailError && (
+                       <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
+                         <AlertCircle className="h-4 w-4" />
+                         {gmailError}
+                       </div>
+                     )}
+                     {gmailSent && (
+                       <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 p-3 rounded-lg">
+                         <Check className="h-4 w-4" />
+                         Email sent successfully!
+                       </div>
+                     )}
+
+                     {/* Action Buttons */}
+                     <div className="flex flex-wrap justify-end gap-3 pt-2">
+                        <button
                            onClick={handleCopyEmail}
-                           className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition font-medium"
+                           className="flex items-center gap-2 border border-gray-300 text-textSecondary px-4 py-2 rounded-lg hover:bg-gray-50 transition font-medium"
                         >
                            {copiedEmail ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                           {copiedEmail ? "Copied!" : "Copy to Clipboard"}
+                           {copiedEmail ? "Copied!" : "Copy"}
                         </button>
+                        <button
+                           onClick={handleSendEmail}
+                           className="flex items-center gap-2 border border-gray-300 text-textSecondary px-4 py-2 rounded-lg hover:bg-gray-50 transition font-medium"
+                        >
+                           <ExternalLink className="h-4 w-4" />
+                           Open in Email App
+                        </button>
+                        {gmail?.connected ? (
+                          <button
+                             onClick={handleSendViaGmail}
+                             disabled={isSendingGmail}
+                             className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition font-medium disabled:opacity-50"
+                          >
+                             {isSendingGmail ? (
+                               <Loader2 className="h-4 w-4 animate-spin" />
+                             ) : (
+                               <Mail className="h-4 w-4" />
+                             )}
+                             {isSendingGmail ? "Sending..." : "Send via Gmail"}
+                          </button>
+                        ) : (
+                          <a
+                            href="/#/settings"
+                            className="flex items-center gap-2 bg-gray-200 text-textMuted px-4 py-2 rounded-lg hover:bg-gray-300 transition font-medium text-sm"
+                          >
+                            <Mail className="h-4 w-4" />
+                            Connect Gmail
+                          </a>
+                        )}
                      </div>
                   </div>
                ) : (

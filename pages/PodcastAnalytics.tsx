@@ -32,6 +32,9 @@ const PodcastAnalytics: React.FC = () => {
   const [isResyncing, setIsResyncing] = useState(false);
   const [resyncMessage, setResyncMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Episode display state
+  const [showAllEpisodes, setShowAllEpisodes] = useState(false);
+
   // Check if we should open metrics modal from URL param
   useEffect(() => {
     if (searchParams.get("openMetrics") === "true") {
@@ -138,10 +141,10 @@ const PodcastAnalytics: React.FC = () => {
             <img
               src={podcast.imageUrl}
               alt={podcast.title}
-              className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+              className="w-20 h-20 rounded-xl object-cover shrink-0"
             />
           ) : (
-            <div className="w-20 h-20 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <div className="w-20 h-20 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
               <Headphones className="w-10 h-10 text-primary" />
             </div>
           )}
@@ -214,7 +217,7 @@ const PodcastAnalytics: React.FC = () => {
       {needsMetrics && (
         <div className="mb-8 p-6 bg-amber-50 border border-amber-200 rounded-xl">
           <div className="flex items-start gap-4">
-            <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0" />
+            <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
             <div>
               <h3 className="font-semibold text-amber-800 mb-1">Enter Your Metrics</h3>
               <p className="text-sm text-amber-700 mb-3">
@@ -304,20 +307,37 @@ const PodcastAnalytics: React.FC = () => {
       )}
 
       {/* Recent Episodes */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-textPrimary">Recent Episodes</h2>
+      <div className="bg-gray-100 border border-gray-300 rounded-xl overflow-hidden">
+        <div className="p-6 border-b border-gray-300 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-textPrimary">
+            {showAllEpisodes ? "All Episodes" : "Recent Episodes"}
+          </h2>
+          {recentEpisodes.length > 5 && (
+            <span className="text-sm text-textMuted">
+              Showing {showAllEpisodes ? recentEpisodes.length : Math.min(5, recentEpisodes.length)} of {recentEpisodes.length}
+            </span>
+          )}
         </div>
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-gray-300">
           {recentEpisodes.length === 0 ? (
             <div className="p-8 text-center text-textMuted">
               No episodes found in your RSS feed.
             </div>
           ) : (
-            recentEpisodes.map((episode) => (
-              <div
+            (showAllEpisodes ? recentEpisodes : recentEpisodes.slice(0, 5)).map((episode) => (
+              <a
                 key={episode.id}
-                className="p-4 hover:bg-gray-50 transition flex items-center gap-4"
+                href={episode.audioUrl || "#"}
+                target={episode.audioUrl ? "_blank" : undefined}
+                rel={episode.audioUrl ? "noopener noreferrer" : undefined}
+                onClick={(e) => {
+                  if (!episode.audioUrl) {
+                    e.preventDefault();
+                  }
+                }}
+                className={`w-full p-4 hover:bg-gray-200 transition flex items-center gap-4 text-left ${
+                  episode.audioUrl ? "cursor-pointer" : "cursor-default opacity-70"
+                }`}
               >
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium text-textPrimary truncate">{episode.title}</h3>
@@ -339,15 +359,24 @@ const PodcastAnalytics: React.FC = () => {
                     )}
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-textMuted" />
-              </div>
+                {episode.audioUrl ? (
+                  <ExternalLink className="w-5 h-5 text-primary" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-textMuted" />
+                )}
+              </a>
             ))
           )}
         </div>
-        {recentEpisodes.length > 0 && (
-          <div className="p-4 border-t border-gray-200 text-center">
-            <button className="text-sm text-primary hover:underline">
-              View All {podcast.episodeCountTotal} Episodes
+        {recentEpisodes.length > 5 && (
+          <div className="p-4 border-t border-gray-300 text-center">
+            <button
+              onClick={() => setShowAllEpisodes(!showAllEpisodes)}
+              className="text-sm text-primary hover:underline"
+            >
+              {showAllEpisodes
+                ? "Show Less"
+                : `View All ${recentEpisodes.length} Episodes`}
             </button>
           </div>
         )}
