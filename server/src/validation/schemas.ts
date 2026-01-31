@@ -126,7 +126,22 @@ export type MetricsRequest = z.infer<typeof metricsRequestSchema>;
 // POST /api/scheduled-posts - Create scheduled post
 export const createScheduledPostSchema = z.object({
   content: z.string().min(1, 'Content cannot be empty').max(5000, 'Content too long'),
-  platform: z.enum(['linkedin', 'twitter', 'tiktok', 'youtube', 'email', 'medium', 'newsletter']),
+  platform: z.enum([
+    'linkedin',
+    'twitter',
+    'tiktok',
+    'youtube',
+    'facebook',
+    'medium',
+    'teaser',
+    'email',
+    'kit',
+    'mailchimp',
+    'sendgrid',
+    'beehiiv',
+    'gohighlevel',
+  ]),
+  provider: z.string().optional(),
   scheduledDate: z.string().datetime({ message: 'Invalid date format. Use ISO 8601' }),
   transcriptId: z.string().uuid().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -214,6 +229,65 @@ export const connectProviderSchema = z.object({
 }).strict();
 
 export type ConnectProviderRequest = z.infer<typeof connectProviderSchema>;
+
+// ============================================================================
+// TEAM COLLABORATION SCHEMAS
+// ============================================================================
+
+// Team roles (matches database constraint)
+export const teamRoleSchema = z.enum(['owner', 'admin', 'editor', 'viewer']);
+export type TeamRole = z.infer<typeof teamRoleSchema>;
+
+// Invite roles (owner cannot be invited, only creator gets owner)
+export const inviteRoleSchema = z.enum(['admin', 'editor', 'viewer']);
+export type InviteRole = z.infer<typeof inviteRoleSchema>;
+
+// POST /api/team - Create a new team
+export const createTeamSchema = z.object({
+  name: z.string()
+    .min(1, 'Team name is required')
+    .max(100, 'Team name must be 100 characters or less')
+    .trim(),
+}).strict();
+
+export type CreateTeam = z.infer<typeof createTeamSchema>;
+
+// PATCH /api/team/:teamId - Update team
+export const updateTeamSchema = z.object({
+  name: z.string()
+    .min(1, 'Team name is required')
+    .max(100, 'Team name must be 100 characters or less')
+    .trim()
+    .optional(),
+}).strict();
+
+export type UpdateTeam = z.infer<typeof updateTeamSchema>;
+
+// POST /api/team/:teamId/invites - Create invite
+export const createInviteSchema = z.object({
+  email: z.string()
+    .email('Invalid email address')
+    .max(255, 'Email too long'),
+  role: inviteRoleSchema.default('viewer'),
+}).strict();
+
+export type CreateInvite = z.infer<typeof createInviteSchema>;
+
+// PATCH /api/team/:teamId/members/:userId - Update member role
+export const updateMemberRoleSchema = z.object({
+  role: inviteRoleSchema, // Can't change to owner via API
+}).strict();
+
+export type UpdateMemberRole = z.infer<typeof updateMemberRoleSchema>;
+
+// POST /api/team/invites/accept - Accept invite
+export const acceptInviteSchema = z.object({
+  token: z.string()
+    .min(1, 'Invite token is required')
+    .max(256, 'Invalid token format'),
+}).strict();
+
+export type AcceptInvite = z.infer<typeof acceptInviteSchema>;
 
 /**
  * Validation helper - validates request body and returns typed result

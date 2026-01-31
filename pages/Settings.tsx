@@ -7,6 +7,8 @@ import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
 import { getMediumStatus, connectMedium, disconnectMedium, MediumStatus } from '../services/medium';
 import { getGmailStatus, getGmailAuthUrl, disconnectGmail, GmailStatus } from '../services/gmail';
 import { getEmailLists, createEmailList, deleteEmailList, parseCSVForEmails, EmailList } from '../services/emailLists';
+import { createTeam, getTeams, Team } from '../services/backend';
+import { useTeam } from '../contexts/TeamContext';
 
 interface LinkedInConnection {
   connected: boolean;
@@ -70,6 +72,12 @@ const Settings: React.FC = () => {
 
   // General state
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Teams state
+  const { teams, refreshTeams, switchTeam } = useTeam();
+  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [creatingTeam, setCreatingTeam] = useState(false);
 
   // Handle OAuth callback parameters
   useEffect(() => {
@@ -478,6 +486,27 @@ const Settings: React.FC = () => {
       setMessage({ type: 'error', text: err.message || 'Failed to delete email list' });
     } finally {
       setDeletingListId(null);
+    }
+  };
+
+  // Team handlers
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) return;
+
+    setCreatingTeam(true);
+    try {
+      const team = await createTeam(newTeamName.trim());
+      setMessage({ type: 'success', text: `Team "${team.name}" created successfully!` });
+      setShowCreateTeamModal(false);
+      setNewTeamName('');
+      await refreshTeams();
+      // Optionally switch to the new team
+      switchTeam(team.id);
+    } catch (err: any) {
+      console.error('Failed to create team:', err);
+      setMessage({ type: 'error', text: err.message || 'Failed to create team' });
+    } finally {
+      setCreatingTeam(false);
     }
   };
 
@@ -1102,6 +1131,106 @@ const Settings: React.FC = () => {
                   )}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Teams Section */}
+      <div className="bg-gray-100 rounded-xl border border-gray-300 shadow-sm mt-6">
+        <div className="p-6 border-b border-gray-300 flex justify-between items-center">
+          <div>
+            <h2 className="text-lg font-semibold text-textPrimary flex items-center gap-2">
+              <Users className="h-5 w-5 text-textMuted" />
+              Teams
+            </h2>
+            <p className="text-sm text-textMuted mt-1">
+              Create and manage team workspaces for collaboration
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCreateTeamModal(true)}
+            className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition"
+          >
+            Create Team
+          </button>
+        </div>
+
+        <div className="p-6">
+          {teams.length === 0 ? (
+            <div className="text-center py-8 text-textMuted">
+              <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No teams yet</p>
+              <p className="text-sm">Create a team to start collaborating with others</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {teams.map((team) => (
+                <div
+                  key={team.id}
+                  className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300"
+                >
+                  <div>
+                    <h3 className="font-medium text-textPrimary">{team.name}</h3>
+                    <p className="text-sm text-textMuted capitalize">
+                      Role: {team.role} | Members: {team.maxMembers}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => navigate('/team')}
+                    className="px-3 py-1.5 text-sm text-primary hover:bg-primary/10 rounded-lg transition"
+                  >
+                    Manage
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Create Team Modal */}
+      {showCreateTeamModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-textPrimary mb-4">Create Team</h2>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-textSecondary mb-2">
+                Team Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., My Podcast Team"
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-textPrimary outline-none focus:ring-2 focus:ring-primary"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCreateTeamModal(false);
+                  setNewTeamName('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-100 text-textSecondary font-medium rounded-lg hover:bg-gray-200 transition border border-gray-300"
+                disabled={creatingTeam}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateTeam}
+                disabled={creatingTeam || !newTeamName.trim()}
+                className="flex-1 px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {creatingTeam ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Create Team'
+                )}
+              </button>
             </div>
           </div>
         </div>

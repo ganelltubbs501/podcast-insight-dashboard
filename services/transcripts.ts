@@ -38,6 +38,7 @@ function mapRowToTranscript(row: any): Transcript {
     date: row.created_at ?? new Date().toISOString(),
     settings: row.settings ?? null,
     result: row.result ?? null,
+    teamId: row.team_id ?? null,
 
     // These are NOT DB columns right now. We synthesize them.
     comments: getComments(row),
@@ -50,7 +51,7 @@ function mapRowToTranscript(row: any): Transcript {
  * IMPORTANT: Do NOT insert columns that aren't in your Supabase schema (like "comments").
  * We'll embed workflowStatus/comments inside `result` JSON until you add real columns.
  */
-export async function saveTranscript(transcript: Transcript): Promise<void> {
+export async function saveTranscript(transcript: Transcript, teamId?: string): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) throw new Error("Not authenticated");
 
@@ -69,6 +70,7 @@ export async function saveTranscript(transcript: Transcript): Promise<void> {
     status: transcript.status,
     result: resultWithMeta,
     settings: transcript.settings,
+    team_id: teamId || null,
   });
 
   if (error) throw error;
@@ -222,7 +224,7 @@ export async function getUsageMetrics(): Promise<UsageMetrics> {
  */
 
 // Use Supabase column aliasing to map snake_case to camelCase
-const SCHEDULED_POST_SELECT = 'id, content, platform, status, metrics, scheduledDate:scheduled_date, transcriptId:transcript_id';
+const SCHEDULED_POST_SELECT = 'id, content, contentHtml:content_html, title, platform, provider, providerAccountId:provider_account_id, manualActionUrl:manual_action_url, status, metrics, scheduledDate:scheduled_date, scheduledAt:scheduled_at, publishedAt:published_at, externalId:external_id, lastError:last_error, transcriptId:transcript_id, teamId:team_id';
 
 export async function getScheduledPosts() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -245,11 +247,17 @@ export async function getScheduledPosts() {
 
 export async function schedulePost(post: {
   platform: string;
+  provider?: string;
+  title?: string | null;
   content: string;
+  contentHtml?: string | null;
+  providerAccountId?: string | null;
+  manualActionUrl?: string | null;
   scheduledDate: string;
   status?: string;
   transcriptId?: string;
   metadata?: Record<string, any>;
+  teamId?: string;
 }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -260,10 +268,17 @@ export async function schedulePost(post: {
       user_id: user.id,
       transcript_id: post.transcriptId || null,
       platform: post.platform,
+      provider: post.provider || null,
+      title: post.title || null,
       content: post.content,
+      content_html: post.contentHtml || null,
+      provider_account_id: post.providerAccountId || null,
+      manual_action_url: post.manualActionUrl || null,
       scheduled_date: post.scheduledDate,
+      scheduled_at: post.scheduledDate,
       status: post.status || 'Scheduled',
-      metrics: post.metadata || null
+      metrics: post.metadata || null,
+      team_id: post.teamId || null
     })
     .select(SCHEDULED_POST_SELECT)
     .single();

@@ -22,6 +22,7 @@ import {
 import { getStoredUser } from '../services/auth';
 import { getLinkedInStatus, connectLinkedIn } from '../services/linkedin';
 import { getTwitterStatus, connectTwitter } from '../services/twitter';
+import { getKitAuthUrl, getKitStatus } from '../services/integrations';
 
 import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
@@ -32,6 +33,7 @@ import {
 } from '../services/downloadService';
 import { MonetizationInputModal } from '../components/MonetizationInputModal';
 import SeriesScheduleWizard from '../components/SeriesScheduleWizard';
+import SocialCalendarView from '../components/SocialCalendarView';
 import { DataConfidenceDisplay, CompactConfidenceIndicator } from '../components/DataConfidenceDisplay';
 
 interface ResultsPageProps {
@@ -76,6 +78,10 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   // X/Twitter connection check state
   const [showConnectXModal, setShowConnectXModal] = useState(false);
   const [isCheckingX, setIsCheckingX] = useState(false);
+
+  // Kit connection check state
+  const [showConnectKitModal, setShowConnectKitModal] = useState(false);
+  const [isCheckingKit, setIsCheckingKit] = useState(false);
 
   // Email Export State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -333,8 +339,37 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     return '';
   };
 
+  const isSchedulingSupported = (platform: PlatformType) => !['facebook', 'tiktok', 'youtube'].includes(platform);
+
+  const getSchedulingDisabledMessage = (platform: PlatformType) => {
+    if (platform === 'facebook') return 'Scheduling Coming Soon';
+    return 'Manual publishing only';
+  };
+
   // Check LinkedIn/X connection before opening schedule modal
   const handleScheduleClick = async () => {
+    // Check for Kit (email) platform
+    if (activePlatform === 'email') {
+      setIsCheckingKit(true);
+      try {
+        const status = await getKitStatus();
+        if (!status.connected) {
+          setShowConnectKitModal(true);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to check Kit status:', e);
+        setShowConnectKitModal(true);
+        return;
+      } finally {
+        setIsCheckingKit(false);
+      }
+    }
+    if (!isSchedulingSupported(activePlatform)) {
+      setScheduleNotification({ message: getSchedulingDisabledMessage(activePlatform), type: 'error' });
+      setTimeout(() => setScheduleNotification(null), 4000);
+      return;
+    }
     // Check for LinkedIn platform
     if (activePlatform === 'linkedin') {
       setIsCheckingLinkedIn(true);
@@ -388,6 +423,12 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const handleSchedulePost = async () => {
     if (!scheduleDate || !scheduleTime || !transcript || !transcript.result) return;
 
+    if (!isSchedulingSupported(activePlatform)) {
+      setScheduleNotification({ message: getSchedulingDisabledMessage(activePlatform), type: 'error' });
+      setTimeout(() => setScheduleNotification(null), 4000);
+      return;
+    }
+
     setIsScheduling(true);
     try {
       const startDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
@@ -429,12 +470,20 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
         // Standard single post scheduling for other platforms
         const content = getContentForPlatform(activePlatform, transcript.result.socialContent);
 
+        const emailSubject = transcript.result.socialContent?.emailNewsletter?.subject;
+        const emailBody = transcript.result.socialContent?.emailNewsletter?.body;
+        const emailContent = emailSubject && emailBody ? `Subject: ${emailSubject}\n\n${emailBody}` : content;
+
         await schedulePost({
           platform: activePlatform,
-          content: content,
+          provider: activePlatform === 'email' ? 'kit' : undefined,
+          title: activePlatform === 'email' ? (emailSubject || null) : undefined,
+          content: emailContent,
+          contentHtml: activePlatform === 'email' ? (emailBody || null) : undefined,
           scheduledDate: startDateTime.toISOString(),
           status: 'Scheduled',
-          transcriptId: transcript.id
+          transcriptId: transcript.id,
+          metadata: activePlatform === 'email' ? { provider: 'kit' } : undefined
         });
 
         // Update local state immediately to show the "Scheduled" badge
@@ -1467,41 +1516,15 @@ ${(transcript.content || '').substring(0, 1000)}
 
           {/* Social Calendar View */}
           {activeRepurposeView === 'calendar' && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
-                <div className="flex gap-2">
-                  <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (repurposed.socialCalendar) handleCopyJSON(repurposed.socialCalendar, 'copy-json');
-                    }}
-                    className="px-3 py-1 bg-gray-100 border rounded-md"
-                  >
-                    {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
-                  </button>
-                </div>
-              </div>
-
-              {!repurposed.socialCalendar ? (
-                <div className="p-6 text-center text-textMuted">No social calendar generated. Click “Social Calendar” above to generate.</div>
-              ) : (
-                <div className="space-y-4">
-                  {repurposed.socialCalendar.map((s: any, i: number) => (
-                    <div key={i} className="p-3 bg-gray-100 rounded-lg border border-gray-300 flex justify-between items-center">
-                      <div>
-                        <div className="font-semibold text-textPrimary">Day {s.day} • {s.platform}</div>
-                        <div className="text-sm text-textSecondary">{s.content}</div>
-                      </div>
-                      <div>
-                        <button onClick={() => navigator.clipboard.writeText(s.content)} className="px-3 py-1 bg-gray-100 border rounded-md text-sm">Copy</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <SocialCalendarView
+              repurposed={repurposed}
+              transcript={transcript}
+              copiedSection={copiedSection}
+              handleCopyJSON={handleCopyJSON}
+              setActiveRepurposeView={setActiveRepurposeView}
+              scheduleNotification={scheduleNotification}
+              setScheduleNotification={setScheduleNotification}
+            />
           )}
 
           {/* LinkedIn Article View */}
@@ -1713,7 +1736,7 @@ ${(transcript.content || '').substring(0, 1000)}
             <span className="flex items-center gap-3">
               <platform.icon className="h-4 w-4" /> {platform.label}
             </span>
-            {scheduledByPlatform[platform.id] && (
+            {scheduledByPlatform[platform.id] && isSchedulingSupported(platform.id as PlatformType) && (
               <span className={`w-2 h-2 rounded-full ${activePlatform === platform.id ? 'bg-white' : 'bg-green-500'}`} title="Scheduled" />
             )}
           </button>
@@ -1726,7 +1749,7 @@ ${(transcript.content || '').substring(0, 1000)}
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-textPrimary capitalize">{activePlatform.replace('teaser', 'Newsletter Teaser')}</h3>
-                {scheduledByPlatform[activePlatform] && (
+                {scheduledByPlatform[activePlatform] && isSchedulingSupported(activePlatform) && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full border border-green-200">
                     <CalendarIcon className="h-3 w-3" />
                     Scheduled • {new Date(scheduledByPlatform[activePlatform]!.scheduledDate).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -1736,9 +1759,9 @@ ${(transcript.content || '').substring(0, 1000)}
               <p className="text-xs text-textMuted mt-1">Optimized content ready to post</p>
             </div>
             <div className="flex items-center gap-2">
-              {(activePlatform === 'facebook' || activePlatform === 'tiktok' || activePlatform === 'youtube') ? (
+              {!isSchedulingSupported(activePlatform) ? (
                 <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg font-medium">
-                  Scheduling Coming Soon
+                  {getSchedulingDisabledMessage(activePlatform)}
                 </span>
               ) : (
                 <button
@@ -1746,10 +1769,10 @@ ${(transcript.content || '').substring(0, 1000)}
                     e.stopPropagation();
                     handleScheduleClick();
                   }}
-                  disabled={isCheckingLinkedIn || isCheckingX}
+                  disabled={isCheckingLinkedIn || isCheckingX || isCheckingKit}
                   className="text-textSecondary hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 transition disabled:opacity-50"
                 >
-                  {(isCheckingLinkedIn || isCheckingX) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
+                  {(isCheckingLinkedIn || isCheckingX || isCheckingKit) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
                 </button>
               )}
               <button
@@ -2392,6 +2415,49 @@ ${(transcript.content || '').substring(0, 1000)}
               >
                 <Twitter className="h-4 w-4" />
                 Connect X
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connect Kit Modal */}
+      {showConnectKitModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary" />
+              Connect Kit
+            </h3>
+            <p className="text-sm text-textMuted mb-6">
+              Connect your Kit account to schedule and send newsletters from this dashboard.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowConnectKitModal(false)}
+                className="px-4 py-2 text-textSecondary font-medium hover:bg-gray-200 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const { url } = await getKitAuthUrl();
+                    setShowConnectKitModal(false);
+                    window.location.href = url;
+                  } catch (e) {
+                    console.error('Failed to start Kit auth:', e);
+                    setShowConnectKitModal(false);
+                  }
+                }}
+                className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary text-sm flex items-center gap-2"
+              >
+                <Mail className="h-4 w-4" />
+                Connect Kit
               </button>
             </div>
           </div>

@@ -55,7 +55,20 @@ export interface Comment {
 export type WorkflowStatus = 'Draft' | 'In Review' | 'Approved' | 'Published';
 
 // Content Calendar Types
-export type Platform = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium' | 'facebook';
+export type Platform =
+  | 'linkedin'
+  | 'twitter'
+  | 'tiktok'
+  | 'youtube'
+  | 'facebook'
+  | 'medium'
+  | 'teaser'
+  | 'email'
+  | 'kit'
+  | 'mailchimp'
+  | 'sendgrid'
+  | 'beehiiv'
+  | 'gohighlevel';
 
 export interface PostMetrics {
   likes: number;
@@ -70,9 +83,18 @@ export interface ScheduledPost {
   transcriptId?: string;
   transcriptTitle?: string;
   platform: Platform;
+  provider?: string;
+  title?: string | null;
   content: string;
+  contentHtml?: string | null;
+  providerAccountId?: string | null;
   scheduledDate: string; // ISO String
-  status: 'Scheduled' | 'Published' | 'Failed';
+  scheduledAt?: string;
+  publishedAt?: string | null;
+  externalId?: string | null;
+  lastError?: string | null;
+  manualActionUrl?: string | null;
+  status: 'Scheduled' | 'Published' | 'Failed' | 'NeedsManualSend';
   metrics?: PostMetrics;
 }
 
@@ -101,8 +123,8 @@ export interface EmailSeriesItem {
 
 export interface SocialCalendarItem {
   day: number;
-  platform: 'LinkedIn' | 'Twitter' | 'Instagram';
-  type: 'Quote' | 'Question' | 'Insight' | 'Clip';
+  platform: 'LinkedIn' | 'Twitter' | 'Instagram' | 'Facebook' | 'Instagram Stories';
+  type: 'Quote' | 'Question' | 'Insight' | 'Clip' | 'Story';
   content: string;
 }
 
@@ -295,7 +317,10 @@ export interface Transcript {
   status: 'Processing' | 'Completed' | 'Failed';
   result?: AnalysisResult;
   settings?: AnalysisSettings;
-  
+
+  // Team collaboration
+  teamId?: string | null;
+
   // Collaboration
   workflowStatus?: WorkflowStatus;
   comments?: Comment[];

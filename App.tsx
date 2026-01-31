@@ -6,7 +6,9 @@ import NewAnalysis from './pages/NewAnalysis';
 import ResultsPage from './pages/ResultsPage';
 import SeriesAnalytics from './pages/SeriesAnalytics';
 import TeamWorkspace from './pages/TeamWorkspace';
+import AcceptInvite from './pages/AcceptInvite';
 import ContentCalendar from './pages/ContentCalendar';
+import { TeamProvider } from './contexts/TeamContext';
 import GuestOutreach from './pages/GuestOutreach';
 import UsageAnalytics from './pages/UsageAnalytics';
 import DeveloperSettings from './pages/DeveloperSettings';
@@ -22,7 +24,6 @@ import TermsOfService from './pages/TermsOfService';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
-import ReportIssue from './components/ReportIssue';
 import { getStoredUser, logoutUser } from './services/auth';
 import { supabase } from './lib/supabaseClient';
 import Login from './components/Login';
@@ -55,7 +56,6 @@ const AppContent: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [helpPanelOpen, setHelpPanelOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const [lastError, setLastError] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -198,7 +198,7 @@ const AppContent: React.FC = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <AppErrorBoundary onError={setLastError}>
+    <AppErrorBoundary>
       <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
       {user && (
@@ -300,9 +300,6 @@ const AppContent: React.FC = () => {
                  >
                    <CircleHelp className="h-5 w-5" />
                  </button>
-
-                 {/* Report Issue Button */}
-                 <ReportIssue lastError={lastError} variant="link" className="hidden md:block" />
 
                  <button
                    onClick={handleLogout}
@@ -437,6 +434,8 @@ const AppContent: React.FC = () => {
           user ? <TeamWorkspace /> : <Navigate to="/" />
         } />
 
+        <Route path="/invite" element={<AcceptInvite />} />
+
 
         <Route path="/developer" element={
           user ? <DeveloperSettings /> : <Navigate to="/" />
@@ -537,7 +536,9 @@ const App: React.FC = () => {
       )}
     >
       <HashRouter>
-        <AppContent />
+        <TeamProvider>
+          <AppContent />
+        </TeamProvider>
       </HashRouter>
     </ErrorBoundary>
   );

@@ -16,6 +16,7 @@ import {
   captureException
 } from "./utils/sentry.js";
 import { requireAuth, optionalAuth, getUserId, AuthRequest } from "./middleware/auth.js";
+import { requireTeamRole, TeamAuthRequest, getPermissionsForRole } from "./middleware/teamAuth.js";
 import {
   analyzeRequestSchema,
   repurposeRequestSchema,
@@ -24,11 +25,21 @@ import {
   metricsRequestSchema,
   createScheduledPostSchema,
   updateScheduledPostSchema,
+  createTeamSchema,
+  updateTeamSchema,
+  createInviteSchema,
+  updateMemberRoleSchema,
+  acceptInviteSchema,
   validateRequest
 } from "./validation/schemas.js";
+import crypto from "crypto";
 
 import Parser from "rss-parser";
 import { getSpotifyAuthUrl, removeSpotifyConnection } from "./spotify-oauth.js";
+import { getMarketingAdapter, isMarketingProvider } from "./integrations/registry.js";
+import type { MarketingProvider } from "./integrations/types.js";
+import { logIntegrationEvent } from "./integrations/events.js";
+import { kitAuthUrl, kitCallback, kitStatus } from "./kit-oauth.js";
 
 // near top-level
 const rssParser = new Parser({
@@ -586,6 +597,723 @@ app.post("/api/sponsorship", requireAuth, async (req: AuthRequest, res) => {
 });
 
 // ============================================================================
+// TEAM COLLABORATION ENDPOINTS
+// ============================================================================
+
+// POST /api/team - Create a new team
+app.post("/api/team", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    const validation = validateRequest(createTeamSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: validation.errors
+      });
+    }
+
+    const { name } = validation.data;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Create the team
+    const { data: team, error: teamError } = await supabaseAdmin
+      .from('teams')
+      .insert({
+        name,
+        owner_id: userId,
+        pricing_tier: 'free',
+        max_members: 1
+      })
+      .select()
+      .single();
+
+    if (teamError) {
+      console.error("CREATE TEAM ERROR:", teamError);
+      return res.status(500).json({ error: teamError.message });
+    }
+
+    // Add creator as owner member
+    const { error: memberError } = await supabaseAdmin
+      .from('team_members')
+      .insert({
+        team_id: team.id,
+        user_id: userId,
+        role: 'owner',
+        invited_by: userId
+      });
+
+    if (memberError) {
+      console.error("ADD TEAM OWNER ERROR:", memberError);
+      // Clean up the team if member creation fails
+      await supabaseAdmin.from('teams').delete().eq('id', team.id);
+      return res.status(500).json({ error: memberError.message });
+    }
+
+    console.log(`✅ Team created: ${team.id} by user ${userId.substring(0, 8)}...`);
+
+    return res.json({
+      id: team.id,
+      name: team.name,
+      role: 'owner',
+      pricingTier: team.pricing_tier,
+      maxMembers: team.max_members,
+      createdAt: team.created_at
+    });
+  } catch (err: any) {
+    console.error("CREATE TEAM ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/team - List user's teams
+app.get("/api/team", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Get all teams user is a member of
+    const { data: memberships, error } = await supabaseAdmin
+      .from('team_members')
+      .select(`
+        role,
+        joined_at,
+        teams:team_id (
+          id,
+          name,
+          owner_id,
+          pricing_tier,
+          max_members,
+          created_at
+        )
+      `)
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error("GET TEAMS ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Transform to expected format
+    const teams = (memberships || []).map((m: any) => ({
+      id: m.teams.id,
+      name: m.teams.name,
+      role: m.role,
+      isOwner: m.teams.owner_id === userId,
+      pricingTier: m.teams.pricing_tier,
+      maxMembers: m.teams.max_members,
+      joinedAt: m.joined_at,
+      createdAt: m.teams.created_at
+    }));
+
+    return res.json(teams);
+  } catch (err: any) {
+    console.error("GET TEAMS ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/team/:teamId - Get team details
+app.get("/api/team/:teamId", requireAuth, requireTeamRole('viewer'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Get team details
+    const { data: team, error: teamError } = await supabaseAdmin
+      .from('teams')
+      .select('*')
+      .eq('id', teamId)
+      .single();
+
+    if (teamError || !team) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    // Get member count
+    const { count } = await supabaseAdmin
+      .from('team_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('team_id', teamId);
+
+    return res.json({
+      id: team.id,
+      name: team.name,
+      ownerId: team.owner_id,
+      pricingTier: team.pricing_tier,
+      maxMembers: team.max_members,
+      memberCount: count || 0,
+      createdAt: team.created_at,
+      updatedAt: team.updated_at,
+      currentUserRole: req.teamMembership?.role,
+      currentUserPermissions: req.teamMembership?.permissions
+    });
+  } catch (err: any) {
+    console.error("GET TEAM ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /api/team/:teamId - Update team (admin/owner only)
+app.patch("/api/team/:teamId", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+
+    const validation = validateRequest(updateTeamSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: validation.errors
+      });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const updateData: any = { updated_at: new Date().toISOString() };
+    if (validation.data.name) updateData.name = validation.data.name;
+
+    const { data: team, error } = await supabaseAdmin
+      .from('teams')
+      .update(updateData)
+      .eq('id', teamId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("UPDATE TEAM ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({
+      id: team.id,
+      name: team.name,
+      updatedAt: team.updated_at
+    });
+  } catch (err: any) {
+    console.error("UPDATE TEAM ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/team/:teamId/members - List team members
+app.get("/api/team/:teamId/members", requireAuth, requireTeamRole('viewer'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const { data: members, error } = await supabaseAdmin
+      .from('team_members')
+      .select('*')
+      .eq('team_id', teamId)
+      .order('joined_at', { ascending: true });
+
+    if (error) {
+      console.error("GET MEMBERS ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Get user profiles for members
+    const userIds = (members || []).map((m: any) => m.user_id);
+    const { data: profiles } = await supabaseAdmin.auth.admin.listUsers();
+
+    const userMap = new Map();
+    (profiles?.users || []).forEach((u: any) => {
+      if (userIds.includes(u.id)) {
+        userMap.set(u.id, {
+          email: u.email,
+          name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0]
+        });
+      }
+    });
+
+    const transformed = (members || []).map((m: any) => {
+      const profile = userMap.get(m.user_id) || {};
+      return {
+        id: m.id,
+        odayhelloId: m.user_id,
+        role: m.role,
+        email: profile.email || 'Unknown',
+        name: profile.name || 'Unknown',
+        joinedAt: m.joined_at,
+        invitedBy: m.invited_by
+      };
+    });
+
+    return res.json(transformed);
+  } catch (err: any) {
+    console.error("GET MEMBERS ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// PATCH /api/team/:teamId/members/:userId - Change member role (admin/owner only)
+app.patch("/api/team/:teamId/members/:userId", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId, userId: targetUserId } = req.params;
+    const currentUserId = getUserId(req);
+
+    const validation = validateRequest(updateMemberRoleSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: validation.errors
+      });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Check if target is an owner - can't change owner's role
+    const { data: targetMember, error: checkError } = await supabaseAdmin
+      .from('team_members')
+      .select('role')
+      .eq('team_id', teamId)
+      .eq('user_id', targetUserId)
+      .single();
+
+    if (checkError || !targetMember) {
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    if (targetMember.role === 'owner') {
+      return res.status(403).json({ error: "Cannot change owner's role" });
+    }
+
+    // Non-owners can't promote to admin
+    if (req.teamMembership?.role !== 'owner' && validation.data.role === 'admin') {
+      return res.status(403).json({ error: "Only team owner can promote to admin" });
+    }
+
+    const { data: member, error } = await supabaseAdmin
+      .from('team_members')
+      .update({ role: validation.data.role })
+      .eq('team_id', teamId)
+      .eq('user_id', targetUserId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("UPDATE MEMBER ROLE ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ Role updated: user ${targetUserId.substring(0, 8)}... to ${validation.data.role} in team ${teamId.substring(0, 8)}...`);
+
+    return res.json({
+      id: member.id,
+      userId: member.user_id,
+      role: member.role
+    });
+  } catch (err: any) {
+    console.error("UPDATE MEMBER ROLE ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// DELETE /api/team/:teamId/members/:userId - Remove member (admin/owner only)
+app.delete("/api/team/:teamId/members/:userId", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId, userId: targetUserId } = req.params;
+    const currentUserId = getUserId(req);
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Check if target is an owner - can't remove owner
+    const { data: targetMember, error: checkError } = await supabaseAdmin
+      .from('team_members')
+      .select('role')
+      .eq('team_id', teamId)
+      .eq('user_id', targetUserId)
+      .single();
+
+    if (checkError || !targetMember) {
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    if (targetMember.role === 'owner') {
+      return res.status(403).json({ error: "Cannot remove team owner" });
+    }
+
+    // Users can remove themselves (leave team)
+    if (targetUserId !== currentUserId && req.teamMembership?.role !== 'owner' && req.teamMembership?.role !== 'admin') {
+      return res.status(403).json({ error: "Only admins can remove other members" });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('team_members')
+      .delete()
+      .eq('team_id', teamId)
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      console.error("REMOVE MEMBER ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ Member removed: ${targetUserId.substring(0, 8)}... from team ${teamId.substring(0, 8)}...`);
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("REMOVE MEMBER ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/team/:teamId/invites - Create invite (admin/owner only)
+app.post("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+    const userId = getUserId(req);
+
+    const validation = validateRequest(createInviteSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: validation.errors
+      });
+    }
+
+    const { email, role } = validation.data;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Check if user is already a member
+    const { data: existingMember } = await supabaseAdmin
+      .from('team_members')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('user_id', email) // This won't work directly - need to lookup by email
+      .single();
+
+    // Generate secure token
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Set expiry to 7 days from now
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // Check for existing pending invite to same email
+    const { data: existingInvite } = await supabaseAdmin
+      .from('team_invites')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('email', email.toLowerCase())
+      .eq('revoked', false)
+      .is('accepted_at', null)
+      .single();
+
+    if (existingInvite) {
+      return res.status(400).json({
+        error: "Invite already exists",
+        message: "A pending invite already exists for this email"
+      });
+    }
+
+    const { data: invite, error } = await supabaseAdmin
+      .from('team_invites')
+      .insert({
+        team_id: teamId,
+        email: email.toLowerCase(),
+        role,
+        token_hash: tokenHash,
+        invited_by: userId,
+        expires_at: expiresAt.toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("CREATE INVITE ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Get team name for the invite link
+    const { data: team } = await supabaseAdmin
+      .from('teams')
+      .select('name')
+      .eq('id', teamId)
+      .single();
+
+    // Build invite URL (frontend will handle this)
+    const inviteUrl = `${process.env.FRONTEND_URL || 'https://loquihq-beta.web.app'}/#/invite?token=${token}`;
+
+    console.log(`✅ Invite created for ${email} to team ${teamId.substring(0, 8)}...`);
+
+    return res.json({
+      id: invite.id,
+      email: invite.email,
+      role: invite.role,
+      expiresAt: invite.expires_at,
+      inviteUrl,
+      teamName: team?.name
+    });
+  } catch (err: any) {
+    console.error("CREATE INVITE ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/team/:teamId/invites - List pending invites (admin/owner only)
+app.get("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const { data: invites, error } = await supabaseAdmin
+      .from('team_invites')
+      .select('*')
+      .eq('team_id', teamId)
+      .eq('revoked', false)
+      .is('accepted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("GET INVITES ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    const transformed = (invites || []).map((i: any) => ({
+      id: i.id,
+      email: i.email,
+      role: i.role,
+      expiresAt: i.expires_at,
+      createdAt: i.created_at,
+      isExpired: new Date(i.expires_at) < new Date()
+    }));
+
+    return res.json(transformed);
+  } catch (err: any) {
+    console.error("GET INVITES ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/team/invites/accept - Accept invite (any authenticated user)
+app.post("/api/team/invites/accept", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    const validation = validateRequest(acceptInviteSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: validation.errors
+      });
+    }
+
+    const { token } = validation.data;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Hash the token to lookup
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find the invite
+    const { data: invite, error: findError } = await supabaseAdmin
+      .from('team_invites')
+      .select('*, teams:team_id (name)')
+      .eq('token_hash', tokenHash)
+      .eq('revoked', false)
+      .is('accepted_at', null)
+      .single();
+
+    if (findError || !invite) {
+      return res.status(404).json({
+        error: "Invalid or expired invite",
+        message: "This invite link is invalid, expired, or has already been used"
+      });
+    }
+
+    // Check expiry
+    if (new Date(invite.expires_at) < new Date()) {
+      return res.status(400).json({
+        error: "Invite expired",
+        message: "This invite has expired. Please request a new one."
+      });
+    }
+
+    // Check if user is already a member
+    const { data: existingMember } = await supabaseAdmin
+      .from('team_members')
+      .select('id')
+      .eq('team_id', invite.team_id)
+      .eq('user_id', userId)
+      .single();
+
+    if (existingMember) {
+      return res.status(400).json({
+        error: "Already a member",
+        message: "You are already a member of this team"
+      });
+    }
+
+    // Add user as team member
+    const { error: memberError } = await supabaseAdmin
+      .from('team_members')
+      .insert({
+        team_id: invite.team_id,
+        user_id: userId,
+        role: invite.role,
+        invited_by: invite.invited_by
+      });
+
+    if (memberError) {
+      console.error("ACCEPT INVITE - ADD MEMBER ERROR:", memberError);
+      return res.status(500).json({ error: memberError.message });
+    }
+
+    // Mark invite as accepted
+    await supabaseAdmin
+      .from('team_invites')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('id', invite.id);
+
+    console.log(`✅ Invite accepted: user ${userId.substring(0, 8)}... joined team ${invite.team_id.substring(0, 8)}... as ${invite.role}`);
+
+    return res.json({
+      success: true,
+      teamId: invite.team_id,
+      teamName: invite.teams?.name,
+      role: invite.role
+    });
+  } catch (err: any) {
+    console.error("ACCEPT INVITE ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /api/team/:teamId/invites/:inviteId/revoke - Revoke invite (admin/owner only)
+app.post("/api/team/:teamId/invites/:inviteId/revoke", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId, inviteId } = req.params;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('team_invites')
+      .update({ revoked: true })
+      .eq('id', inviteId)
+      .eq('team_id', teamId);
+
+    if (error) {
+      console.error("REVOKE INVITE ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`✅ Invite ${inviteId.substring(0, 8)}... revoked in team ${teamId.substring(0, 8)}...`);
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("REVOKE INVITE ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/team/:teamId/me - Get current user's role and permissions
+app.get("/api/team/:teamId/me", requireAuth, requireTeamRole('viewer'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+
+    return res.json({
+      teamId,
+      role: req.teamMembership?.role,
+      permissions: req.teamMembership?.permissions
+    });
+  } catch (err: any) {
+    console.error("GET MY PERMISSIONS ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/team/:teamId/integrations/status - Get all integration statuses for team
+app.get("/api/team/:teamId/integrations/status", requireAuth, requireTeamRole('viewer'), async (req: TeamAuthRequest, res) => {
+  try {
+    const { teamId } = req.params;
+
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    // Get all connected accounts for team members
+    // For now, get the owner's connected accounts as the "team" accounts
+    const { data: team } = await supabaseAdmin
+      .from('teams')
+      .select('owner_id')
+      .eq('id', teamId)
+      .single();
+
+    if (!team) {
+      return res.status(404).json({ error: "Team not found" });
+    }
+
+    const { data: accounts, error } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('*')
+      .eq('user_id', team.owner_id);
+
+    if (error) {
+      console.error("GET INTEGRATIONS ERROR:", error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Build status map for each platform
+    const platformStatus: Record<string, any> = {
+      linkedin: { connected: false },
+      twitter: { connected: false },
+      medium: { connected: false },
+      gmail: { connected: false },
+      facebook: { connected: false }
+    };
+
+    for (const account of (accounts || [])) {
+      const provider = account.provider;
+      if (platformStatus[provider] !== undefined) {
+        const isExpired = account.expires_at && new Date(account.expires_at) < new Date();
+        platformStatus[provider] = {
+          connected: !isExpired,
+          accountName: account.profile?.name || account.profile?.email || 'Connected',
+          scopes: account.scopes || [],
+          tokenExpired: isExpired,
+          expiresAt: account.expires_at
+        };
+      }
+    }
+
+    return res.json(platformStatus);
+  } catch (err: any) {
+    console.error("GET INTEGRATIONS STATUS ERROR:", err?.message);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ============================================================================
 // SPOTIFY OAUTH ENDPOINTS (Real Download Data)
 // ============================================================================
 
@@ -763,6 +1491,14 @@ app.get("/api/integrations/linkedin/auth-url", requireAuth, async (req: AuthRequ
     });
   }
 });
+
+// ============================================================================
+// KIT OAUTH ENDPOINTS (Email/CRM)
+// ============================================================================
+
+app.get("/api/integrations/kit/auth-url", requireAuth, kitAuthUrl);
+app.get("/api/integrations/kit/callback", kitCallback); // callback is public
+app.get("/api/integrations/kit/status", requireAuth, kitStatus);
 
 // LinkedIn OAuth callback - handles redirect from LinkedIn
 app.get("/api/integrations/linkedin/callback", async (req, res) => {
@@ -1722,15 +2458,341 @@ app.post("/api/integrations/medium/post", requireAuth, async (req: AuthRequest, 
 });
 
 // ============================================================================
+// EMAIL/CRM INTEGRATIONS (Unified Adapter Layer)
+// ============================================================================
+
+const buildMarketingContext = (req: AuthRequest, provider: MarketingProvider) => ({
+  userId: getUserId(req),
+  provider,
+  requestId: (req as any).requestId,
+});
+
+app.get("/api/integrations/:provider/auth-url", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  const ctx = buildMarketingContext(req, provider as MarketingProvider);
+
+  await logIntegrationEvent({
+    userId: ctx.userId,
+    provider,
+    eventType: 'auth_start',
+    status: 'pending',
+    payload: { action: 'auth_url' },
+  });
+
+  try {
+    const result = await adapter.getAuthUrl(ctx);
+    if (!result.supported) {
+      await logIntegrationEvent({
+        userId: ctx.userId,
+        provider,
+        eventType: 'auth_failure',
+        status: 'failure',
+        error: result.message,
+      });
+      return res.json(result);
+    }
+
+    await logIntegrationEvent({
+      userId: ctx.userId,
+      provider,
+      eventType: 'auth_success',
+      status: 'success',
+      payload: { action: 'auth_url' },
+    });
+
+    return res.json({
+      supported: true,
+      authUrl: result.data.authUrl,
+      capabilities: adapter.capabilities,
+    });
+  } catch (err: any) {
+    await logIntegrationEvent({
+      userId: ctx.userId,
+      provider,
+      eventType: 'auth_failure',
+      status: 'failure',
+      error: err?.message || 'Auth URL failed',
+    });
+    return res.status(500).json({ error: err?.message || 'Failed to get auth URL' });
+  }
+});
+
+app.get("/api/integrations/:provider/callback", optionalAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  const userId = req.user?.id || req.query.userId;
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ error: 'Missing userId' });
+  }
+
+  const params: Record<string, string> = {};
+  Object.entries(req.query || {}).forEach(([key, value]) => {
+    if (typeof value === 'string') params[key] = value;
+  });
+
+  const ctx = { userId, provider: provider as MarketingProvider, requestId: (req as any).requestId };
+
+  try {
+    const result = await adapter.handleCallback(ctx, params);
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Callback failed' });
+  }
+});
+
+app.get("/api/integrations/:provider/status", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const status = await adapter.getStatus(buildMarketingContext(req, provider as MarketingProvider));
+    return res.json({ status, capabilities: adapter.capabilities });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to fetch status' });
+  }
+});
+
+app.post("/api/integrations/:provider/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const result = await adapter.disconnect(buildMarketingContext(req, provider as MarketingProvider));
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to disconnect' });
+  }
+});
+
+app.get("/api/integrations/:provider/audiences", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const result = await adapter.listAudiences(buildMarketingContext(req, provider as MarketingProvider));
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Failed to fetch audiences' });
+  }
+});
+
+app.post("/api/integrations/:provider/contacts", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+  const { email, fields } = req.body || {};
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  if (!email || typeof email !== 'string') {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const result = await adapter.upsertContact(buildMarketingContext(req, provider as MarketingProvider), email, fields || {});
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'contact_upsert',
+      status: result.supported ? 'success' : 'failure',
+      payload: { email },
+      error: result.supported ? null : result.message,
+    });
+    return res.json(result);
+  } catch (err: any) {
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'contact_upsert',
+      status: 'failure',
+      payload: { email },
+      error: err?.message || 'Contact upsert failed',
+    });
+    return res.status(500).json({ error: err?.message || 'Failed to upsert contact' });
+  }
+});
+
+app.post("/api/integrations/:provider/subscribe", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+  const { audienceId, email } = req.body || {};
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  if (!audienceId || typeof audienceId !== 'string' || !email || typeof email !== 'string') {
+    return res.status(400).json({ error: 'audienceId and email are required' });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const result = await adapter.subscribe(buildMarketingContext(req, provider as MarketingProvider), audienceId, email);
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'subscribe',
+      status: result.supported ? 'success' : 'failure',
+      payload: { email, audienceId },
+      error: result.supported ? null : result.message,
+    });
+    return res.json(result);
+  } catch (err: any) {
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'subscribe',
+      status: 'failure',
+      payload: { email, audienceId },
+      error: err?.message || 'Subscribe failed',
+    });
+    return res.status(500).json({ error: err?.message || 'Failed to subscribe' });
+  }
+});
+
+app.post("/api/integrations/:provider/tag", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+  const { email, tag } = req.body || {};
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  if (!email || typeof email !== 'string' || !tag || typeof tag !== 'string') {
+    return res.status(400).json({ error: 'email and tag are required' });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const result = await adapter.tag(buildMarketingContext(req, provider as MarketingProvider), email, tag);
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'tag',
+      status: result.supported ? 'success' : 'failure',
+      payload: { email, tag },
+      error: result.supported ? null : result.message,
+    });
+    return res.json(result);
+  } catch (err: any) {
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'tag',
+      status: 'failure',
+      payload: { email, tag },
+      error: err?.message || 'Tag failed',
+    });
+    return res.status(500).json({ error: err?.message || 'Failed to tag contact' });
+  }
+});
+
+app.post("/api/integrations/:provider/send", requireAuth, async (req: AuthRequest, res) => {
+  const { provider } = req.params;
+  const payload = req.body || {};
+
+  if (!isMarketingProvider(provider)) {
+    return res.status(404).json({ error: "Unknown provider" });
+  }
+
+  const adapter = getMarketingAdapter(provider);
+  if (!adapter) {
+    return res.status(404).json({ error: "Provider not supported" });
+  }
+
+  try {
+    const result = await adapter.sendOrTrigger(buildMarketingContext(req, provider as MarketingProvider), payload);
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: result.supported ? 'send' : 'send_failure',
+      status: result.supported ? 'success' : 'failure',
+      payload,
+      error: result.supported ? null : result.message,
+    });
+    return res.json(result);
+  } catch (err: any) {
+    await logIntegrationEvent({
+      userId: getUserId(req),
+      provider,
+      eventType: 'send_failure',
+      status: 'failure',
+      payload,
+      error: err?.message || 'Send failed',
+    });
+    return res.status(500).json({ error: err?.message || 'Failed to send/trigger' });
+  }
+});
+
+// ============================================================================
 // EMAIL LISTS MANAGEMENT
 // ============================================================================
 
 // Get all email lists for the current user
 app.get("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
     const userId = getUserId(req);
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("email_lists")
       .select("id, name, email_count, created_at, updated_at")
       .eq("user_id", userId)
@@ -1748,10 +2810,14 @@ app.get("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
 // Get a single email list with all emails
 app.get("/api/email-lists/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
     const userId = getUserId(req);
     const { id } = req.params;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("email_lists")
       .select("*")
       .eq("id", id)
@@ -1771,6 +2837,10 @@ app.get("/api/email-lists/:id", requireAuth, async (req: AuthRequest, res) => {
 // Create a new email list (from CSV data)
 app.post("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
     const userId = getUserId(req);
     const { name, emails } = req.body;
 
@@ -1795,7 +2865,7 @@ app.post("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
     // Remove duplicates
     const uniqueEmails = [...new Set(validEmails)];
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("email_lists")
       .insert({
         user_id: userId,
@@ -1824,10 +2894,14 @@ app.post("/api/email-lists", requireAuth, async (req: AuthRequest, res) => {
 // Delete an email list
 app.delete("/api/email-lists/:id", requireAuth, async (req: AuthRequest, res) => {
   try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
     const userId = getUserId(req);
     const { id } = req.params;
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from("email_lists")
       .delete()
       .eq("id", id)
@@ -1849,7 +2923,6 @@ app.delete("/api/email-lists/:id", requireAuth, async (req: AuthRequest, res) =>
 // ============================================================================
 
 app.post("/api/jobs/publish-scheduled", async (req, res) => {
-  // Verify cron secret
   const secret = req.header("x-cron-secret");
   const expectedSecret = process.env.CRON_SECRET || process.env.PUBLISHER_CRON_SECRET;
 
@@ -1864,80 +2937,114 @@ app.post("/api/jobs/publish-scheduled", async (req, res) => {
   }
 
   try {
-    // Create admin Supabase client
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return res.status(500).json({ error: "Supabase not configured" });
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Fetch due posts (status = 'Scheduled' and scheduled_date <= now)
-    const now = new Date().toISOString();
-    const { data: duePosts, error: fetchError } = await supabaseAdmin
-      .from("scheduled_posts")
-      .select("*")
-      .in("platform", ["linkedin", "twitter", "email"])
-      .eq("status", "Scheduled")
-      .lte("scheduled_date", now)
-      .limit(25);
-
-    if (fetchError) {
-      console.error("Failed to fetch due posts:", fetchError);
-      return res.status(500).json({ error: fetchError.message });
-    }
-
-    if (!duePosts?.length) {
-      console.log("📅 No scheduled posts due for publishing");
-      return res.json({ ok: true, processed: 0 });
-    }
-
-    console.log(`📅 Processing ${duePosts.length} scheduled posts...`);
-    let processed = 0;
-    let failed = 0;
-    for (const post of duePosts) {
-      try {
-        // Handle different platforms
-        if (post.platform === 'linkedin') {
-          await publishToLinkedIn(post, supabaseAdmin);
-        } else if (post.platform === 'twitter') {
-          await publishToX(post, supabaseAdmin);
-        } else if (post.platform === 'medium') {
-          await publishToMedium(post, supabaseAdmin);
-        } else if (post.platform === 'email') {
-          await publishToEmail(post, supabaseAdmin);
-        } else {
-          throw new Error(`Unsupported platform: ${post.platform}`);
-        }
-
-        console.log(`✅ Published post ${post.id} to ${post.platform}`);
-        processed++;
-      } catch (postError: any) {
-        console.error(`❌ Failed to publish post ${post.id}:`, postError.message);
-
-        // Update post status to Failed
-        await supabaseAdmin
-          .from("scheduled_posts")
-          .update({
-            status: "Failed",
-            metrics: { error: postError.message, failed_at: new Date().toISOString() },
-          })
-          .eq("id", post.id);
-
-        failed++;
-      }
-    }
-
-    console.log(`📅 Publisher completed: ${processed} published, ${failed} failed`);
-    return res.json({ ok: true, processed, failed });
+    const summary = await processScheduledPosts();
+    return res.json({ ok: true, ...summary });
   } catch (err: any) {
     console.error("Publisher job error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
+
+// Cron dispatcher (preferred path)
+app.post("/api/cron/dispatch-scheduled-posts", async (req, res) => {
+  const secret = req.header("x-cron-secret");
+  const expectedSecret = process.env.CRON_SECRET || process.env.PUBLISHER_CRON_SECRET;
+
+  if (!expectedSecret) {
+    console.error("CRON_SECRET not configured");
+    return res.status(500).json({ error: "Publisher not configured" });
+  }
+
+  if (!secret || secret !== expectedSecret) {
+    console.warn("Unauthorized dispatch-scheduled-posts request");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const summary = await processScheduledPosts();
+    return res.json({ ok: true, ...summary });
+  } catch (err: any) {
+    console.error("Dispatch job error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+async function processScheduledPosts() {
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Supabase not configured");
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+  const now = new Date().toISOString();
+  const { data: duePosts, error: fetchError } = await supabaseAdmin
+    .from("scheduled_posts")
+    .select("*")
+    .in("platform", ["linkedin", "twitter", "email"])
+    .eq("status", "Scheduled")
+    .lte("scheduled_at", now)
+    .limit(25);
+
+  if (fetchError) {
+    console.error("Failed to fetch due posts:", fetchError);
+    throw new Error(fetchError.message);
+  }
+
+  if (!duePosts?.length) {
+    console.log("📅 No scheduled posts due for publishing");
+    return { processed: 0, failed: 0, manual: 0 };
+  }
+
+  console.log(`📅 Processing ${duePosts.length} scheduled posts...`);
+  let processed = 0;
+  let failed = 0;
+  let manual = 0;
+  for (const post of duePosts) {
+    try {
+      if (post.platform === 'linkedin') {
+        await publishToLinkedIn(post, supabaseAdmin);
+      } else if (post.platform === 'twitter') {
+        await publishToX(post, supabaseAdmin);
+      } else if (post.platform === 'medium') {
+        await publishToMedium(post, supabaseAdmin);
+      } else if (post.platform === 'email') {
+        if (post.provider === 'kit') {
+          const result = await publishToKitBroadcast(post, supabaseAdmin);
+          if (result === 'NeedsManualSend') {
+            manual++;
+          }
+        } else {
+          await publishToEmail(post, supabaseAdmin);
+        }
+      } else {
+        throw new Error(`Unsupported platform: ${post.platform}`);
+      }
+
+      console.log(`✅ Published post ${post.id} to ${post.platform}`);
+      processed++;
+    } catch (postError: any) {
+      console.error(`❌ Failed to publish post ${post.id}:`, postError.message);
+
+      await supabaseAdmin
+        .from("scheduled_posts")
+        .update({
+          status: "Failed",
+          last_error: postError.message,
+          metrics: { error: postError.message, failed_at: new Date().toISOString() },
+        })
+        .eq("id", post.id);
+
+      failed++;
+    }
+  }
+
+  console.log(`📅 Publisher completed: ${processed} published, ${failed} failed, ${manual} manual`);
+  return { processed, failed, manual };
+}
 
 // Helper function to publish to LinkedIn
 async function publishToLinkedIn(post: any, supabaseAdmin: any) {
@@ -2157,6 +3264,173 @@ async function publishToEmail(post: any, supabaseAdmin: any) {
     console.log(`📧 Email partially sent: ${successCount} succeeded, ${failureCount} failed`);
   } else if (failureCount > 0) {
     throw new Error(`Failed to send email to all ${failureCount} recipients`);
+  }
+}
+
+// Helper function to publish email via Kit (broadcast)
+async function publishToKitBroadcast(post: any, supabaseAdmin: any): Promise<'Published' | 'NeedsManualSend'> {
+  let providerAccountId: string | null = null;
+  try {
+    const kitClientId = process.env.KIT_CLIENT_ID || '';
+    const kitClientSecret = process.env.KIT_CLIENT_SECRET || '';
+    const kitRedirectUri = process.env.KIT_REDIRECT_URI || '';
+    const kitApiBase = 'https://api.kit.com/v4';
+    const kitTokenUrl = 'https://api.kit.com/v4/oauth/token';
+
+    if (!kitClientId || !kitClientSecret || !kitRedirectUri) {
+      await supabaseAdmin
+        .from('scheduled_posts')
+        .update({
+          status: 'NeedsManualSend',
+          last_error: 'Kit OAuth not configured',
+        })
+        .eq('id', post.id);
+      return 'NeedsManualSend';
+    }
+
+    const { data: connection, error: connError } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('access_token, refresh_token, expires_at, profile, provider_user_id')
+      .eq('user_id', post.user_id)
+      .eq('provider', 'kit')
+      .maybeSingle();
+
+    if (connError || !connection?.access_token) {
+      await supabaseAdmin
+        .from('scheduled_posts')
+        .update({
+          status: 'NeedsManualSend',
+          last_error: 'Kit not connected for this user',
+        })
+        .eq('id', post.id);
+      return 'NeedsManualSend';
+    }
+
+    let accessToken = connection.access_token;
+    let refreshToken = connection.refresh_token;
+    const isExpired = connection.expires_at && new Date(connection.expires_at).getTime() < Date.now() + 60 * 1000;
+
+    if (isExpired && refreshToken) {
+      const refreshResp = await fetch(kitTokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          client_id: kitClientId,
+          client_secret: kitClientSecret,
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          redirect_uri: kitRedirectUri,
+        }),
+      });
+
+      const refreshJson: any = await refreshResp.json().catch(() => ({}));
+      if (refreshResp.ok && refreshJson.access_token) {
+        accessToken = refreshJson.access_token;
+        refreshToken = refreshJson.refresh_token || refreshToken;
+        const expiresIn = Number(refreshJson.expires_in || 0);
+        const newExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+
+        await supabaseAdmin
+          .from('connected_accounts')
+          .update({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_at: newExpiresAt,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', post.user_id)
+          .eq('provider', 'kit');
+      }
+    }
+
+    // Parse subject and body from content (format: "Subject: {subject}\n\n{body}")
+    const content = post.content || '';
+    const subjectMatch = content.match(/^Subject:\s*(.+?)(?:\n|$)/);
+    const subject = post.title || (subjectMatch ? subjectMatch[1].trim() : 'Scheduled Email');
+    const body = post.content_html || content.replace(/^Subject:\s*.+?\n\n?/, '').trim();
+    providerAccountId = connection?.profile?.account?.id?.toString?.() || connection?.provider_user_id || null;
+
+    // Create broadcast (draft) then schedule/send
+    const broadcastResp = await fetch(`${kitApiBase}/broadcasts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        subject,
+        content: body,
+      }),
+    });
+
+    const broadcastJson: any = await broadcastResp.json().catch(() => ({}));
+    if (!broadcastResp.ok) {
+      await supabaseAdmin
+        .from('scheduled_posts')
+        .update({
+          status: 'NeedsManualSend',
+          last_error: `Kit broadcast create failed: ${broadcastResp.status} - ${JSON.stringify(broadcastJson)}`,
+          manual_action_url: 'https://app.kit.com/broadcasts',
+          provider_account_id: providerAccountId,
+        })
+        .eq('id', post.id);
+      return 'NeedsManualSend';
+    }
+
+    const broadcastId = broadcastJson?.broadcast?.id || broadcastJson?.id;
+
+    // Attempt schedule/send (best-effort)
+    const scheduleResp = await fetch(`${kitApiBase}/broadcasts/${broadcastId}/send`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        scheduled_at: post.scheduled_at || post.scheduled_date || new Date().toISOString(),
+      }),
+    });
+
+    if (!scheduleResp.ok) {
+      const scheduleJson: any = await scheduleResp.json().catch(() => ({}));
+      await supabaseAdmin
+        .from('scheduled_posts')
+        .update({
+          status: 'NeedsManualSend',
+          external_id: broadcastId ? String(broadcastId) : null,
+          last_error: `Kit schedule/send failed: ${scheduleResp.status} - ${JSON.stringify(scheduleJson)}`,
+          manual_action_url: 'https://app.kit.com/broadcasts',
+          provider_account_id: providerAccountId,
+        })
+        .eq('id', post.id);
+      return 'NeedsManualSend';
+    }
+
+    await supabaseAdmin
+      .from('scheduled_posts')
+      .update({
+        status: 'Published',
+        published_at: new Date().toISOString(),
+        external_id: broadcastId ? String(broadcastId) : null,
+        last_error: null,
+        provider_account_id: providerAccountId,
+      })
+      .eq('id', post.id);
+
+    return 'Published';
+  } catch (err: any) {
+    await supabaseAdmin
+      .from('scheduled_posts')
+      .update({
+        status: 'NeedsManualSend',
+        last_error: err?.message || 'Kit send failed',
+        manual_action_url: 'https://app.kit.com/broadcasts',
+        provider_account_id: providerAccountId,
+      })
+      .eq('id', post.id);
+    return 'NeedsManualSend';
   }
 }
 

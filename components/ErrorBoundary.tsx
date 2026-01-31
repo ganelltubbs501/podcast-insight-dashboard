@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { ErrorBoundary as SentryErrorBoundary } from '../src/utils/sentry';
-import ReportIssue from './ReportIssue';
 
 interface AppErrorBoundaryProps {
   children: React.ReactNode;
@@ -60,11 +59,12 @@ const AppErrorBoundary: React.FC<AppErrorBoundaryProps> = ({
               Refresh Page
             </button>
 
-            <ReportIssue
-              lastError={error}
-              variant="button"
-              className="w-full"
-            />
+            <button
+              onClick={() => window.location.href = '/'}
+              className="w-full border border-gray-300 text-textSecondary px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+            >
+              Go to Dashboard
+            </button>
           </div>
         </div>
       </div>

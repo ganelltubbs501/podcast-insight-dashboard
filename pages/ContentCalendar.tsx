@@ -12,7 +12,7 @@ const ContentCalendar: React.FC = () => {
   const [editContent, setEditContent] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
-  const [editStatus, setEditStatus] = useState<'Scheduled' | 'Published' | 'Failed'>('Scheduled');
+  const [editStatus, setEditStatus] = useState<'Scheduled' | 'Published' | 'Failed' | 'NeedsManualSend'>('Scheduled');
   const [showMetricsTracker, setShowMetricsTracker] = useState(false);
 
   // Filters
@@ -217,6 +217,7 @@ const ContentCalendar: React.FC = () => {
               <option value="Scheduled">Scheduled</option>
               <option value="Published">Published</option>
               <option value="Failed">Failed</option>
+              <option value="NeedsManualSend">Needs Manual Send</option>
             </select>
           </div>
           {/* Month Navigation */}
@@ -284,6 +285,7 @@ const ContentCalendar: React.FC = () => {
                             <span className="truncate font-medium">
                               {(post.status || '').toLowerCase() === 'published' && <CheckCircle className="inline h-3 w-3 mr-1 text-green-600"/>}
                               {(post.status || '').toLowerCase() === 'failed' && <AlertCircle className="inline h-3 w-3 mr-1 text-red-600"/>}
+                              {(post.status || '').toLowerCase() === 'needsmanualsend' && <AlertCircle className="inline h-3 w-3 mr-1 text-amber-600"/>}
                               {post.content}
                             </span>
                          </button>
@@ -312,7 +314,7 @@ const ContentCalendar: React.FC = () => {
                {!isEditing ? (
                  <>
                    <div className="mb-6">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mb-3 ${(selectedPost.status || '').toLowerCase() === 'published' ? 'bg-accent-soft text-green-700' : (selectedPost.status || '').toLowerCase() === 'failed' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide mb-3 ${(selectedPost.status || '').toLowerCase() === 'published' ? 'bg-accent-soft text-green-700' : (selectedPost.status || '').toLowerCase() === 'failed' ? 'bg-red-100 text-red-700' : (selectedPost.status || '').toLowerCase() === 'needsmanualsend' ? 'bg-amber-100 text-amber-700' : 'bg-yellow-100 text-yellow-700'}`}>
                         {(selectedPost.status || '').toLowerCase() === 'published' ? <CheckCircle className="h-3 w-3" /> : (selectedPost.status || '').toLowerCase() === 'scheduled' ? <Clock className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
                         {selectedPost.status}
                       </span>
@@ -334,6 +336,15 @@ const ContentCalendar: React.FC = () => {
                         {selectedPost.content}
                       </div>
                    </div>
+
+                   {selectedPost.lastError && (
+                     <div className="mb-6">
+                        <div className="text-xs font-bold text-textMuted uppercase mb-2">Last Error</div>
+                        <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-sm text-amber-700 whitespace-pre-wrap">
+                          {selectedPost.lastError}
+                        </div>
+                     </div>
+                   )}
 
                    {selectedPost.metrics && (
                      <div className="mb-6 bg-accent-soft p-4 rounded-lg border border-primary">
@@ -407,12 +418,13 @@ const ContentCalendar: React.FC = () => {
                       <label className="text-xs font-bold text-textMuted uppercase mb-2 block">Status</label>
                       <select
                         value={editStatus}
-                        onChange={(e) => setEditStatus(e.target.value as 'Scheduled' | 'Published' | 'Failed')}
+                        onChange={(e) => setEditStatus(e.target.value as 'Scheduled' | 'Published' | 'Failed' | 'NeedsManualSend')}
                         className="w-full bg-gray-100 border border-gray-300 rounded-lg p-2 text-sm text-textBody"
                       >
                         <option value="Scheduled">Scheduled</option>
                         <option value="Published">Published</option>
                         <option value="Failed">Failed</option>
+                        <option value="NeedsManualSend">Needs Manual Send</option>
                       </select>
                    </div>
 

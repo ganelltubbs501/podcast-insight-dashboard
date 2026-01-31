@@ -103,10 +103,156 @@ export async function sendSupportTicket(subject: string, message: string) { retu
 
 // Branding / Account
 
-// Team
-export async function getTeamMembers() { return getJSON('/api/team/members'); }
-export async function inviteTeamMember(email: string, role: string) { return postJSON('/api/team/invite', { email, role }); }
-export async function removeTeamMember(id: string) { return postJSON(`/api/team/${id}/remove`, {}); }
+// ============================================================================
+// TEAM COLLABORATION
+// ============================================================================
+
+// Helper for PATCH requests
+async function patchJSON<T>(path: string, body: any): Promise<T> {
+  requireApi();
+  const headers = await getHeaders();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'PATCH',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+    throw new Error(`API ${res.status}: ${text}`);
+  }
+  return (await res.json()) as T;
+}
+
+// Helper for DELETE requests
+async function deleteJSON<T>(path: string): Promise<T> {
+  requireApi();
+  const headers = await getHeaders();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+    headers,
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 401) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+    throw new Error(`API ${res.status}: ${text}`);
+  }
+  return (await res.json()) as T;
+}
+
+// Team Types
+export interface Team {
+  id: string;
+  name: string;
+  role: 'owner' | 'admin' | 'editor' | 'viewer';
+  isOwner: boolean;
+  pricingTier: string;
+  maxMembers: number;
+  joinedAt: string;
+  createdAt: string;
+}
+
+export interface TeamMember {
+  id: string;
+  userId: string;
+  role: 'owner' | 'admin' | 'editor' | 'viewer';
+  email: string;
+  name: string;
+  joinedAt: string;
+}
+
+export interface TeamPermissions {
+  canViewAnalytics: boolean;
+  canSchedule: boolean;
+  canPublishNow: boolean;
+  canConnectAccounts: boolean;
+  canManageMembers: boolean;
+  canBilling: boolean;
+}
+
+export interface TeamInvite {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+  createdAt: string;
+  isExpired: boolean;
+  inviteUrl?: string;
+  teamName?: string;
+}
+
+export interface IntegrationStatus {
+  connected: boolean;
+  accountName?: string;
+  scopes?: string[];
+  tokenExpired?: boolean;
+  expiresAt?: string;
+}
+
+// Teams
+export async function createTeam(name: string): Promise<Team> {
+  return postJSON('/api/team', { name });
+}
+
+export async function getTeams(): Promise<Team[]> {
+  return getJSON('/api/team');
+}
+
+export async function getTeamDetails(teamId: string) {
+  return getJSON(`/api/team/${teamId}`);
+}
+
+export async function updateTeam(teamId: string, updates: { name?: string }) {
+  return patchJSON(`/api/team/${teamId}`, updates);
+}
+
+// Members
+export async function getTeamMembers(teamId: string): Promise<TeamMember[]> {
+  return getJSON(`/api/team/${teamId}/members`);
+}
+
+export async function updateMemberRole(teamId: string, userId: string, role: string) {
+  return patchJSON(`/api/team/${teamId}/members/${userId}`, { role });
+}
+
+export async function removeMember(teamId: string, userId: string) {
+  return deleteJSON(`/api/team/${teamId}/members/${userId}`);
+}
+
+// Invites
+export async function createInvite(teamId: string, email: string, role: string): Promise<TeamInvite> {
+  return postJSON(`/api/team/${teamId}/invites`, { email, role });
+}
+
+export async function getInvites(teamId: string): Promise<TeamInvite[]> {
+  return getJSON(`/api/team/${teamId}/invites`);
+}
+
+export async function acceptInvite(token: string): Promise<{ success: boolean; teamId: string; teamName: string; role: string }> {
+  return postJSON('/api/team/invites/accept', { token });
+}
+
+export async function revokeInvite(teamId: string, inviteId: string) {
+  return postJSON(`/api/team/${teamId}/invites/${inviteId}/revoke`, {});
+}
+
+// Permissions
+export async function getMyPermissions(teamId: string): Promise<{ teamId: string; role: string; permissions: TeamPermissions }> {
+  return getJSON(`/api/team/${teamId}/me`);
+}
+
+// Integrations
+export async function getTeamIntegrationStatus(teamId: string): Promise<Record<string, IntegrationStatus>> {
+  return getJSON(`/api/team/${teamId}/integrations/status`);
+}
+
+// Legacy exports (for backward compatibility)
 export async function getActivityLog() { return getJSON('/api/team/activity'); }
 
 // Fallback exports for other pages to import in a production setup
@@ -114,5 +260,8 @@ export default {
   getGuests, addGuest, updateGuest, deleteGuest,
   getApiKeys, generateApiKey, revokeApiKey, getWebhooks, addWebhook, deleteWebhook, testWebhook,
   getHelpArticles, getTutorials, sendSupportTicket,
-  getTeamMembers, inviteTeamMember, removeTeamMember, getActivityLog,
+  createTeam, getTeams, getTeamDetails, updateTeam,
+  getTeamMembers, updateMemberRole, removeMember,
+  createInvite, getInvites, acceptInvite, revokeInvite,
+  getMyPermissions, getTeamIntegrationStatus, getActivityLog,
 };
