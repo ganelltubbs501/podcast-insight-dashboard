@@ -22,7 +22,16 @@ import {
 import { getStoredUser } from '../services/auth';
 import { getLinkedInStatus, connectLinkedIn } from '../services/linkedin';
 import { getTwitterStatus, connectTwitter } from '../services/twitter';
-import { getKitAuthUrl, getKitStatus } from '../services/integrations';
+import {
+  getKitAuthUrl,
+  getKitStatus,
+  getMailchimpAuthUrl,
+  getMailchimpStatus,
+  getMailchimpDestinations,
+  getMailchimpAutomations,
+  triggerEpisodePublished,
+  scheduleNewsletterTrigger
+} from '../services/integrations';
 
 import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
@@ -82,6 +91,19 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   // Kit connection check state
   const [showConnectKitModal, setShowConnectKitModal] = useState(false);
   const [isCheckingKit, setIsCheckingKit] = useState(false);
+
+  // Mailchimp connection check state
+  const [showConnectMailchimpModal, setShowConnectMailchimpModal] = useState(false);
+  const [isCheckingMailchimp, setIsCheckingMailchimp] = useState(false);
+  const [isLoadingMailchimpData, setIsLoadingMailchimpData] = useState(false);
+  const [mailchimpDestinations, setMailchimpDestinations] = useState<Array<{ id: string; name: string; audience_id: string }>>([]);
+  const [mailchimpAutomations, setMailchimpAutomations] = useState<Array<{ id: string; name: string; destination_id: string; trigger_value: string }>>([]);
+
+  const [emailProvider, setEmailProvider] = useState<'mailchimp' | 'kit'>('mailchimp');
+
+  // Mailchimp newsletter scheduling
+  const [newsletterDestinationId, setNewsletterDestinationId] = useState('');
+  const [newsletterAutomationId, setNewsletterAutomationId] = useState('');
 
   // Email Export State
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -287,6 +309,17 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
       await updateTranscriptStatus(id, status);
       await loadData();
       setShowStatusMenu(false);
+
+      if (status === 'Published' && transcript) {
+        try {
+          await triggerEpisodePublished({
+            transcriptId: transcript.id,
+            episodeTitle: transcript.title
+          });
+        } catch (e) {
+          console.warn('Episode published trigger failed:', e);
+        }
+      }
     } catch (e) {
       console.error(e);
       alert("Failed to update status.");
@@ -346,23 +379,118 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     return 'Manual publishing only';
   };
 
+  const getApiErrorMessage = (err: unknown) => {
+    if (!err) return 'Unknown error';
+    if (err instanceof Error) {
+      const match = err.message.match(/API \d+: (.*)$/);
+      if (match?.[1]) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed?.error) return parsed.error;
+        } catch {
+          return match[1];
+        }
+      }
+      return err.message;
+    }
+    return String(err);
+  };
+
+  const loadMailchimpOptions = async (destinationId?: string) => {
+    setIsLoadingMailchimpData(true);
+    try {
+      const { destinations } = await getMailchimpDestinations();
+      setMailchimpDestinations(destinations || []);
+
+      const preferredDestinationId =
+        destinationId || newsletterDestinationId || destinations?.[0]?.id || '';
+
+      if (preferredDestinationId && preferredDestinationId !== newsletterDestinationId) {
+        setNewsletterDestinationId(preferredDestinationId);
+      }
+
+      if (preferredDestinationId) {
+        const { automations } = await getMailchimpAutomations(preferredDestinationId);
+        setMailchimpAutomations(automations || []);
+
+        if (!newsletterAutomationId && automations?.[0]?.id) {
+          setNewsletterAutomationId(automations[0].id);
+        }
+      } else {
+        setMailchimpAutomations([]);
+      }
+    } catch (e) {
+      console.error('Failed to load Mailchimp options:', e);
+      setMailchimpDestinations([]);
+      setMailchimpAutomations([]);
+    } finally {
+      setIsLoadingMailchimpData(false);
+    }
+  };
+
+  const handleMailchimpDestinationChange = async (value: string) => {
+    setNewsletterDestinationId(value);
+    setNewsletterAutomationId('');
+    setMailchimpAutomations([]);
+    if (!value) return;
+
+    setIsLoadingMailchimpData(true);
+    try {
+      const { automations } = await getMailchimpAutomations(value);
+      setMailchimpAutomations(automations || []);
+      if (automations?.[0]?.id) {
+        setNewsletterAutomationId(automations[0].id);
+      }
+    } catch (e) {
+      console.error('Failed to load Mailchimp automations:', e);
+      setMailchimpAutomations([]);
+    } finally {
+      setIsLoadingMailchimpData(false);
+    }
+  };
+
   // Check LinkedIn/X connection before opening schedule modal
   const handleScheduleClick = async () => {
     // Check for Kit (email) platform
     if (activePlatform === 'email') {
-      setIsCheckingKit(true);
-      try {
-        const status = await getKitStatus();
-        if (!status.connected) {
+      if (emailProvider === 'mailchimp') {
+        setIsCheckingMailchimp(true);
+        try {
+          const status = await getMailchimpStatus();
+          if (!status.connected) {
+            if (status.revoked) {
+              setScheduleNotification({ message: 'Mailchimp access was revoked. Reconnect to continue.', type: 'error' });
+              setTimeout(() => setScheduleNotification(null), 5000);
+            }
+            setShowConnectMailchimpModal(true);
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to check Mailchimp status:', e);
+          setShowConnectMailchimpModal(true);
+          return;
+        } finally {
+          setIsCheckingMailchimp(false);
+        }
+      } else {
+        setIsCheckingKit(true);
+        try {
+          const status = await getKitStatus();
+          if (!status.connected || status.tokenExpired) {
+            if (status.tokenExpired) {
+              setScheduleNotification({ message: 'Your Kit access has expired. Reconnect to continue.', type: 'error' });
+              setTimeout(() => setScheduleNotification(null), 5000);
+            }
+            setShowConnectKitModal(true);
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to check Kit status:', e);
           setShowConnectKitModal(true);
           return;
+        } finally {
+          setIsCheckingKit(false);
         }
-      } catch (e) {
-        console.error('Failed to check Kit status:', e);
-        setShowConnectKitModal(true);
-        return;
-      } finally {
-        setIsCheckingKit(false);
       }
     }
     if (!isSchedulingSupported(activePlatform)) {
@@ -420,6 +548,13 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     setShowScheduleModal(true);
   };
 
+  useEffect(() => {
+    if (showScheduleModal && activePlatform === 'email' && emailProvider === 'mailchimp') {
+      loadMailchimpOptions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showScheduleModal, activePlatform, emailProvider]);
+
   const handleSchedulePost = async () => {
     if (!scheduleDate || !scheduleTime || !transcript || !transcript.result) return;
 
@@ -429,6 +564,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
       return;
     }
 
+    let mailchimpSuccessMessage: string | null = null;
     setIsScheduling(true);
     try {
       const startDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
@@ -474,17 +610,51 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
         const emailBody = transcript.result.socialContent?.emailNewsletter?.body;
         const emailContent = emailSubject && emailBody ? `Subject: ${emailSubject}\n\n${emailBody}` : content;
 
-        await schedulePost({
-          platform: activePlatform,
-          provider: activePlatform === 'email' ? 'kit' : undefined,
-          title: activePlatform === 'email' ? (emailSubject || null) : undefined,
-          content: emailContent,
-          contentHtml: activePlatform === 'email' ? (emailBody || null) : undefined,
-          scheduledDate: startDateTime.toISOString(),
-          status: 'Scheduled',
-          transcriptId: transcript.id,
-          metadata: activePlatform === 'email' ? { provider: 'kit' } : undefined
-        });
+        if (activePlatform === 'email') {
+          if (emailProvider === 'mailchimp') {
+            if (!newsletterDestinationId || !newsletterAutomationId) {
+              setScheduleNotification({ message: 'You must connect your Mailchimp account and select a trigger tag before scheduling email content.', type: 'error' });
+              setTimeout(() => setScheduleNotification(null), 4000);
+              setIsScheduling(false);
+              return;
+            }
+
+            await scheduleNewsletterTrigger({
+              scheduledDate: startDateTime.toISOString(),
+              content: emailContent,
+              destinationId: newsletterDestinationId,
+              automationId: newsletterAutomationId,
+            });
+
+            const selectedAutomation = mailchimpAutomations.find((a) => a.id === newsletterAutomationId);
+            const tagName = selectedAutomation?.trigger_value || selectedAutomation?.name || 'selected tag';
+            mailchimpSuccessMessage = `✅ Scheduled\nAt the scheduled time, LoquiHQ will apply the tag ${tagName} in Mailchimp.\nYour automation will handle delivery.`;
+          } else {
+            await schedulePost({
+              platform: 'email',
+              provider: 'kit',
+              title: undefined,
+              content: emailContent,
+              contentHtml: undefined,
+              scheduledDate: startDateTime.toISOString(),
+              status: 'Scheduled',
+              transcriptId: transcript.id,
+              metadata: undefined
+            });
+          }
+        } else {
+          await schedulePost({
+            platform: activePlatform,
+            provider: undefined,
+            title: undefined,
+            content: emailContent,
+            contentHtml: undefined,
+            scheduledDate: startDateTime.toISOString(),
+            status: 'Scheduled',
+            transcriptId: transcript.id,
+            metadata: undefined
+          });
+        }
 
         // Update local state immediately to show the "Scheduled" badge
         setScheduledByPlatform(prev => ({
@@ -497,7 +667,8 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
 
         // Show success notification
         const platformName = activePlatform === 'teaser' ? 'Newsletter Teaser' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1);
-        const successMessage = `✓ ${platformName} post scheduled for ${startDateTime.toLocaleDateString()} at ${startDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        const defaultSuccessMessage = `✓ ${platformName} post scheduled for ${startDateTime.toLocaleDateString()} at ${startDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        const successMessage = mailchimpSuccessMessage || defaultSuccessMessage;
         setScheduleNotification({ message: successMessage, type: 'success' });
       }
 
@@ -515,7 +686,8 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
       }, 500);
     } catch (e) {
       console.error(e);
-      const errorMessage = "Failed to schedule post. The backend may not be running.";
+      const apiMessage = getApiErrorMessage(e);
+      const errorMessage = apiMessage || "Failed to schedule post. The backend may not be running.";
       setScheduleNotification({ message: errorMessage, type: 'error' });
       setTimeout(() => setScheduleNotification(null), 5000);
     } finally {
@@ -1769,10 +1941,10 @@ ${(transcript.content || '').substring(0, 1000)}
                     e.stopPropagation();
                     handleScheduleClick();
                   }}
-                  disabled={isCheckingLinkedIn || isCheckingX || isCheckingKit}
+                  disabled={isCheckingLinkedIn || isCheckingX || isCheckingMailchimp || isCheckingKit}
                   className="text-textSecondary hover:text-primary font-medium text-sm flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-100 transition disabled:opacity-50"
                 >
-                  {(isCheckingLinkedIn || isCheckingX || isCheckingKit) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
+                  {(isCheckingLinkedIn || isCheckingX || isCheckingMailchimp || isCheckingKit) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
                 </button>
               )}
               <button
@@ -2307,6 +2479,103 @@ ${(transcript.content || '').substring(0, 1000)}
             )}
 
             <div className="space-y-4 mb-6">
+              {activePlatform === 'email' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-textSecondary mb-1">Email provider</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
+                      value={emailProvider}
+                      onChange={(e) => {
+                        const next = e.target.value as 'mailchimp' | 'kit';
+                        setEmailProvider(next);
+                        if (next === 'mailchimp') {
+                          loadMailchimpOptions();
+                        } else {
+                          setNewsletterDestinationId('');
+                          setNewsletterAutomationId('');
+                          setMailchimpDestinations([]);
+                          setMailchimpAutomations([]);
+                        }
+                      }}
+                    >
+                      <option value="mailchimp">Mailchimp</option>
+                      <option value="kit">Kit</option>
+                    </select>
+                    <p className="text-xs text-textMuted mt-1">
+                      LoquiHQ does not send emails on your behalf. It applies your trigger tag so your provider automation
+                      handles delivery.
+                    </p>
+                  </div>
+                  {emailProvider === 'mailchimp' && (
+                  <>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-textSecondary">Mailchimp audience</label>
+                      <button
+                        type="button"
+                        onClick={() => loadMailchimpOptions(newsletterDestinationId)}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
+                      value={newsletterDestinationId}
+                      onChange={(e) => handleMailchimpDestinationChange(e.target.value)}
+                      disabled={isLoadingMailchimpData}
+                    >
+                      <option value="">Select an audience</option>
+                      {mailchimpDestinations.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name || d.audience_id}
+                        </option>
+                      ))}
+                    </select>
+                    {!mailchimpDestinations.length && (
+                      <p className="text-xs text-textMuted mt-1">No destinations found. Create one in Settings → Integrations.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-textSecondary mb-1">Automation trigger tag</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
+                      value={newsletterAutomationId}
+                      onChange={(e) => setNewsletterAutomationId(e.target.value)}
+                      disabled={isLoadingMailchimpData || !newsletterDestinationId}
+                    >
+                      <option value="">e.g. loquihq_newsletter</option>
+                      {mailchimpAutomations.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name || a.trigger_value}
+                        </option>
+                      ))}
+                    </select>
+                    {newsletterDestinationId && !mailchimpAutomations.length && (
+                      <p className="text-xs text-red-600 mt-1">This tag does not exist in your Mailchimp audience.</p>
+                    )}
+                    <p className="text-xs text-textMuted mt-1">
+                      This tag must already exist in your Mailchimp audience.
+                      LoquiHQ will apply it when the content is scheduled.
+                    </p>
+                    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="text-xs font-medium text-textSecondary mb-1">How scheduling works</p>
+                      <p className="text-xs text-textMuted">
+                        When you schedule email content in LoquiHQ, we apply a tag to a subscriber in your Mailchimp audience.
+                        Your Mailchimp automations decide what happens next.
+                      </p>
+                    </div>
+                  </div>
+                  </>
+                  )}
+                </>
+              )}
+              {activePlatform === 'email' && emailProvider === 'mailchimp' && (!newsletterDestinationId || !newsletterAutomationId) && (
+                <p className="text-xs text-red-600">
+                  You must connect your Mailchimp account and select a trigger tag before scheduling email content.
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-textSecondary mb-1">Date</label>
                 <input
@@ -2430,11 +2699,21 @@ ${(transcript.content || '').substring(0, 1000)}
           <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
               <Mail className="h-5 w-5 text-primary" />
-              Connect Kit
+              Connect your email provider
             </h3>
-            <p className="text-sm text-textMuted mb-6">
-              Connect your Kit account to schedule and send newsletters from this dashboard.
-            </p>
+            <div className="text-sm text-textMuted mb-6 space-y-2">
+              <p>LoquiHQ does not send emails on your behalf.</p>
+              <p>Instead, LoquiHQ triggers your existing automations by applying tags inside your email platform.</p>
+              <div>
+                <p>You stay in control of:</p>
+                <ul className="list-disc ml-5">
+                  <li>the audience</li>
+                  <li>the emails</li>
+                  <li>the timing</li>
+                  <li>the content</li>
+                </ul>
+              </div>
+            </div>
 
             <div className="flex justify-end gap-3">
               <button
@@ -2458,6 +2737,59 @@ ${(transcript.content || '').substring(0, 1000)}
               >
                 <Mail className="h-4 w-4" />
                 Connect Kit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connect Mailchimp Modal */}
+      {showConnectMailchimpModal && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-gray-100 rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-textPrimary mb-4 flex items-center gap-2">
+              <Mail className="h-5 w-5 text-primary" />
+              Connect your email provider
+            </h3>
+            <div className="text-sm text-textMuted mb-6 space-y-2">
+              <p>LoquiHQ does not send emails on your behalf.</p>
+              <p>Instead, LoquiHQ triggers your existing automations by applying tags inside your email platform.</p>
+              <div>
+                <p>You stay in control of:</p>
+                <ul className="list-disc ml-5">
+                  <li>the audience</li>
+                  <li>the emails</li>
+                  <li>the timing</li>
+                  <li>the content</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowConnectMailchimpModal(false)}
+                className="px-4 py-2 text-textSecondary font-medium hover:bg-gray-200 rounded-lg text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const { url } = await getMailchimpAuthUrl();
+                    setShowConnectMailchimpModal(false);
+                    window.location.href = url;
+                  } catch (e) {
+                    console.error('Failed to start Mailchimp auth:', e);
+                    setShowConnectMailchimpModal(false);
+                  }
+                }}
+                className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary text-sm flex items-center gap-2"
+              >
+                <Mail className="h-4 w-4" />
+                Connect Mailchimp
               </button>
             </div>
           </div>

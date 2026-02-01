@@ -145,6 +145,7 @@ export const createScheduledPostSchema = z.object({
   scheduledDate: z.string().datetime({ message: 'Invalid date format. Use ISO 8601' }),
   transcriptId: z.string().uuid().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
 export type CreateScheduledPost = z.infer<typeof createScheduledPostSchema>;
@@ -161,6 +162,30 @@ export const updateScheduledPostSchema = z.object({
     shares: z.number().int().min(0).optional(),
   }).optional(),
 }).strict();
+
+// POST /api/email/schedule-automation-trigger - Schedule automation trigger
+export const scheduleAutomationTriggerSchema = z.object({
+  scheduledDate: z.string().datetime({ message: 'Invalid date format. Use ISO 8601' }),
+  provider: z.enum(['mailchimp', 'kit']),
+  destinationId: z.string().uuid(),
+  automationId: z.string().uuid().optional(),
+  audienceId: z.string(),
+  subscriberEmail: z.string().email(),
+  mergeFields: z.record(z.string(), z.unknown()).optional(),
+  tags: z.array(z.string()).min(1),
+}).strict();
+
+export type ScheduleAutomationTrigger = z.infer<typeof scheduleAutomationTriggerSchema>;
+
+// POST /api/email/schedule/newsletter - Schedule newsletter trigger
+export const scheduleNewsletterSchema = z.object({
+  scheduledDate: z.string().datetime({ message: 'Invalid date format. Use ISO 8601' }),
+  content: z.string().optional(),
+  destinationId: z.string().uuid(),
+  automationId: z.string().uuid(),
+}).strict();
+
+export type ScheduleNewsletter = z.infer<typeof scheduleNewsletterSchema>;
 
 export type UpdateScheduledPost = z.infer<typeof updateScheduledPostSchema>;
 

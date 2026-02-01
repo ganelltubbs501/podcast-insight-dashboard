@@ -322,6 +322,12 @@ const ContentCalendar: React.FC = () => {
                       <div className="font-medium text-textPrimary">{new Date(selectedPost.scheduledDate).toLocaleString()}</div>
                    </div>
 
+                   {selectedPost.platform === 'email' && (
+                     <div className="mb-6 text-xs text-textMuted">
+                       For email, “Published” means the trigger tag was applied and your automation started.
+                     </div>
+                   )}
+
                    <div className="mb-6">
                       <div className="text-xs font-bold text-textMuted uppercase mb-2">Platform</div>
                       <div className="flex items-center gap-2 text-sm font-medium text-textSecondary capitalize">
@@ -368,6 +374,52 @@ const ContentCalendar: React.FC = () => {
                              <div className="text-xs text-primary uppercase">Shares</div>
                              <div className="text-lg font-bold text-primary">{selectedPost.metrics.shares}</div>
                            </div>
+                        </div>
+                     </div>
+                   )}
+
+                   {selectedPost.metrics && selectedPost.platform === 'email' && (
+                     <div className="mb-6 bg-gray-100 p-4 rounded-lg border border-gray-300">
+                        <h3 className="font-bold text-textSecondary mb-3 flex items-center gap-2">
+                          <BarChart2 className="h-4 w-4" /> Email Analytics
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                           {selectedPost.metrics.opens !== undefined && (
+                             <div>
+                               <div className="text-xs text-textMuted uppercase">Opens</div>
+                               <div className="font-semibold text-textSecondary">{selectedPost.metrics.opens}</div>
+                             </div>
+                           )}
+                           {selectedPost.metrics.openRate !== undefined && (
+                             <div>
+                               <div className="text-xs text-textMuted uppercase">Open Rate</div>
+                               <div className="font-semibold text-textSecondary">{selectedPost.metrics.openRate}%</div>
+                             </div>
+                           )}
+                           {selectedPost.metrics.clickRate !== undefined && (
+                             <div>
+                               <div className="text-xs text-textMuted uppercase">Click Rate</div>
+                               <div className="font-semibold text-textSecondary">{selectedPost.metrics.clickRate}%</div>
+                             </div>
+                           )}
+                           {selectedPost.metrics.deliveries !== undefined && (
+                             <div>
+                               <div className="text-xs text-textMuted uppercase">Deliveries</div>
+                               <div className="font-semibold text-textSecondary">{selectedPost.metrics.deliveries}</div>
+                             </div>
+                           )}
+                           {selectedPost.metrics.unsubscribes !== undefined && (
+                             <div>
+                               <div className="text-xs text-textMuted uppercase">Unsubscribes</div>
+                               <div className="font-semibold text-textSecondary">{selectedPost.metrics.unsubscribes}</div>
+                             </div>
+                           )}
+                           {selectedPost.metrics.bounces !== undefined && (
+                             <div>
+                               <div className="text-xs text-textMuted uppercase">Bounces</div>
+                               <div className="font-semibold text-textSecondary">{selectedPost.metrics.bounces}</div>
+                             </div>
+                           )}
                         </div>
                      </div>
                    )}

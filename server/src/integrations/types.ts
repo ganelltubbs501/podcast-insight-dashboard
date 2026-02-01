@@ -10,6 +10,17 @@ export const marketingProviders = [
 
 export type MarketingProvider = typeof marketingProviders[number];
 
+export type EmailAutomationProvider = 'mailchimp' | 'kit' | 'beehiiv' | 'gohighlevel';
+
+export type EmailAutomationConnector = {
+  provider: EmailAutomationProvider;
+  account_id: string;
+  audience_id: string;
+  trigger_tag: string;
+  connected_at: string;
+  token_expires_at: string | null;
+};
+
 export type IntegrationStatus = {
   connected: boolean;
   accountName?: string;
@@ -18,6 +29,20 @@ export type IntegrationStatus = {
   tokenExpired?: boolean;
   expiresAt?: string;
   status?: 'connected' | 'error' | 'disconnected';
+};
+
+export type NormalizedAnalytics = {
+  impressions?: number;
+  clicks?: number;
+  likes?: number;
+  shares?: number;
+  comments?: number;
+  opens?: number;
+  openRate?: number;
+  clickRate?: number;
+  deliveries?: number;
+  unsubscribes?: number;
+  bounces?: number;
 };
 
 export type ProviderCapabilities = {

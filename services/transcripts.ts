@@ -224,7 +224,7 @@ export async function getUsageMetrics(): Promise<UsageMetrics> {
  */
 
 // Use Supabase column aliasing to map snake_case to camelCase
-const SCHEDULED_POST_SELECT = 'id, content, contentHtml:content_html, title, platform, provider, providerAccountId:provider_account_id, manualActionUrl:manual_action_url, status, metrics, scheduledDate:scheduled_date, scheduledAt:scheduled_at, publishedAt:published_at, externalId:external_id, lastError:last_error, transcriptId:transcript_id, teamId:team_id';
+const SCHEDULED_POST_SELECT = 'id, content, contentHtml:content_html, title, platform, provider, providerAccountId:provider_account_id, manualActionUrl:manual_action_url, status, metrics, meta, scheduledDate:scheduled_date, scheduledAt:scheduled_at, publishedAt:published_at, externalId:external_id, lastError:last_error, transcriptId:transcript_id, teamId:team_id';
 
 export async function getScheduledPosts() {
   const { data: { user } } = await supabase.auth.getUser();
@@ -253,6 +253,7 @@ export async function schedulePost(post: {
   contentHtml?: string | null;
   providerAccountId?: string | null;
   manualActionUrl?: string | null;
+  meta?: Record<string, any> | null;
   scheduledDate: string;
   status?: string;
   transcriptId?: string;
@@ -278,6 +279,7 @@ export async function schedulePost(post: {
       scheduled_at: post.scheduledDate,
       status: post.status || 'Scheduled',
       metrics: post.metadata || null,
+      meta: post.meta || null,
       team_id: post.teamId || null
     })
     .select(SCHEDULED_POST_SELECT)

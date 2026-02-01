@@ -112,7 +112,7 @@ export async function kitCallback(req: Request, res: Response) {
   if (error) return res.status(500).send(`Failed to store Kit connection: ${error.message}`);
 
   // send user back to app
-  const appBase = mustEnv("APP_BASE_URL"); // https://loquihq-beta.web.app
+  const appBase = process.env.APP_BASE_URL || process.env.APP_PUBLIC_URL || process.env.APP_URL || "https://loquihq-beta.web.app";
   res.redirect(`${appBase}/#/platform-content?connected=kit`);
 }
 

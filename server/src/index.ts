@@ -30,7 +30,9 @@ import {
   createInviteSchema,
   updateMemberRoleSchema,
   acceptInviteSchema,
-  validateRequest
+  validateRequest,
+  scheduleAutomationTriggerSchema,
+  scheduleNewsletterSchema
 } from "./validation/schemas.js";
 import crypto from "crypto";
 
@@ -40,6 +42,7 @@ import { getMarketingAdapter, isMarketingProvider } from "./integrations/registr
 import type { MarketingProvider } from "./integrations/types.js";
 import { logIntegrationEvent } from "./integrations/events.js";
 import { kitAuthUrl, kitCallback, kitStatus } from "./kit-oauth.js";
+import { mailchimpAuthUrl, mailchimpCallback, mailchimpDisconnect, mailchimpStatus } from "./mailchimp-oauth.js";
 
 // near top-level
 const rssParser = new Parser({
@@ -1193,6 +1196,13 @@ app.post("/api/team/invites/accept", requireAuth, async (req: AuthRequest, res) 
       .update({ accepted_at: new Date().toISOString() })
       .eq('id', invite.id);
 
+    // Trigger welcome sequence if Mailchimp is configured (non-blocking)
+    try {
+      await scheduleWelcomeTrigger(userId, supabaseAdmin);
+    } catch (e: any) {
+      console.warn('Welcome trigger skipped:', e?.message || e);
+    }
+
     console.log(`✅ Invite accepted: user ${userId.substring(0, 8)}... joined team ${invite.team_id.substring(0, 8)}... as ${invite.role}`);
 
     return res.json({
@@ -1206,6 +1216,68 @@ app.post("/api/team/invites/accept", requireAuth, async (req: AuthRequest, res) 
     return res.status(500).json({ error: "Server error" });
   }
 });
+
+async function scheduleWelcomeTrigger(userId: string, supabaseAdmin: any) {
+  // Ensure Mailchimp connection exists
+  const { data: connection } = await supabaseAdmin
+    .from('connected_accounts')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('provider', 'mailchimp')
+    .maybeSingle();
+
+  if (!connection) return;
+
+  // Destination (audience)
+  const { data: destination } = await supabaseAdmin
+    .from('email_destinations')
+    .select('id, audience_id')
+    .eq('user_id', userId)
+    .eq('provider', 'mailchimp')
+    .limit(1)
+    .maybeSingle();
+
+  if (!destination?.audience_id) return;
+
+  // Automation (tag)
+  const { data: automation } = await supabaseAdmin
+    .from('email_automations')
+    .select('id, trigger_value')
+    .eq('user_id', userId)
+    .eq('provider', 'mailchimp')
+    .eq('trigger_value', 'loquihq_welcome')
+    .limit(1)
+    .maybeSingle();
+
+  if (!automation?.trigger_value) return;
+
+  const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+  if (userError || !userData?.user?.email) return;
+
+  const now = new Date().toISOString();
+
+  await supabaseAdmin
+    .from('scheduled_posts')
+    .insert({
+      user_id: userId,
+      platform: 'email',
+      provider: 'mailchimp',
+      content: 'Welcome sequence triggered',
+      scheduled_date: now,
+      scheduled_at: now,
+      status: 'Scheduled',
+      meta: {
+        provider: 'mailchimp',
+        destinationId: destination.id,
+        audienceId: destination.audience_id,
+        subscriberEmail: userData.user.email,
+        tags: ['loquihq_welcome'],
+        mergeFields: {},
+        automationId: automation.id,
+        lastError: null,
+      }
+    });
+}
 
 // POST /api/team/:teamId/invites/:inviteId/revoke - Revoke invite (admin/owner only)
 app.post("/api/team/:teamId/invites/:inviteId/revoke", requireAuth, requireTeamRole('admin'), async (req: TeamAuthRequest, res) => {
@@ -1499,6 +1571,220 @@ app.get("/api/integrations/linkedin/auth-url", requireAuth, async (req: AuthRequ
 app.get("/api/integrations/kit/auth-url", requireAuth, kitAuthUrl);
 app.get("/api/integrations/kit/callback", kitCallback); // callback is public
 app.get("/api/integrations/kit/status", requireAuth, kitStatus);
+app.post("/api/integrations/kit/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const userId = getUserId(req);
+    const { error } = await supabaseAdmin
+      .from("connected_accounts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("provider", "kit");
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message || 'Failed to disconnect Kit' });
+  }
+});
+
+// ============================================================================
+// MAILCHIMP OAUTH ENDPOINTS (Email/CRM)
+// ============================================================================
+
+app.get("/api/integrations/mailchimp/auth-url", requireAuth, mailchimpAuthUrl);
+app.get("/api/integrations/mailchimp/callback", mailchimpCallback); // callback is public
+app.get("/api/integrations/mailchimp/status", requireAuth, mailchimpStatus);
+app.post("/api/integrations/mailchimp/disconnect", requireAuth, mailchimpDisconnect);
+
+// Mailchimp resources
+app.get("/api/integrations/mailchimp/audiences", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const connection = await getMailchimpConnection(getUserId(req));
+    if (!connection) return res.status(400).json({ error: 'Mailchimp not connected' });
+
+    const response = await fetch(`${connection.apiEndpoint}/lists?count=100`, {
+      headers: { 'Authorization': `Bearer ${connection.accessToken}` },
+    });
+
+    const json: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(500).json({ error: `Mailchimp lists fetch failed: ${response.status} - ${JSON.stringify(json)}` });
+    }
+
+    return res.json({ audiences: json.lists || [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to fetch audiences' });
+  }
+});
+
+app.get("/api/integrations/mailchimp/tags", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const audienceId = String(req.query.audienceId || '');
+    if (!audienceId) return res.status(400).json({ error: 'audienceId is required' });
+
+    const connection = await getMailchimpConnection(getUserId(req));
+    if (!connection) return res.status(400).json({ error: 'Mailchimp not connected' });
+
+    const response = await fetch(`${connection.apiEndpoint}/lists/${audienceId}/segments?count=100`, {
+      headers: { 'Authorization': `Bearer ${connection.accessToken}` },
+    });
+
+    const json: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(500).json({ error: `Mailchimp tags fetch failed: ${response.status} - ${JSON.stringify(json)}` });
+    }
+
+    return res.json({ tags: json.segments || [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to fetch tags' });
+  }
+});
+
+app.post("/api/integrations/mailchimp/tags", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const { audienceId, tag } = req.body || {};
+    if (!audienceId || !tag) return res.status(400).json({ error: 'audienceId and tag are required' });
+
+    const connection = await getMailchimpConnection(getUserId(req));
+    if (!connection) return res.status(400).json({ error: 'Mailchimp not connected' });
+
+    const response = await fetch(`${connection.apiEndpoint}/lists/${audienceId}/segments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${connection.accessToken}`,
+      },
+      body: JSON.stringify({
+        name: tag,
+        static_segment: [],
+      }),
+    });
+
+    const json: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return res.status(500).json({ error: `Mailchimp tag create failed: ${response.status} - ${JSON.stringify(json)}` });
+    }
+
+    return res.json({ tag: json });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to create tag' });
+  }
+});
+
+app.post("/api/integrations/mailchimp/destination", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const { audienceId, name } = req.body || {};
+    if (!audienceId) {
+      return res.status(400).json({ error: 'audienceId is required' });
+    }
+
+    const userId = getUserId(req);
+    const { data, error } = await supabaseAdmin
+      .from('email_destinations')
+      .insert({
+        user_id: userId,
+        provider: 'mailchimp',
+        audience_id: audienceId,
+        name: name || 'Default',
+      })
+      .select('*')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ destination: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to save destination' });
+  }
+});
+
+app.post("/api/integrations/mailchimp/automation", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const { destinationId, name, triggerValue } = req.body || {};
+    if (!destinationId || !name || !triggerValue) {
+      return res.status(400).json({ error: 'destinationId, name, and triggerValue are required' });
+    }
+
+    const userId = getUserId(req);
+    const { data, error } = await supabaseAdmin
+      .from('email_automations')
+      .insert({
+        user_id: userId,
+        provider: 'mailchimp',
+        destination_id: destinationId,
+        name,
+        trigger_type: 'tag_applied',
+        trigger_value: triggerValue,
+      })
+      .select('*')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ automation: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to save automation' });
+  }
+});
+
+app.get("/api/integrations/mailchimp/destinations", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const userId = getUserId(req);
+    const { data, error } = await supabaseAdmin
+      .from('email_destinations')
+      .select('id, name, audience_id, created_at')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ destinations: data || [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to load destinations' });
+  }
+});
+
+app.get("/api/integrations/mailchimp/automations", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const userId = getUserId(req);
+    const destinationId = String(req.query.destinationId || '');
+
+    let query = supabaseAdmin
+      .from('email_automations')
+      .select('id, name, destination_id, trigger_type, trigger_value, created_at')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .order('created_at', { ascending: false });
+
+    if (destinationId) {
+      query = query.eq('destination_id', destinationId);
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ automations: data || [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to load automations' });
+  }
+});
 
 // LinkedIn OAuth callback - handles redirect from LinkedIn
 app.get("/api/integrations/linkedin/callback", async (req, res) => {
@@ -2969,6 +3255,312 @@ app.post("/api/cron/dispatch-scheduled-posts", async (req, res) => {
   }
 });
 
+// Email-only cron executor
+app.post("/api/cron/email-dispatch", generalLimiter, async (req, res) => {
+  const secret = req.header("x-cron-secret");
+  const expectedSecret = process.env.CRON_SECRET || process.env.PUBLISHER_CRON_SECRET;
+
+  if (!expectedSecret) {
+    console.error("CRON_SECRET not configured");
+    return res.status(500).json({ error: "Publisher not configured" });
+  }
+
+  if (!secret || secret !== expectedSecret) {
+    console.warn("Unauthorized email-dispatch request");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const summary = await processEmailScheduledPosts();
+    return res.json({ ok: true, ...summary });
+  } catch (err: any) {
+    console.error("Email dispatch job error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Schedule automation trigger (Mailchimp/Kit)
+app.post("/api/email/schedule-automation-trigger", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const validation = validateRequest(scheduleAutomationTriggerSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: "errors" in validation ? validation.errors : undefined
+      });
+    }
+
+    const userId = getUserId(req);
+    const {
+      scheduledDate,
+      provider,
+      destinationId,
+      automationId,
+      audienceId,
+      subscriberEmail,
+      mergeFields,
+      tags,
+    } = validation.data;
+
+    const { data, error } = await supabaseAdmin
+      .from("scheduled_posts")
+      .insert({
+        user_id: userId,
+        platform: 'email',
+        provider,
+        content: `Automation trigger for ${subscriberEmail}`,
+        scheduled_date: scheduledDate,
+        scheduled_at: scheduledDate,
+        status: 'Scheduled',
+        meta: {
+          emailProvider: provider,
+          destinationId,
+          automationId,
+          audienceId,
+          subscriberEmail,
+          mergeFields: mergeFields || {},
+          tags,
+        }
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    return res.json({ scheduled: true, post: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to schedule trigger' });
+  }
+});
+
+// Trigger: Welcome (server-side or authenticated)
+app.post("/api/email/trigger/welcome", optionalAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const validation = validateRequest(scheduleAutomationTriggerSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: "errors" in validation ? validation.errors : undefined
+      });
+    }
+
+    const userId = getUserId(req);
+    const { destinationId, automationId, audienceId, subscriberEmail, mergeFields, tags, provider } = validation.data;
+
+    const scheduledDate = new Date().toISOString();
+    const { data, error } = await supabaseAdmin
+      .from("scheduled_posts")
+      .insert({
+        user_id: userId,
+        platform: 'email',
+        provider,
+        content: `Automation trigger for ${subscriberEmail}`,
+        scheduled_date: scheduledDate,
+        scheduled_at: scheduledDate,
+        status: 'Scheduled',
+        meta: {
+          emailProvider: provider,
+          destinationId,
+          automationId,
+          audienceId,
+          subscriberEmail,
+          mergeFields: mergeFields || {},
+          tags,
+        }
+      })
+      .select('*')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ scheduled: true, post: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to trigger welcome' });
+  }
+});
+
+// Schedule: Newsletter (authenticated)
+app.post("/api/email/schedule/newsletter", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const validation = validateRequest(scheduleNewsletterSchema, req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        error: "Invalid request",
+        details: "errors" in validation ? validation.errors : undefined
+      });
+    }
+
+    const userId = getUserId(req);
+    const { scheduledDate, content, destinationId, automationId } = validation.data;
+
+    const { data: connection } = await supabaseAdmin
+      .from('connected_accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .maybeSingle();
+
+    if (!connection) {
+      return res.status(400).json({ error: 'Mailchimp not connected' });
+    }
+
+    const { data: destination } = await supabaseAdmin
+      .from('email_destinations')
+      .select('id, audience_id')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .eq('id', destinationId)
+      .maybeSingle();
+
+    if (!destination?.audience_id) {
+      return res.status(400).json({ error: 'Mailchimp destination not found' });
+    }
+
+    const { data: automation } = await supabaseAdmin
+      .from('email_automations')
+      .select('id, trigger_value')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .eq('id', automationId)
+      .maybeSingle();
+
+    if (!automation?.trigger_value) {
+      return res.status(400).json({ error: 'Newsletter automation not found' });
+    }
+
+    const tagCheck = await ensureMailchimpTagExists(userId, destination.audience_id, automation.trigger_value);
+    if (!tagCheck.ok) {
+      if (tagCheck.code === 'missing_tag') {
+        return res.status(400).json({ error: 'This tag does not exist in your Mailchimp audience.' });
+      }
+      if (tagCheck.code === 'revoked') {
+        return res.status(400).json({ error: 'Mailchimp access was revoked. Reconnect to continue.' });
+      }
+      return res.status(400).json({ error: tagCheck.error || 'Mailchimp tag validation failed.' });
+    }
+
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (userError || !userData?.user?.email) {
+      return res.status(400).json({ error: 'User email not available' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("scheduled_posts")
+      .insert({
+        user_id: userId,
+        platform: 'email',
+        provider: 'mailchimp',
+        content: content || 'Newsletter trigger',
+        scheduled_date: scheduledDate,
+        scheduled_at: scheduledDate,
+        status: 'Scheduled',
+        meta: {
+          emailProvider: 'mailchimp',
+          destinationId: destination.id,
+          automationId: automation.id,
+          audienceId: destination.audience_id,
+          subscriberEmail: userData.user.email,
+          mergeFields: {},
+          tags: [automation.trigger_value],
+          retryCount: 0,
+          nextRetryAt: null,
+        }
+      })
+      .select('*')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ scheduled: true, post: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to schedule newsletter' });
+  }
+});
+
+// Trigger: Episode published (authenticated or internal)
+app.post("/api/email/trigger/episode-published", optionalAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    const userId = req.user?.id || req.body?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const episodeTitle = req.body?.episodeTitle || 'Episode';
+
+    const { data: destination } = await supabaseAdmin
+      .from('email_destinations')
+      .select('id, audience_id')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .limit(1)
+      .maybeSingle();
+
+    const { data: automation } = await supabaseAdmin
+      .from('email_automations')
+      .select('id, trigger_value')
+      .eq('user_id', userId)
+      .eq('provider', 'mailchimp')
+      .eq('trigger_value', 'loquihq_episode_published')
+      .limit(1)
+      .maybeSingle();
+
+    if (!destination?.audience_id || !automation?.trigger_value) {
+      return res.json({ skipped: true, reason: 'Mailchimp destination or automation not configured' });
+    }
+
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (userError || !userData?.user?.email) {
+      return res.json({ skipped: true, reason: 'User email not available' });
+    }
+
+    const scheduledDate = new Date().toISOString();
+    const { data, error } = await supabaseAdmin
+      .from("scheduled_posts")
+      .insert({
+        user_id: userId,
+        platform: 'email',
+        provider: 'mailchimp',
+        content: `New episode trigger: ${episodeTitle}`,
+        scheduled_date: scheduledDate,
+        scheduled_at: scheduledDate,
+        status: 'Scheduled',
+        meta: {
+          provider: 'mailchimp',
+          destinationId: destination.id,
+          audienceId: destination.audience_id,
+          subscriberEmail: userData.user.email,
+          tags: ['loquihq_episode_published'],
+          mergeFields: { EPISODE: episodeTitle },
+          automationId: automation.id,
+          lastError: null,
+        }
+      })
+      .select('*')
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ scheduled: true, post: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'Failed to trigger episode published' });
+  }
+});
+
 async function processScheduledPosts() {
   const { createClient } = await import("@supabase/supabase-js");
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -2996,14 +3588,26 @@ async function processScheduledPosts() {
 
   if (!duePosts?.length) {
     console.log("📅 No scheduled posts due for publishing");
-    return { processed: 0, failed: 0, manual: 0 };
+    return { processed: 0, failed: 0, manual: 0, retried: 0 };
   }
 
-  console.log(`📅 Processing ${duePosts.length} scheduled posts...`);
+  const eligiblePosts = duePosts.filter((post: any) => {
+    const nextRetryAt = post?.meta?.nextRetryAt;
+    if (!nextRetryAt) return true;
+    return new Date(nextRetryAt).getTime() <= Date.now();
+  });
+
+  if (!eligiblePosts.length) {
+    console.log("📅 No scheduled posts eligible for retry yet");
+    return { processed: 0, failed: 0, manual: 0, retried: 0 };
+  }
+
+  console.log(`📅 Processing ${eligiblePosts.length} scheduled posts...`);
   let processed = 0;
   let failed = 0;
   let manual = 0;
-  for (const post of duePosts) {
+  let retried = 0;
+  for (const post of eligiblePosts) {
     try {
       if (post.platform === 'linkedin') {
         await publishToLinkedIn(post, supabaseAdmin);
@@ -3012,15 +3616,23 @@ async function processScheduledPosts() {
       } else if (post.platform === 'medium') {
         await publishToMedium(post, supabaseAdmin);
       } else if (post.platform === 'email') {
-        if (post.provider === 'kit') {
-          const result = await publishToKitBroadcast(post, supabaseAdmin);
+          if (post.provider === 'kit') {
+            const result = await publishToKitBroadcast(post, supabaseAdmin);
+            if (result === 'NeedsManualSend') {
+              manual++;
+            }
+          } else if (post.provider === 'mailchimp') {
+          const result = await dispatchMailchimpAutomation(post, supabaseAdmin);
           if (result === 'NeedsManualSend') {
             manual++;
           }
+          if (result === 'RetryScheduled') {
+            retried++;
+          }
+          } else {
+            await publishToEmail(post, supabaseAdmin);
+          }
         } else {
-          await publishToEmail(post, supabaseAdmin);
-        }
-      } else {
         throw new Error(`Unsupported platform: ${post.platform}`);
       }
 
@@ -3042,8 +3654,284 @@ async function processScheduledPosts() {
     }
   }
 
-  console.log(`📅 Publisher completed: ${processed} published, ${failed} failed, ${manual} manual`);
-  return { processed, failed, manual };
+  console.log(`📅 Publisher completed: ${processed} published, ${failed} failed, ${manual} manual, ${retried} retried`);
+  return { processed, failed, manual, retried };
+}
+
+async function processEmailScheduledPosts() {
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Supabase not configured");
+  }
+
+  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+  const now = new Date().toISOString();
+  const { data: duePosts, error: fetchError } = await supabaseAdmin
+    .from("scheduled_posts")
+    .select("*")
+    .eq("platform", "email")
+    .eq("status", "Scheduled")
+    .lte("scheduled_date", now)
+    .limit(50);
+
+  if (fetchError) {
+    throw new Error(fetchError.message);
+  }
+
+  if (!duePosts?.length) {
+    return { processed: 0, failed: 0, retried: 0 };
+  }
+
+  const eligiblePosts = duePosts.filter((post: any) => {
+    const nextRetryAt = post?.meta?.nextRetryAt;
+    if (!nextRetryAt) return true;
+    return new Date(nextRetryAt).getTime() <= Date.now();
+  });
+
+  if (!eligiblePosts.length) {
+    return { processed: 0, failed: 0, retried: 0 };
+  }
+
+  let processed = 0;
+  let failed = 0;
+  let retried = 0;
+  for (const post of eligiblePosts) {
+    try {
+      if (post.provider === 'mailchimp') {
+        const result = await dispatchMailchimpAutomation(post, supabaseAdmin);
+        if (result === 'Failed') {
+          failed++;
+          continue;
+        }
+        if (result === 'RetryScheduled') {
+          retried++;
+          continue;
+        }
+      } else if (post.provider === 'kit') {
+        const result = await publishToKitBroadcast(post, supabaseAdmin);
+        if (result === 'NeedsManualSend') {
+          failed++;
+          continue;
+        }
+      } else {
+        await publishToEmail(post, supabaseAdmin);
+      }
+
+      processed++;
+    } catch (err: any) {
+      await supabaseAdmin
+        .from('scheduled_posts')
+        .update({
+          status: 'Failed',
+          meta: { ...(post.meta || {}), lastError: err?.message || 'Email dispatch failed' },
+        })
+        .eq('id', post.id);
+      failed++;
+    }
+  }
+
+  return { processed, failed, retried };
+}
+
+async function dispatchMailchimpAutomation(post: any, supabaseAdmin: any): Promise<'Published' | 'Failed' | 'RetryScheduled' | 'NeedsManualSend'> {
+  const meta = post.meta || {};
+
+  const result = await applyMailchimpTags({
+    userId: post.user_id,
+    audienceId: meta.audienceId,
+    email: meta.subscriberEmail,
+    tags: meta.tags,
+    mergeFields: meta.mergeFields,
+  });
+
+  if (!result.ok) {
+    if (result.code === 'transient') {
+      const retryCount = Number(meta.retryCount || 0);
+      const nextRetryAt = getNextRetryAt(retryCount);
+
+      if (!nextRetryAt) {
+        await supabaseAdmin
+          .from('scheduled_posts')
+          .update({
+            status: 'Failed',
+            provider_account_id: result.accountId,
+            meta: { ...meta, lastError: `${result.error} (retries exhausted)` },
+          })
+          .eq('id', post.id);
+        return 'Failed';
+      }
+
+      await supabaseAdmin
+        .from('scheduled_posts')
+        .update({
+          status: 'Scheduled',
+          provider_account_id: result.accountId,
+          meta: {
+            ...meta,
+            lastError: result.error,
+            retryCount: retryCount + 1,
+            nextRetryAt,
+          },
+        })
+        .eq('id', post.id);
+
+      return 'RetryScheduled';
+    }
+
+    await supabaseAdmin
+      .from('scheduled_posts')
+      .update({
+        status: 'Failed',
+        provider_account_id: result.accountId,
+        meta: { ...meta, lastError: result.error },
+      })
+      .eq('id', post.id);
+    return 'Failed';
+  }
+
+  await supabaseAdmin
+    .from('scheduled_posts')
+    .update({
+      status: 'Published',
+      published_at: new Date().toISOString(),
+      provider_account_id: result.accountId,
+    })
+    .eq('id', post.id);
+
+  return 'Published';
+}
+
+type MailchimpApplyInput = {
+  userId: string;
+  email?: string;
+  audienceId?: string;
+  tags?: string[];
+  mergeFields?: Record<string, any>;
+};
+
+type MailchimpApplyResult =
+  | { ok: true; accountId: string | null }
+  | { ok: false; error: string; accountId: string | null; code?: 'revoked' | 'transient' | 'unknown' };
+
+async function applyMailchimpTags(input: MailchimpApplyInput): Promise<MailchimpApplyResult> {
+  const { userId, email, audienceId, tags, mergeFields } = input;
+
+  if (!audienceId || !email || !Array.isArray(tags) || tags.length === 0) {
+    return { ok: false, error: 'Missing audienceId, subscriberEmail, or tags', accountId: null, code: 'unknown' };
+  }
+
+  const connection = await getMailchimpConnection(userId);
+  if (!connection) {
+    return { ok: false, error: 'Mailchimp not connected for this user', accountId: null, code: 'revoked' };
+  }
+
+  const subscriberHash = crypto.createHash('md5').update(email.toLowerCase()).digest('hex');
+
+  const memberResp = await fetch(`${connection.apiEndpoint}/lists/${audienceId}/members/${subscriberHash}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${connection.accessToken}`,
+    },
+    body: JSON.stringify({
+      email_address: email,
+      status_if_new: 'subscribed',
+      merge_fields: mergeFields || {},
+    }),
+  });
+
+  if (!memberResp.ok) {
+    const json = await memberResp.json().catch(() => ({}));
+    if (isMailchimpAuthError(memberResp.status)) {
+      await markMailchimpConnectionRevoked(userId);
+      return { ok: false, error: 'Mailchimp access was revoked. Reconnect to continue.', accountId: connection.accountId, code: 'revoked' };
+    }
+    if (isTransientStatus(memberResp.status)) {
+      return { ok: false, error: `Mailchimp upsert failed: ${memberResp.status} - ${JSON.stringify(json)}`, accountId: connection.accountId, code: 'transient' };
+    }
+    return { ok: false, error: `Mailchimp upsert failed: ${memberResp.status} - ${JSON.stringify(json)}`, accountId: connection.accountId, code: 'unknown' };
+  }
+
+  const tagResp = await fetch(`${connection.apiEndpoint}/lists/${audienceId}/members/${subscriberHash}/tags`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${connection.accessToken}`,
+    },
+    body: JSON.stringify({
+      tags: tags.map((name: string) => ({ name, status: 'active' }))
+    }),
+  });
+
+  if (!tagResp.ok) {
+    const json = await tagResp.json().catch(() => ({}));
+    if (isMailchimpAuthError(tagResp.status)) {
+      await markMailchimpConnectionRevoked(userId);
+      return { ok: false, error: 'Mailchimp access was revoked. Reconnect to continue.', accountId: connection.accountId, code: 'revoked' };
+    }
+    if (isTransientStatus(tagResp.status)) {
+      return { ok: false, error: `Mailchimp tag apply failed: ${tagResp.status} - ${JSON.stringify(json)}`, accountId: connection.accountId, code: 'transient' };
+    }
+    return { ok: false, error: `Mailchimp tag apply failed: ${tagResp.status} - ${JSON.stringify(json)}`, accountId: connection.accountId, code: 'unknown' };
+  }
+
+  return { ok: true, accountId: connection.accountId };
+}
+
+async function ensureMailchimpTagExists(userId: string, audienceId: string, tagName: string): Promise<{ ok: true } | { ok: false; error: string; code: 'missing_tag' | 'revoked' | 'unknown' }> {
+  const connection = await getMailchimpConnection(userId);
+  if (!connection) {
+    return { ok: false, error: 'Mailchimp not connected', code: 'revoked' };
+  }
+
+  const response = await fetch(`${connection.apiEndpoint}/lists/${audienceId}/segments?count=100`, {
+    headers: { 'Authorization': `Bearer ${connection.accessToken}` },
+  });
+
+  const json: any = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (isMailchimpAuthError(response.status)) {
+      await markMailchimpConnectionRevoked(userId);
+      return { ok: false, error: 'Mailchimp access was revoked. Reconnect to continue.', code: 'revoked' };
+    }
+    return { ok: false, error: `Mailchimp tags fetch failed: ${response.status} - ${JSON.stringify(json)}`, code: 'unknown' };
+  }
+
+  const segments = Array.isArray(json.segments) ? json.segments : [];
+  const exists = segments.some((segment: any) => String(segment?.name || '').toLowerCase() === tagName.toLowerCase());
+  if (!exists) {
+    return { ok: false, error: 'This tag does not exist in your Mailchimp audience.', code: 'missing_tag' };
+  }
+
+  return { ok: true };
+}
+
+function isMailchimpAuthError(status: number) {
+  return status === 401 || status === 403;
+}
+
+function isTransientStatus(status: number) {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function getNextRetryAt(retryCount: number): string | null {
+  const retryDelaysMinutes = [5, 15, 60, 360, 1440];
+  const delay = retryDelaysMinutes[retryCount];
+  if (!delay) return null;
+  return new Date(Date.now() + delay * 60 * 1000).toISOString();
+}
+
+async function markMailchimpConnectionRevoked(userId: string) {
+  if (!supabaseAdmin) return;
+  await supabaseAdmin
+    .from('connected_accounts')
+    .update({ status: 'disconnected', updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('provider', 'mailchimp');
 }
 
 // Helper function to publish to LinkedIn
@@ -3434,6 +4322,33 @@ async function publishToKitBroadcast(post: any, supabaseAdmin: any): Promise<'Pu
   }
 }
 
+async function getMailchimpConnection(userId: string): Promise<{
+  accessToken: string;
+  apiEndpoint: string;
+  accountId: string | null;
+} | null> {
+  if (!supabaseAdmin) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from('connected_accounts')
+    .select('access_token, profile, provider_user_id')
+    .eq('user_id', userId)
+    .eq('provider', 'mailchimp')
+    .maybeSingle();
+
+  if (error || !data?.access_token) return null;
+
+  const apiEndpoint = data.profile?.apiEndpoint as string | undefined;
+  if (!apiEndpoint) return null;
+
+  return {
+    accessToken: data.access_token,
+    apiEndpoint,
+    accountId: data.provider_user_id || null,
+  };
+}
+
+
 // In-memory storage for scheduled posts (in production, use Supabase)
 // TODO: Move to database with user_id column for proper isolation
 interface ScheduledPost {
@@ -3445,7 +4360,6 @@ interface ScheduledPost {
   status: string;
   transcriptId?: string;
   createdAt: string;
-  metrics: any;
 }
 
 const scheduledPosts: ScheduledPost[] = [];
@@ -3467,13 +4381,13 @@ app.get("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Schedule a new post with validation
 app.post("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
 
     // Validate request body
     const validation = validateRequest(createScheduledPostSchema, req.body);
+
     if (!validation.success) {
       return res.status(400).json({
         error: "Invalid request",
@@ -3481,7 +4395,7 @@ app.post("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const { platform, content, scheduledDate, transcriptId, metadata } = validation.data;
+    const { platform, content, scheduledDate, transcriptId } = validation.data;
 
     const newPost: ScheduledPost = {
       id: `post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -3492,7 +4406,6 @@ app.post("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
       status: 'scheduled',
       transcriptId,
       createdAt: new Date().toISOString(),
-      metrics: metadata || null
     };
 
     scheduledPosts.push(newPost);

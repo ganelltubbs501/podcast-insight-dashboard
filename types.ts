@@ -76,6 +76,12 @@ export interface PostMetrics {
   shares: number;
   clicks: number;
   impressions: number;
+  opens?: number;
+  openRate?: number;
+  clickRate?: number;
+  deliveries?: number;
+  unsubscribes?: number;
+  bounces?: number;
 }
 
 export interface ScheduledPost {
@@ -88,6 +94,7 @@ export interface ScheduledPost {
   content: string;
   contentHtml?: string | null;
   providerAccountId?: string | null;
+  meta?: Record<string, any> | null;
   scheduledDate: string; // ISO String
   scheduledAt?: string;
   publishedAt?: string | null;
