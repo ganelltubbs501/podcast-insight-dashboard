@@ -144,6 +144,31 @@ app.use((req, res, next) => {
 // Apply general rate limiter to all /api routes
 app.use("/api", generalLimiter);
 
+async function extractTextFromInlineDocument(inlineData: { mimeType: string; data: string }): Promise<string> {
+  const { mimeType, data } = inlineData;
+  const buffer = Buffer.from(data, 'base64');
+
+  if (mimeType === 'application/pdf') {
+    const pdfParseModule = await import('pdf-parse');
+    const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+    const parsed = await pdfParse(buffer);
+    return String(parsed?.text || '').trim();
+  }
+
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const mammothModule = await import('mammoth');
+    const mammoth = (mammothModule as any).default || mammothModule;
+    const result = await mammoth.extractRawText({ buffer });
+    return String(result?.value || '').trim();
+  }
+
+  if (mimeType === 'application/msword') {
+    throw new Error('DOC files are not supported. Please upload DOCX or PDF.');
+  }
+
+  throw new Error('Unsupported document type');
+}
+
 // AI Analysis endpoint with strict rate limiting + auth + validation
 app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest, res) => {
   try {
@@ -163,7 +188,24 @@ app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest
     // Log analysis request for auditing
     console.log(`📊 Analysis request from user: ${userId.substring(0, 8)}...`);
 
-    const result = await analyzeWithGemini({ contentInput, settings });
+    let normalizedContentInput = contentInput;
+
+    if (typeof contentInput !== 'string') {
+      const mimeType = contentInput.inlineData?.mimeType;
+      if (
+        mimeType === 'application/pdf' ||
+        mimeType === 'application/msword' ||
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ) {
+        const extractedText = await extractTextFromInlineDocument(contentInput.inlineData);
+        if (!extractedText || extractedText.length < 10) {
+          return res.status(400).json({ error: 'We could not extract readable text from this document.' });
+        }
+        normalizedContentInput = extractedText.slice(0, 50000);
+      }
+    }
+
+    const result = await analyzeWithGemini({ contentInput: normalizedContentInput, settings });
     return res.json(result);
   } catch (err: any) {
     console.error("ANALYZE ERROR:", err);
@@ -172,6 +214,8 @@ app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest
     console.error("ANALYZE ERROR cause:", err?.cause);
     console.error("ANALYZE ERROR response:", err?.response);
     console.error("ANALYZE ERROR details:", err?.details);
+
+    const requestId = (req as any).requestId;
 
     // Extract user-friendly error message
     const errorMessage = err?.message || "";
@@ -184,6 +228,9 @@ app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest
     } else if (errorMessage.includes("429") || errorMessage.includes("rate limit") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
       userMessage = "Rate limit exceeded. Please wait a moment and try again.";
       statusCode = 429;
+    } else if (errorMessage.includes("NOT_FOUND") || errorMessage.toLowerCase().includes("model") && errorMessage.toLowerCase().includes("not found")) {
+      userMessage = "AI model unavailable. Please try again later.";
+      statusCode = 503;
     } else if (errorMessage.includes("Missing GEMINI_API_KEY")) {
       userMessage = "API configuration error. Please check your API key.";
       statusCode = 500;
@@ -192,8 +239,13 @@ app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest
       statusCode = 500;
     }
 
+    if (requestId) {
+      userMessage = `${userMessage} (ref: ${requestId})`;
+    }
+
     return res.status(statusCode).json({
       error: userMessage,
+      requestId,
       ...(backendEnv.isDevelopment && { details: err?.message })
     });
   }
@@ -628,7 +680,6 @@ app.post("/api/team", requireAuth, async (req: AuthRequest, res) => {
       .insert({
         name,
         owner_id: userId,
-        pricing_tier: 'free',
         max_members: 1
       })
       .select()
@@ -662,7 +713,7 @@ app.post("/api/team", requireAuth, async (req: AuthRequest, res) => {
       id: team.id,
       name: team.name,
       role: 'owner',
-      pricingTier: team.pricing_tier,
+      pricingTier: team.pricing_tier ?? 'free',
       maxMembers: team.max_members,
       createdAt: team.created_at
     });
@@ -691,7 +742,6 @@ app.get("/api/team", requireAuth, async (req: AuthRequest, res) => {
           id,
           name,
           owner_id,
-          pricing_tier,
           max_members,
           created_at
         )
@@ -709,7 +759,7 @@ app.get("/api/team", requireAuth, async (req: AuthRequest, res) => {
       name: m.teams.name,
       role: m.role,
       isOwner: m.teams.owner_id === userId,
-      pricingTier: m.teams.pricing_tier,
+      pricingTier: m.teams.pricing_tier ?? 'free',
       maxMembers: m.teams.max_members,
       joinedAt: m.joined_at,
       createdAt: m.teams.created_at
@@ -752,7 +802,7 @@ app.get("/api/team/:teamId", requireAuth, requireTeamRole('viewer'), async (req:
       id: team.id,
       name: team.name,
       ownerId: team.owner_id,
-      pricingTier: team.pricing_tier,
+      pricingTier: team.pricing_tier ?? 'free',
       maxMembers: team.max_members,
       memberCount: count || 0,
       createdAt: team.created_at,

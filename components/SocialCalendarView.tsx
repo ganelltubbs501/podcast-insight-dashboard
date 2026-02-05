@@ -17,7 +17,7 @@ interface SocialCalendarViewProps {
 const platformToSchedulable: Record<string, string | null> = {
   'LinkedIn': 'linkedin',
   'Twitter': 'twitter',
-  'Facebook': 'facebook',
+  'Facebook': null,
   'Instagram': null, // Not schedulable via API
   'Instagram Stories': null, // Not schedulable via API
 };

@@ -141,6 +141,7 @@ export interface RepurposedContent {
   linkedinArticle?: string;
   infographicScript?: string;
   imagePrompts?: { quote: string, prompt: string }[];
+  facebookPost?: string;
 }
 
 // Help & Support Types

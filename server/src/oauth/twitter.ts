@@ -38,10 +38,10 @@ export interface TwitterConnection {
   scopes: string[];
 }
 
-// Twitter OAuth 2.0 endpoints
-const TWITTER_AUTH_URL = 'https://twitter.com/i/oauth2/authorize';
-const TWITTER_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
-const TWITTER_API_URL = 'https://api.twitter.com/2';
+// X OAuth 2.0 endpoints (formerly Twitter)
+const TWITTER_AUTH_URL = 'https://x.com/i/oauth2/authorize';
+const TWITTER_TOKEN_URL = 'https://api.x.com/2/oauth2/token';
+const TWITTER_API_URL = 'https://api.x.com/2';
 
 // Scopes for posting tweets
 const TWITTER_SCOPES = [

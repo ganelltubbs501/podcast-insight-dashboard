@@ -89,7 +89,7 @@ export const generateSponsorshipInsights = async (_context: string, useLiveData:
 };
 
 export const generateRepurposedContent = async (
-  _type: "email_series" | "social_calendar" | "linkedin_article" | "image_prompts",
+  _type: "email_series" | "social_calendar" | "linkedin_article" | "image_prompts" | "facebook_post",
   _context: string
 ): Promise<Partial<RepurposedContent>> => {
   return postJSON<Partial<RepurposedContent>>('/api/repurpose', { type: _type, context: _context });

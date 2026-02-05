@@ -703,7 +703,7 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
-          {/* Medium Connection */}
+          {/* Medium - Manual Only */}
           <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
             <div className="flex items-center gap-4">
               <div className="h-12 w-12 bg-black rounded-lg flex items-center justify-center">
@@ -711,47 +711,13 @@ const Settings: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-medium text-textPrimary">Medium</h3>
-                {mediumLoading ? (
-                  <p className="text-sm text-textMuted">Checking connection...</p>
-                ) : medium?.connected ? (
-                  <p className="text-sm text-green-600 font-medium">
-                    Connected as {medium.accountName} (@{medium.username})
-                  </p>
-                ) : (
-                  <p className="text-sm text-textMuted">Publish articles to Medium</p>
-                )}
+                <p className="text-sm text-textMuted">Copy content from Platform Content tab and paste manually</p>
               </div>
             </div>
-
             <div className="flex items-center gap-2">
-              {mediumLoading ? (
-                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
-              ) : medium?.connected ? (
-                <button
-                  onClick={handleDisconnectMedium}
-                  disabled={mediumDisconnecting}
-                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
-                >
-                  {mediumDisconnecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Unplug className="h-4 w-4" />
-                  )}
-                  Disconnect
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowMediumModal(true)}
-                  disabled={mediumConnecting}
-                  className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {mediumConnecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <span>Connect Medium</span>
-                  )}
-                </button>
-              )}
+              <span className="px-3 py-1.5 bg-gray-300 text-textMuted text-sm rounded-lg border border-gray-400">
+                Manual Only
+              </span>
             </div>
           </div>
 

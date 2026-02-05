@@ -24,8 +24,9 @@ const BulkScheduleWizard: React.FC<BulkScheduleWizardProps> = ({
   const [frequency, setFrequency] = useState<'hourly' | 'daily' | 'custom'>('daily');
   const [customHours, setCustomHours] = useState(24);
   const [isScheduling, setIsScheduling] = useState(false);
+  const schedulableContent = content.filter(c => c.platform !== 'facebook');
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<Platform>>(
-    new Set(content.map(c => c.platform))
+    new Set(schedulableContent.map(c => c.platform))
   );
 
   const togglePlatform = (platform: Platform) => {
@@ -56,7 +57,7 @@ const BulkScheduleWizard: React.FC<BulkScheduleWizardProps> = ({
     try {
       const startDateTime = new Date(`${startDate}T${startTime}`);
       const intervalHours = getIntervalHours();
-      const selectedContent = content.filter(c => selectedPlatforms.has(c.platform));
+      const selectedContent = schedulableContent.filter(c => selectedPlatforms.has(c.platform));
 
       for (let i = 0; i < selectedContent.length; i++) {
         const scheduleTime = new Date(startDateTime.getTime() + (i * intervalHours * 60 * 60 * 1000));
@@ -80,7 +81,7 @@ const BulkScheduleWizard: React.FC<BulkScheduleWizardProps> = ({
     }
   };
 
-  const selectedContent = content.filter(c => selectedPlatforms.has(c.platform));
+  const selectedContent = schedulableContent.filter(c => selectedPlatforms.has(c.platform));
   const previewDates = selectedContent.map((_, i) => {
     if (!startDate || !startTime) return null;
     const startDateTime = new Date(`${startDate}T${startTime}`);
@@ -107,7 +108,7 @@ const BulkScheduleWizard: React.FC<BulkScheduleWizardProps> = ({
           <div>
             <h3 className="font-bold text-textPrimary mb-3">Select Platforms to Schedule</h3>
             <div className="grid grid-cols-2 gap-3">
-              {content.map(({ platform }) => (
+              {schedulableContent.map(({ platform }) => (
                 <label
                   key={platform}
                   className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition ${

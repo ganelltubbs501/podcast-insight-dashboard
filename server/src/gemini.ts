@@ -58,6 +58,7 @@ export async function analyzeWithGemini(payload: {
   // ✅ CHANGE: use a model confirmed to support generateContent
   // (and allow an env override without changing code later)
   const modelId = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const fallbackModelId = process.env.GEMINI_FALLBACK_MODEL || "gemini-1.5-flash";
 
   // Keep your system prompt logic (copied from your frontend)
   let systemInstruction =
@@ -86,9 +87,7 @@ export async function analyzeWithGemini(payload: {
     "Analyze the following podcast content (text, audio, or image of notes) and generate a comprehensive set of insights, content, and analytics.";
 
   if (s?.customKeywords?.length) {
-    textPrompt += ` IMPORTANT: Pay special attention to the following industry keywords and highlight them in the analysis if relevant: ${s.customKeywords.join(
-      ", "
-    )}.`;
+    textPrompt += ` IMPORTANT: Pay special attention to the following industry keywords and highlight them in the analysis if relevant: ${s.customKeywords.join(", ")}.`;
   }
 
   const parts: any[] = [{ text: textPrompt }];
@@ -99,217 +98,193 @@ export async function analyzeWithGemini(payload: {
     parts.push({ inlineData: payload.contentInput.inlineData });
   }
 
-  const response: GenerateContentResponse = await retryWithBackoff(() =>
-    ai.models.generateContent({
-      model: modelId,
-      contents: [{ role: "user", parts }],
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      keyTakeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
+      quotes: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            text: { type: Type.STRING },
+            timestamp: { type: Type.STRING },
+            speaker: { type: Type.STRING },
+          },
+        },
+      },
+      socialClips: { type: Type.ARRAY, items: { type: Type.STRING } },
+      socialContent: {
         type: Type.OBJECT,
         properties: {
-          keyTakeaways: {
-            type: Type.ARRAY,
-            description: "5 bullet points of the most important insights",
-            items: { type: Type.STRING },
+          linkedinPost: { type: Type.STRING },
+          twitterThread: { type: Type.ARRAY, items: { type: Type.STRING } },
+          tiktokScript: { type: Type.STRING },
+          youtubeDescription: { type: Type.STRING },
+          emailNewsletter: {
+            type: Type.OBJECT,
+            properties: {
+              subject: { type: Type.STRING },
+              body: { type: Type.STRING },
+            },
+            required: ["subject", "body"],
           },
-          quotes: {
+          mediumArticle: { type: Type.STRING },
+          newsletterTeaser: {
+            type: Type.OBJECT,
+            properties: {
+              subject: { type: Type.STRING },
+              body: { type: Type.STRING },
+            },
+            required: ["subject", "body"],
+          },
+        },
+        required: [
+          "linkedinPost",
+          "twitterThread",
+          "tiktokScript",
+          "youtubeDescription",
+          "emailNewsletter",
+          "mediumArticle",
+          "newsletterTeaser",
+        ],
+      },
+      blogPost: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          intro: { type: Type.STRING },
+          sections: {
             type: Type.ARRAY,
-            description: "5 direct quotes with approximate timestamps and speaker attribution",
             items: {
               type: Type.OBJECT,
               properties: {
-                text: { type: Type.STRING },
-                timestamp: { type: Type.STRING, description: "Format [HH:MM:SS]" },
-                speaker: { type: Type.STRING, description: "Who said this?" },
+                heading: { type: Type.STRING },
+                content: { type: Type.STRING },
               },
             },
           },
-          socialClips: {
+          conclusion: { type: Type.STRING },
+        },
+      },
+      showNotes: { type: Type.STRING },
+      faq: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            question: { type: Type.STRING },
+            answer: { type: Type.STRING },
+          },
+        },
+      },
+      seo: {
+        type: Type.OBJECT,
+        properties: {
+          metaDescription: { type: Type.STRING },
+          keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+          titleVariations: { type: Type.ARRAY, items: { type: Type.STRING } },
+          keywordAnalysis: {
             type: Type.ARRAY,
-            description: "3 short generic clips (legacy support)",
-            items: { type: Type.STRING },
-          },
-          socialContent: {
-            type: Type.OBJECT,
-            description: "Content optimized for 7 specific social platforms",
-            properties: {
-              linkedinPost: {
-                type: Type.STRING,
-                description:
-                  "Professional LinkedIn post (150-300 words) with hashtags and engagement question.",
-              },
-              twitterThread: {
-                type: Type.ARRAY,
-                description: "A thread of 5-10 tweets, numbered.",
-                items: { type: Type.STRING },
-              },
-              tiktokScript: {
-                type: Type.STRING,
-                description: "A 30-second script for a Reel/TikTok video with visual cues and hooks.",
-              },
-              youtubeDescription: {
-                type: Type.STRING,
-                description: "SEO-optimized YouTube Shorts description (100-150 chars).",
-              },
-              emailNewsletter: {
-                type: Type.OBJECT,
-                description: "Full email newsletter draft (500-800 words).",
-                properties: {
-                  subject: { type: Type.STRING },
-                  body: { type: Type.STRING, description: "Newsletter body text" },
-                },
-                required: ["subject", "body"],
-              },
-              mediumArticle: {
-                type: Type.STRING,
-                description: "Detailed article draft formatted in Markdown (H2, H3) ~1000 words.",
-              },
-              newsletterTeaser: {
-                type: Type.OBJECT,
-                description: "Short teaser for Substack/Beehiiv.",
-                properties: {
-                  subject: { type: Type.STRING },
-                  body: { type: Type.STRING },
-                },
-                required: ["subject", "body"],
-              },
-            },
-            required: [
-              "linkedinPost",
-              "twitterThread",
-              "tiktokScript",
-              "youtubeDescription",
-              "emailNewsletter",
-              "mediumArticle",
-              "newsletterTeaser",
-            ],
-          },
-          blogPost: {
-            type: Type.OBJECT,
-            description: "Comprehensive SEO-optimized blog post outline (aim for depth).",
-            properties: {
-              title: { type: Type.STRING },
-              intro: { type: Type.STRING },
-              sections: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    heading: { type: Type.STRING },
-                    content: {
-                      type: Type.STRING,
-                      description: "Detailed paragraph content for this section.",
-                    },
-                  },
-                },
-              },
-              conclusion: { type: Type.STRING },
-            },
-          },
-          showNotes: {
-            type: Type.STRING,
-            description:
-              "Formatted show notes with timestamps, key topics discussed, and mentioned resources.",
-          },
-          faq: {
-            type: Type.ARRAY,
-            description: "10-15 frequently asked questions based on the transcript content.",
             items: {
               type: Type.OBJECT,
               properties: {
-                question: { type: Type.STRING },
-                answer: { type: Type.STRING },
+                keyword: { type: Type.STRING },
+                count: { type: Type.NUMBER },
+                density: { type: Type.STRING },
               },
             },
           },
-          seo: {
+          readability: {
             type: Type.OBJECT,
-            description: "Advanced SEO Metadata and analysis",
             properties: {
-              metaDescription: { type: Type.STRING, description: "160 chars max" },
-              keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-              titleVariations: { type: Type.ARRAY, items: { type: Type.STRING } },
-              keywordAnalysis: {
-                type: Type.ARRAY,
-                description: "Top 5-10 keywords with count and density",
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    keyword: { type: Type.STRING },
-                    count: { type: Type.NUMBER },
-                    density: { type: Type.STRING, description: "Percentage string e.g. '1.5%'" },
-                  },
-                },
-              },
-              readability: {
-                type: Type.OBJECT,
-                properties: {
-                  score: { type: Type.NUMBER, description: "Flesch-Kincaid score (0-100)" },
-                  level: { type: Type.STRING, description: "Reading level e.g. '8th Grade'" },
-                  suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                },
-              },
-              internalLinks: {
-                type: Type.ARRAY,
-                description: "Suggestions for internal linking anchor text",
-                items: { type: Type.STRING },
-              },
+              score: { type: Type.NUMBER },
+              level: { type: Type.STRING },
+              suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
             },
           },
-          speakers: {
+          internalLinks: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+      },
+      speakers: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            role: { type: Type.STRING },
+            contribution: { type: Type.STRING },
+            speakingTimePercent: { type: Type.NUMBER },
+            topics: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+        },
+      },
+      sentiment: {
+        type: Type.OBJECT,
+        properties: {
+          score: { type: Type.NUMBER },
+          label: { type: Type.STRING, enum: ["Positive", "Neutral", "Negative", "Mixed"] },
+          tone: { type: Type.STRING },
+          audiencePrediction: { type: Type.STRING },
+          emotionalKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+          timeline: {
             type: Type.ARRAY,
-            description: "Analysis of speakers involved",
             items: {
               type: Type.OBJECT,
               properties: {
-                name: { type: Type.STRING },
-                role: { type: Type.STRING },
-                contribution: { type: Type.STRING },
-                speakingTimePercent: { type: Type.NUMBER, description: "Estimated percentage 0-100" },
-                topics: { type: Type.ARRAY, items: { type: Type.STRING } },
-              },
-            },
-          },
-          sentiment: {
-            type: Type.OBJECT,
-            properties: {
-              score: { type: Type.NUMBER, description: "0 to 100, where 100 is very positive" },
-              label: { type: Type.STRING, enum: ["Positive", "Neutral", "Negative", "Mixed"] },
-              tone: { type: Type.STRING, description: "Overall tone description" },
-              audiencePrediction: { type: Type.STRING, description: "Prediction of likely audience reaction" },
-              emotionalKeywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-              timeline: {
-                type: Type.ARRAY,
-                description: "Sentiment analysis broken down by 5-10 time segments",
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    timestamp: { type: Type.STRING, description: "Time range e.g. '00:00 - 05:00'" },
-                    sentiment: { type: Type.STRING, enum: ["Positive", "Neutral", "Negative"] },
-                    score: { type: Type.NUMBER, description: "Sentiment score 0-100 for this segment" },
-                  },
-                },
+                timestamp: { type: Type.STRING },
+                sentiment: { type: Type.STRING, enum: ["Positive", "Neutral", "Negative"] },
+                score: { type: Type.NUMBER },
               },
             },
           },
         },
-        required: [
-          "keyTakeaways",
-          "quotes",
-          "socialContent",
-          "blogPost",
-          "showNotes",
-          "faq",
-          "seo",
-          "speakers",
-          "sentiment",
-          "socialClips",
-        ],
       },
     },
-  }));
+    required: [
+      "keyTakeaways",
+      "quotes",
+      "socialClips",
+      "socialContent",
+      "blogPost",
+      "showNotes",
+      "faq",
+      "seo",
+      "speakers",
+      "sentiment",
+    ],
+  };
+
+  const generateWithModel = (model: string) =>
+    retryWithBackoff(() =>
+      ai.models.generateContent({
+        model,
+        contents: [{ role: "user", parts }],
+        config: {
+          systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema,
+        },
+      })
+    );
+
+  let response: GenerateContentResponse;
+  try {
+    response = await generateWithModel(modelId);
+  } catch (error: any) {
+    const errorMessage = error?.message || JSON.stringify(error);
+    const isModelUnavailable =
+      errorMessage.includes("404") ||
+      errorMessage.includes("NOT_FOUND") ||
+      errorMessage.toLowerCase().includes("model") && errorMessage.toLowerCase().includes("not found");
+
+    if (isModelUnavailable && fallbackModelId && fallbackModelId !== modelId) {
+      console.warn(`Primary Gemini model unavailable (${modelId}). Falling back to ${fallbackModelId}.`);
+      response = await generateWithModel(fallbackModelId);
+    } else {
+      throw error;
+    }
+  }
 
   const text = response.text;
   if (!text) throw new Error("No response from Gemini.");
@@ -338,6 +313,7 @@ IMPORTANT FORMATTING RULES:
   * Day 5: Instagram (day: 5), Facebook (day: 5), LinkedIn (day: 5), Twitter (day: 5), Instagram Stories (day: 5)
 - The "day" field indicates which day the content should be scheduled (day 1 = first day, day 2 = second day, etc.)
 - Optimize each post for its specific platform (character limits, tone, hashtags, etc.)
+- For facebookPost: slightly longer than X, include a hook + value + CTA, include 1–3 hashtags, and at most 1 emoji (or none).
 
 Return ONLY JSON matching the responseSchema.`;
 
@@ -346,6 +322,7 @@ Return ONLY JSON matching the responseSchema.`;
     'email_series': 'emailSeries',
     'social_calendar': 'socialCalendar',
     'linkedin_article': 'linkedinArticle',
+    'facebook_post': 'facebookPost',
     'image_prompts': 'imagePrompts',
   };
   const fieldName = typeToField[payload.type] || payload.type;
@@ -391,6 +368,7 @@ Return ONLY JSON matching the responseSchema.`;
             },
           },
           linkedinArticle: { type: Type.STRING },
+          facebookPost: { type: Type.STRING },
           imagePrompts: {
             type: Type.ARRAY,
             items: {

@@ -1,7 +1,22 @@
 // Medium Integration Service
 // Token-based API (no OAuth - user generates integration token from Medium settings)
 
-const MEDIUM_API_URL = 'https://api.medium.com/v1';
+import { supabase } from '../lib/supabaseClient';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
+/**
+ * Get the auth token from Supabase session
+ */
+async function getAuthToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  return session.access_token;
+}
 
 export interface MediumStatus {
   connected: boolean;
@@ -31,9 +46,12 @@ export function getMediumAuthUrl(): string {
  */
 export async function getMediumStatus(): Promise<MediumStatus> {
   try {
-    const response = await fetch('/api/integrations/medium/status', {
+    const token = await getAuthToken();
+    const response = await fetch(`${API_BASE}/api/integrations/medium/status`, {
       method: 'GET',
-      credentials: 'include',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
     });
 
     if (!response.ok) {
@@ -51,15 +69,16 @@ export async function getMediumStatus(): Promise<MediumStatus> {
 /**
  * Connect Medium account with integration token
  */
-export async function connectMedium(token: string): Promise<{ success: boolean; message: string; profile?: MediumProfile }> {
+export async function connectMedium(integrationToken: string): Promise<{ success: boolean; message: string; profile?: MediumProfile }> {
   try {
-    const response = await fetch('/api/integrations/medium/connect', {
+    const authToken = await getAuthToken();
+    const response = await fetch(`${API_BASE}/api/integrations/medium/connect`, {
       method: 'POST',
-      credentials: 'include',
       headers: {
+        'Authorization': `Bearer ${authToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ token: integrationToken }),
     });
 
     const data = await response.json();
@@ -90,9 +109,12 @@ export async function connectMedium(token: string): Promise<{ success: boolean; 
  */
 export async function disconnectMedium(): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await fetch('/api/integrations/medium/disconnect', {
+    const token = await getAuthToken();
+    const response = await fetch(`${API_BASE}/api/integrations/medium/disconnect`, {
       method: 'DELETE',
-      credentials: 'include',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
     });
 
     if (!response.ok) {
@@ -120,10 +142,11 @@ export async function disconnectMedium(): Promise<{ success: boolean; message: s
  */
 export async function publishToMedium(title: string, content: string, contentFormat: 'markdown' | 'html' = 'markdown'): Promise<{ success: boolean; message: string; postUrl?: string }> {
   try {
-    const response = await fetch('/api/integrations/medium/post', {
+    const token = await getAuthToken();
+    const response = await fetch(`${API_BASE}/api/integrations/medium/post`, {
       method: 'POST',
-      credentials: 'include',
       headers: {
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

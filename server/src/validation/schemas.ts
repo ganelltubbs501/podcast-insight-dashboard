@@ -73,6 +73,7 @@ const repurposeTypeSchema = z.enum([
   'email_series',
   'social_calendar',
   'linkedin_article',
+  'facebook_post',
   'image_prompts',
   'newsletter_teaser',
   'twitter_thread',
