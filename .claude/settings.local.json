@@ -60,7 +60,9 @@
       "Bash(powershell -Command:*)",
       "Bash(firebase deploy:*)",
       "Bash(git pull:*)",
-      "Bash(gcloud run services logs read:*)"
+      "Bash(gcloud run services logs read:*)",
+      "Bash(gcloud run services list:*)",
+      "Bash(npx supabase:*)"
     ]
   }
 }

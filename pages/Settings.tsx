@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter, Mail, Upload, Trash2, Users, FileSpreadsheet } from 'lucide-react';
+import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter, Mail, Upload, Trash2, Users, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { getLinkedInStatus, connectLinkedIn, disconnectLinkedIn } from '../services/linkedin';
 import { getTwitterStatus, connectTwitter, disconnectTwitter, TwitterStatus } from '../services/twitter';
 import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
 import { getMediumStatus, connectMedium, disconnectMedium, MediumStatus } from '../services/medium';
 import { getGmailStatus, getGmailAuthUrl, disconnectGmail, GmailStatus } from '../services/gmail';
+import { getSendGridStatus, connectSendGrid, disconnectSendGrid, updateSendGridDefaultSender, refreshSendGridSenders, SendGridStatus, SendGridSender, SendGridTemplate, SendGridList } from '../services/sendgrid';
+import { getMailchimpStatus, connectMailchimp, disconnectMailchimp, MailchimpStatus } from '../services/mailchimp';
+import { getKitStatus, connectKit, disconnectKit, KitStatus } from '../services/kit';
+import { getTwilioStatus, connectTwilio, disconnectTwilio, TwilioStatus } from '../services/twilio';
 import { getEmailLists, createEmailList, deleteEmailList, parseCSVForEmails, EmailList } from '../services/emailLists';
 import { createTeam, getTeams, Team } from '../services/backend';
 import { useTeam } from '../contexts/TeamContext';
@@ -54,6 +58,34 @@ const Settings: React.FC = () => {
   const [gmailLoading, setGmailLoading] = useState(true);
   const [gmailConnecting, setGmailConnecting] = useState(false);
   const [gmailDisconnecting, setGmailDisconnecting] = useState(false);
+
+  // SendGrid state
+  const [sendgrid, setSendGrid] = useState<SendGridStatus | null>(null);
+  const [sendgridLoading, setSendGridLoading] = useState(true);
+  const [sendgridConnecting, setSendGridConnecting] = useState(false);
+  const [sendgridDisconnecting, setSendGridDisconnecting] = useState(false);
+  const [showSendGridModal, setShowSendGridModal] = useState(false);
+  const [sendgridApiKey, setSendGridApiKey] = useState('');
+  const [sendgridRefreshing, setSendGridRefreshing] = useState(false);
+  const [sendgridUpdatingSender, setSendGridUpdatingSender] = useState(false);
+
+  // Mailchimp state
+  const [mailchimp, setMailchimp] = useState<MailchimpStatus | null>(null);
+  const [mailchimpLoading, setMailchimpLoading] = useState(true);
+  const [mailchimpConnecting, setMailchimpConnecting] = useState(false);
+  const [mailchimpDisconnecting, setMailchimpDisconnecting] = useState(false);
+
+  // Kit state
+  const [kit, setKit] = useState<KitStatus | null>(null);
+  const [kitLoading, setKitLoading] = useState(true);
+  const [kitConnecting, setKitConnecting] = useState(false);
+  const [kitDisconnecting, setKitDisconnecting] = useState(false);
+
+  // Twilio state
+  const [twilio, setTwilio] = useState<TwilioStatus | null>(null);
+  const [twilioLoading, setTwilioLoading] = useState(true);
+  const [twilioConnecting, setTwilioConnecting] = useState(false);
+  const [twilioDisconnecting, setTwilioDisconnecting] = useState(false);
 
   // Podcast state
   const [podcast, setPodcast] = useState<PodcastStatus | null>(null);
@@ -159,6 +191,48 @@ const Settings: React.FC = () => {
       setSearchParams(searchParams, { replace: true });
     }
 
+    // Mailchimp callback (from platform-content redirect)
+    const connectedParam = searchParams.get('connected');
+    if (connectedParam === 'mailchimp') {
+      setMessage({
+        type: 'success',
+        text: 'Mailchimp connected successfully!',
+      });
+      loadMailchimpStatus();
+      searchParams.delete('connected');
+      setSearchParams(searchParams, { replace: true });
+    } else if (connectedParam === 'kit') {
+      setMessage({
+        type: 'success',
+        text: 'Kit connected successfully!',
+      });
+      loadKitStatus();
+      searchParams.delete('connected');
+      setSearchParams(searchParams, { replace: true });
+    }
+
+    // Twilio callback
+    const twilioStatus = searchParams.get('twilio');
+    const twilioMessage = searchParams.get('message');
+
+    if (twilioStatus === 'connected') {
+      setMessage({
+        type: 'success',
+        text: 'Twilio connected successfully!',
+      });
+      loadTwilioStatus();
+      searchParams.delete('twilio');
+      setSearchParams(searchParams, { replace: true });
+    } else if (twilioStatus === 'error') {
+      setMessage({
+        type: 'error',
+        text: twilioMessage || 'Failed to connect Twilio. Please try again.',
+      });
+      searchParams.delete('twilio');
+      searchParams.delete('message');
+      setSearchParams(searchParams, { replace: true });
+    }
+
   }, [searchParams, setSearchParams]);
 
   // Load all statuses on mount
@@ -167,6 +241,10 @@ const Settings: React.FC = () => {
     loadTwitterStatus();
     loadMediumStatus();
     loadGmailStatus();
+    loadSendGridStatus();
+    loadMailchimpStatus();
+    loadKitStatus();
+    loadTwilioStatus();
     loadPodcastStatus();
     loadEmailLists();
   }, []);
@@ -220,6 +298,58 @@ const Settings: React.FC = () => {
       setGmail({ connected: false });
     } finally {
       setGmailLoading(false);
+    }
+  };
+
+  const loadSendGridStatus = async () => {
+    try {
+      setSendGridLoading(true);
+      const status = await getSendGridStatus();
+      setSendGrid(status);
+    } catch (err: any) {
+      console.error('Failed to load SendGrid status:', err);
+      setSendGrid({ connected: false });
+    } finally {
+      setSendGridLoading(false);
+    }
+  };
+
+  const loadMailchimpStatus = async () => {
+    try {
+      setMailchimpLoading(true);
+      const status = await getMailchimpStatus();
+      setMailchimp(status);
+    } catch (err: any) {
+      console.error('Failed to load Mailchimp status:', err);
+      setMailchimp({ connected: false });
+    } finally {
+      setMailchimpLoading(false);
+    }
+  };
+
+  const loadKitStatus = async () => {
+    try {
+      setKitLoading(true);
+      const status = await getKitStatus();
+      setKit(status);
+    } catch (err: any) {
+      console.error('Failed to load Kit status:', err);
+      setKit({ connected: false });
+    } finally {
+      setKitLoading(false);
+    }
+  };
+
+  const loadTwilioStatus = async () => {
+    try {
+      setTwilioLoading(true);
+      const status = await getTwilioStatus();
+      setTwilio(status);
+    } catch (err: any) {
+      console.error('Failed to load Twilio status:', err);
+      setTwilio({ connected: false });
+    } finally {
+      setTwilioLoading(false);
     }
   };
 
@@ -388,6 +518,178 @@ const Settings: React.FC = () => {
       setMessage({ type: 'error', text: err.message || 'Failed to disconnect Gmail' });
     } finally {
       setGmailDisconnecting(false);
+    }
+  };
+
+  // SendGrid handlers
+  const handleConnectSendGrid = async () => {
+    if (!sendgridApiKey.trim()) {
+      setMessage({ type: 'error', text: 'Please enter your SendGrid API key' });
+      return;
+    }
+
+    try {
+      setSendGridConnecting(true);
+      setMessage(null);
+      const result = await connectSendGrid(sendgridApiKey.trim());
+
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message });
+        setShowSendGridModal(false);
+        setSendGridApiKey('');
+        // Reload full status to get senders
+        await loadSendGridStatus();
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to connect SendGrid' });
+    } finally {
+      setSendGridConnecting(false);
+    }
+  };
+
+  const handleDisconnectSendGrid = async () => {
+    if (!confirm('Are you sure you want to disconnect SendGrid? You will need to reconnect to send emails via SendGrid.')) {
+      return;
+    }
+
+    try {
+      setSendGridDisconnecting(true);
+      setMessage(null);
+      await disconnectSendGrid();
+      setSendGrid({ connected: false });
+      setMessage({ type: 'success', text: 'SendGrid disconnected successfully' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect SendGrid' });
+    } finally {
+      setSendGridDisconnecting(false);
+    }
+  };
+
+  const handleRefreshSendGridSenders = async () => {
+    try {
+      setSendGridRefreshing(true);
+      setMessage(null);
+      const result = await refreshSendGridSenders();
+      if (result.success) {
+        setSendGrid(prev => prev ? { ...prev, senders: result.senders } : prev);
+        setMessage({ type: 'success', text: 'Senders refreshed successfully' });
+      } else {
+        setMessage({ type: 'error', text: result.message || 'Failed to refresh senders' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to refresh senders' });
+    } finally {
+      setSendGridRefreshing(false);
+    }
+  };
+
+  const handleUpdateSendGridDefaultSender = async (sender: SendGridSender) => {
+    try {
+      setSendGridUpdatingSender(true);
+      setMessage(null);
+      const result = await updateSendGridDefaultSender({ email: sender.email, name: sender.name });
+      if (result.success) {
+        setSendGrid(prev => prev ? { ...prev, defaultSender: { email: sender.email, name: sender.name } } : prev);
+        setMessage({ type: 'success', text: `Default sender set to ${sender.name} (${sender.email})` });
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to update default sender' });
+    } finally {
+      setSendGridUpdatingSender(false);
+    }
+  };
+
+  // Mailchimp handlers
+  const handleConnectMailchimp = async () => {
+    try {
+      setMailchimpConnecting(true);
+      setMessage(null);
+      await connectMailchimp();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to start Mailchimp connection' });
+      setMailchimpConnecting(false);
+    }
+  };
+
+  const handleDisconnectMailchimp = async () => {
+    if (!confirm('Are you sure you want to disconnect Mailchimp?')) {
+      return;
+    }
+
+    try {
+      setMailchimpDisconnecting(true);
+      setMessage(null);
+      await disconnectMailchimp();
+      setMailchimp({ connected: false });
+      setMessage({ type: 'success', text: 'Mailchimp disconnected successfully' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Mailchimp' });
+    } finally {
+      setMailchimpDisconnecting(false);
+    }
+  };
+
+  // Kit handlers
+  const handleConnectKit = async () => {
+    try {
+      setKitConnecting(true);
+      setMessage(null);
+      await connectKit();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to start Kit connection' });
+      setKitConnecting(false);
+    }
+  };
+
+  const handleDisconnectKit = async () => {
+    if (!confirm('Are you sure you want to disconnect Kit?')) {
+      return;
+    }
+
+    try {
+      setKitDisconnecting(true);
+      setMessage(null);
+      await disconnectKit();
+      setKit({ connected: false });
+      setMessage({ type: 'success', text: 'Kit disconnected successfully' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Kit' });
+    } finally {
+      setKitDisconnecting(false);
+    }
+  };
+
+  // Twilio handlers
+  const handleConnectTwilio = async () => {
+    try {
+      setTwilioConnecting(true);
+      setMessage(null);
+      await connectTwilio();
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to start Twilio connection' });
+      setTwilioConnecting(false);
+    }
+  };
+
+  const handleDisconnectTwilio = async () => {
+    if (!confirm('Are you sure you want to disconnect Twilio?')) {
+      return;
+    }
+
+    try {
+      setTwilioDisconnecting(true);
+      setMessage(null);
+      await disconnectTwilio();
+      setTwilio({ connected: false });
+      setMessage({ type: 'success', text: 'Twilio disconnected successfully' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Twilio' });
+    } finally {
+      setTwilioDisconnecting(false);
     }
   };
 
@@ -774,6 +1076,349 @@ const Settings: React.FC = () => {
             </div>
           </div>
 
+          {/* SendGrid Connection */}
+          <div className="p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 bg-[#1A82E2] rounded-lg flex items-center justify-center">
+                  <Mail className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-textPrimary">SendGrid</h3>
+                  {sendgridLoading ? (
+                    <p className="text-sm text-textMuted">Checking connection...</p>
+                  ) : sendgrid?.connected ? (
+                    <p className="text-sm text-green-600 font-medium">
+                      Connected{sendgrid.email ? ` (${sendgrid.email})` : ''}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-textMuted">Send newsletters and marketing emails</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {sendgridLoading ? (
+                  <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+                ) : sendgrid?.connected ? (
+                  <button
+                    onClick={handleDisconnectSendGrid}
+                    disabled={sendgridDisconnecting}
+                    className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                  >
+                    {sendgridDisconnecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Unplug className="h-4 w-4" />
+                    )}
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowSendGridModal(true)}
+                    className="px-4 py-2 bg-[#1A82E2] text-white text-sm font-medium rounded-lg hover:bg-[#1570C2] transition flex items-center gap-2"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Connect SendGrid
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Sender Selection (when connected) */}
+            {sendgrid?.connected && sendgrid.senders && sendgrid.senders.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-textSecondary">Default Sender</h4>
+                  <button
+                    onClick={handleRefreshSendGridSenders}
+                    disabled={sendgridRefreshing}
+                    className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${sendgridRefreshing ? 'animate-spin' : ''}`} />
+                    Refresh Senders
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {sendgrid.senders.map((sender) => {
+                    const isDefault = sendgrid.defaultSender?.email === sender.email;
+                    return (
+                      <div
+                        key={sender.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border ${
+                          isDefault
+                            ? 'bg-blue-50 border-blue-200'
+                            : 'bg-gray-100 border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                            sender.verified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {sender.verified ? <Check className="h-4 w-4" /> : '!'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-textPrimary">{sender.name}</p>
+                            <p className="text-xs text-textMuted">{sender.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!sender.verified && (
+                            <span className="text-xs text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded">
+                              Not Verified
+                            </span>
+                          )}
+                          {isDefault ? (
+                            <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded font-medium">
+                              Default
+                            </span>
+                          ) : sender.verified ? (
+                            <button
+                              onClick={() => handleUpdateSendGridDefaultSender(sender)}
+                              disabled={sendgridUpdatingSender}
+                              className="text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-50"
+                            >
+                              {sendgridUpdatingSender ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                'Set as Default'
+                              )}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {sendgrid.senders.filter(s => s.verified).length === 0 && (
+                  <p className="mt-2 text-xs text-yellow-600">
+                    No verified senders found. Please verify at least one sender in your SendGrid account.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* No senders message */}
+            {sendgrid?.connected && (!sendgrid.senders || sendgrid.senders.length === 0) && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-textMuted">No senders configured in your SendGrid account.</p>
+                  <button
+                    onClick={handleRefreshSendGridSenders}
+                    disabled={sendgridRefreshing}
+                    className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${sendgridRefreshing ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Templates section */}
+            {sendgrid?.connected && sendgrid.templates && sendgrid.templates.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <h4 className="text-sm font-medium text-textSecondary mb-2">Dynamic Templates</h4>
+                <div className="flex flex-wrap gap-2">
+                  {sendgrid.templates.slice(0, 6).map((template) => (
+                    <span
+                      key={template.id}
+                      className="text-xs bg-gray-100 text-textSecondary px-2 py-1 rounded border border-gray-300"
+                      title={template.id}
+                    >
+                      {template.name}
+                    </span>
+                  ))}
+                  {sendgrid.templates.length > 6 && (
+                    <span className="text-xs text-textMuted">
+                      +{sendgrid.templates.length - 6} more
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Mailing Lists section */}
+            {sendgrid?.connected && sendgrid.lists && sendgrid.lists.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-300">
+                <h4 className="text-sm font-medium text-textSecondary mb-2">Mailing Lists</h4>
+                <div className="space-y-1">
+                  {sendgrid.lists.slice(0, 5).map((list) => (
+                    <div
+                      key={list.id}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="text-textSecondary">{list.name}</span>
+                      <span className="text-textMuted">{list.contactCount.toLocaleString()} contacts</span>
+                    </div>
+                  ))}
+                  {sendgrid.lists.length > 5 && (
+                    <p className="text-xs text-textMuted">+{sendgrid.lists.length - 5} more lists</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Mailchimp Connection */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-[#FFE01B] rounded-lg flex items-center justify-center">
+                <span className="text-black font-bold text-lg">MC</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Mailchimp</h3>
+                {mailchimpLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : mailchimp?.connected ? (
+                  <p className="text-sm text-green-600 font-medium">
+                    Connected{mailchimp.account?.accountName ? ` (${mailchimp.account.accountName})` : ''}
+                  </p>
+                ) : (
+                  <p className="text-sm text-textMuted">Email marketing and newsletters</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {mailchimpLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : mailchimp?.connected ? (
+                <button
+                  onClick={handleDisconnectMailchimp}
+                  disabled={mailchimpDisconnecting}
+                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                >
+                  {mailchimpDisconnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={handleConnectMailchimp}
+                  disabled={mailchimpConnecting}
+                  className="px-4 py-2 bg-[#FFE01B] text-black text-sm font-medium rounded-lg hover:bg-[#E5CA00] transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {mailchimpConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
+                  )}
+                  Connect Mailchimp
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Kit (ConvertKit) Connection */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-[#FB6970] rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">Kit</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Kit (ConvertKit)</h3>
+                {kitLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : kit?.connected ? (
+                  <p className="text-sm text-green-600 font-medium">
+                    Connected{kit.accountName ? ` (${kit.accountName})` : ''}
+                  </p>
+                ) : (
+                  <p className="text-sm text-textMuted">Email marketing for creators</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {kitLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : kit?.connected ? (
+                <button
+                  onClick={handleDisconnectKit}
+                  disabled={kitDisconnecting}
+                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                >
+                  {kitDisconnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={handleConnectKit}
+                  disabled={kitConnecting}
+                  className="px-4 py-2 bg-[#FB6970] text-white text-sm font-medium rounded-lg hover:bg-[#E85860] transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {kitConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
+                  )}
+                  Connect Kit
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Twilio Connection */}
+          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 bg-[#F22F46] rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">TW</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-textPrimary">Twilio</h3>
+                {twilioLoading ? (
+                  <p className="text-sm text-textMuted">Checking connection...</p>
+                ) : twilio?.connected ? (
+                  <p className="text-sm text-green-600 font-medium">
+                    Connected{twilio.accountName ? ` (${twilio.accountName})` : ''}
+                  </p>
+                ) : (
+                  <p className="text-sm text-textMuted">Send and schedule SMS messages</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {twilioLoading ? (
+                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
+              ) : twilio?.connected ? (
+                <button
+                  onClick={handleDisconnectTwilio}
+                  disabled={twilioDisconnecting}
+                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
+                >
+                  {twilioDisconnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Unplug className="h-4 w-4" />
+                  )}
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={handleConnectTwilio}
+                  disabled={twilioConnecting}
+                  className="px-4 py-2 bg-[#F22F46] text-white text-sm font-medium rounded-lg hover:bg-[#D91A32] transition disabled:opacity-50 flex items-center gap-2"
+                >
+                  {twilioConnecting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
+                  )}
+                  Connect Twilio
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Facebook Connection - Coming Soon */}
           <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300 opacity-75">
             <div className="flex items-center gap-4">
@@ -845,6 +1490,61 @@ const Settings: React.FC = () => {
                     className="flex-1 px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {mediumConnecting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Connect'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SendGrid API Key Modal */}
+          {showSendGridModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+                <h2 className="text-xl font-semibold text-textPrimary mb-2">Connect SendGrid</h2>
+                <p className="text-sm text-textMuted mb-4">
+                  Enter your SendGrid API key to send newsletters and marketing emails.
+                </p>
+
+                {/* Step-by-step instructions */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <h3 className="font-medium text-blue-900 mb-2">How to get your API key:</h3>
+                  <ol className="text-sm text-blue-800 space-y-1">
+                    <li>1. Log in to <a href="https://app.sendgrid.com" target="_blank" rel="noopener noreferrer" className="underline font-medium">app.sendgrid.com</a></li>
+                    <li>2. Go to Settings &gt; API Keys</li>
+                    <li>3. Click "Create API Key"</li>
+                    <li>4. Name it "LoquiHQ" and select "Full Access"</li>
+                    <li>5. Copy the API key and paste it below</li>
+                  </ol>
+                </div>
+
+                <input
+                  type="password"
+                  placeholder="Paste your SendGrid API key here (SG.xxx...)"
+                  value={sendgridApiKey}
+                  onChange={(e) => setSendGridApiKey(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowSendGridModal(false);
+                      setSendGridApiKey('');
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConnectSendGrid}
+                    disabled={sendgridConnecting || !sendgridApiKey.trim()}
+                    className="flex-1 px-4 py-2 bg-[#1A82E2] text-white text-sm font-medium rounded-lg hover:bg-[#1570C2] transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {sendgridConnecting ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       'Connect'

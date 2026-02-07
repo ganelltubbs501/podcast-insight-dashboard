@@ -100,6 +100,11 @@ app.use(cors({
 // Different size limits for different endpoints (will be refined per-route)
 app.use(express.json({ limit: "5mb" })); // Default 5MB for most endpoints
 
+// Root route
+app.get("/", (_req, res) => {
+  res.status(200).send("LoquiHQ API is running. Try /health");
+});
+
 // Health check with lenient rate limit
 app.get("/health", healthCheckLimiter, (_req, res) => res.json({ ok: true }));
 
@@ -2790,6 +2795,256 @@ app.post("/api/integrations/medium/post", requireAuth, async (req: AuthRequest, 
     console.error('Medium post failed:', err);
 
     return res.status(500).json({ error: err.message || 'Failed to publish to Medium' });
+  }
+});
+
+// ============================================================================
+// SENDGRID INTEGRATION (API Key-based)
+// ============================================================================
+
+app.post("/api/integrations/sendgrid/connect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { apiKey } = req.body;
+
+    if (!apiKey || typeof apiKey !== 'string') {
+      return res.status(400).json({ message: 'SendGrid API key is required' });
+    }
+
+    const { validateSendGridApiKey, storeSendGridConnection } = await import('./oauth/sendgrid.js');
+
+    // Validate API key by fetching user profile
+    const profile = await validateSendGridApiKey(apiKey);
+
+    // Store connection
+    await storeSendGridConnection(userId, apiKey, profile);
+
+    console.log(`✅ SendGrid connected for user: ${userId.substring(0, 8)}... (username: ${profile.username})`);
+
+    return res.json({
+      success: true,
+      message: 'SendGrid account connected successfully!',
+      profile: {
+        username: profile.username,
+        email: profile.email,
+      },
+    });
+  } catch (err: any) {
+    console.error('SendGrid connection failed:', err);
+
+    return res.status(400).json({
+      message: err.message || 'Failed to connect SendGrid account',
+    });
+  }
+});
+
+app.get("/api/integrations/sendgrid/status", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getSendGridConnectionFull } = await import('./oauth/sendgrid.js');
+
+    const connection = await getSendGridConnectionFull(userId);
+
+    if (!connection) {
+      return res.json({
+        status: { connected: false },
+      });
+    }
+
+    return res.json({
+      status: {
+        connected: true,
+        email: connection.email,
+        username: connection.username,
+        senders: connection.senders || [],
+        defaultSender: connection.defaultSender || null,
+        templates: connection.templates || [],
+        lists: connection.lists || [],
+        lastVerifiedAt: connection.lastVerifiedAt,
+      },
+    });
+  } catch (err: any) {
+    console.error('Failed to fetch SendGrid status:', err);
+    return res.status(500).json({ error: 'Failed to fetch SendGrid status' });
+  }
+});
+
+app.post("/api/integrations/sendgrid/default-sender", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { email, name } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Sender email is required' });
+    }
+
+    const { updateSendGridDefaultSender } = await import('./oauth/sendgrid.js');
+
+    await updateSendGridDefaultSender(userId, { email, name: name || '' });
+
+    console.log(`📧 SendGrid default sender updated for user: ${userId.substring(0, 8)}... (${email})`);
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('Failed to update SendGrid default sender:', err);
+    return res.status(500).json({ error: err.message || 'Failed to update default sender' });
+  }
+});
+
+app.post("/api/integrations/sendgrid/refresh-senders", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { refreshSendGridSenders } = await import('./oauth/sendgrid.js');
+
+    const senders = await refreshSendGridSenders(userId);
+
+    console.log(`🔄 SendGrid senders refreshed for user: ${userId.substring(0, 8)}... (${senders.length} senders)`);
+
+    return res.json({ success: true, senders });
+  } catch (err: any) {
+    console.error('Failed to refresh SendGrid senders:', err);
+    return res.status(500).json({ error: err.message || 'Failed to refresh senders' });
+  }
+});
+
+app.delete("/api/integrations/sendgrid/disconnect", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { removeSendGridConnection } = await import('./oauth/sendgrid.js');
+
+    await removeSendGridConnection(userId);
+
+    console.log(`🔌 SendGrid disconnected for user: ${userId.substring(0, 8)}...`);
+
+    return res.json({ success: true, message: 'SendGrid account disconnected' });
+  } catch (err: any) {
+    console.error('Failed to disconnect SendGrid:', err);
+    return res.status(500).json({ error: 'Failed to disconnect SendGrid account' });
+  }
+});
+
+app.post("/api/integrations/sendgrid/send", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { to, subject, html, text, from, replyTo } = req.body;
+
+    if (!to || !subject) {
+      return res.status(400).json({ error: 'Recipient (to) and subject are required' });
+    }
+
+    if (!html && !text) {
+      return res.status(400).json({ error: 'Email content (html or text) is required' });
+    }
+
+    const { getSendGridConnection, sendSendGridEmail } = await import('./oauth/sendgrid.js');
+
+    const connection = await getSendGridConnection(userId);
+    if (!connection) {
+      return res.status(401).json({ error: 'SendGrid account not connected' });
+    }
+
+    const result = await sendSendGridEmail(connection.accessToken, {
+      to,
+      subject,
+      html,
+      text,
+      from,
+      replyTo,
+    });
+
+    console.log(`📧 SendGrid email sent for user: ${userId.substring(0, 8)}... (messageId: ${result.messageId})`);
+
+    return res.json({
+      success: true,
+      messageId: result.messageId,
+    });
+  } catch (err: any) {
+    console.error('SendGrid send failed:', err);
+    return res.status(500).json({ error: err.message || 'Failed to send email' });
+  }
+});
+
+app.get("/api/integrations/sendgrid/lists", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getSendGridConnection, getSendGridLists } = await import('./oauth/sendgrid.js');
+
+    const connection = await getSendGridConnection(userId);
+    if (!connection) {
+      return res.status(401).json({ error: 'SendGrid account not connected' });
+    }
+
+    const lists = await getSendGridLists(connection.accessToken);
+
+    return res.json({ lists });
+  } catch (err: any) {
+    console.error('Failed to fetch SendGrid lists:', err);
+    return res.status(500).json({ error: err.message || 'Failed to fetch lists' });
+  }
+});
+
+app.get("/api/integrations/sendgrid/senders", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { getSendGridConnection, getSendGridSenders } = await import('./oauth/sendgrid.js');
+
+    const connection = await getSendGridConnection(userId);
+    if (!connection) {
+      return res.status(401).json({ error: 'SendGrid account not connected' });
+    }
+
+    const senders = await getSendGridSenders(connection.accessToken);
+
+    return res.json({ senders });
+  } catch (err: any) {
+    console.error('Failed to fetch SendGrid senders:', err);
+    return res.status(500).json({ error: err.message || 'Failed to fetch senders' });
+  }
+});
+
+// ============================================================================
+// TWILIO INTEGRATION (OAuth-based for SMS and Email)
+// ============================================================================
+
+import { twilioAuthUrl, twilioCallback, twilioStatus, twilioDisconnect, getTwilioConnection, sendTwilioSMS } from "./twilio-oauth.js";
+
+app.get("/api/integrations/twilio/auth-url", requireAuth, twilioAuthUrl);
+app.get("/api/integrations/twilio/callback", twilioCallback);
+app.get("/api/integrations/twilio/status", requireAuth, twilioStatus);
+app.post("/api/integrations/twilio/disconnect", requireAuth, twilioDisconnect);
+
+app.post("/api/integrations/twilio/send-sms", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { from, to, body } = req.body;
+
+    if (!from || !to || !body) {
+      return res.status(400).json({ error: "from, to, and body are required" });
+    }
+
+    const connection = await getTwilioConnection(userId);
+    if (!connection) {
+      return res.status(401).json({ error: "Twilio account not connected" });
+    }
+
+    const result = await sendTwilioSMS(
+      connection.access_token,
+      connection.profile?.accountSid || connection.provider_user_id,
+      from,
+      to,
+      body
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    console.log(`📱 SMS sent via Twilio for user: ${userId.substring(0, 8)}... (sid: ${result.messageSid})`);
+
+    return res.json({ success: true, messageSid: result.messageSid });
+  } catch (err: any) {
+    console.error("Twilio SMS failed:", err);
+    return res.status(500).json({ error: err.message || "Failed to send SMS" });
   }
 });
 

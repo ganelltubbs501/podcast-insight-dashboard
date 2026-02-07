@@ -1,16 +1,24 @@
 {
-  "hosting": {
-    "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "root",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "redirects": [
+        { "source": "/privacy", "destination": "/#/privacy", "type": 301 },
+        { "source": "/terms", "destination": "/#/terms", "type": 301 }
+      ],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "app",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "redirects": [
+        { "source": "/privacy", "destination": "/#/privacy", "type": 301 },
+        { "source": "/terms", "destination": "/#/terms", "type": 301 }
+      ],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    }
+  ]
 }

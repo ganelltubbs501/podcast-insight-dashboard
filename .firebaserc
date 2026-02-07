@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "loquihq-beta"
-  }
+  },
+  "targets": {
+    "gen-lang-client-0998538144": {
+      "hosting": {
+        "root": [
+          "loquihq-root"
+        ],
+        "app": [
+          "loquihq-app"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
