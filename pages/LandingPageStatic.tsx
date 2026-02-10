@@ -1,11 +1,10 @@
 import React from 'react';
 import { Mic, Zap, FileText, Share2, CheckCircle } from 'lucide-react';
 
-interface LandingPageProps {
-  onLogin: () => void;
-}
+const APP_LOGIN_URL = 'https://app.loquihq.com/login';
+const APP_SIGNUP_URL = 'https://app.loquihq.com/signup';
 
-const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
+const LandingPageStatic: React.FC = () => {
   return (
     <div className="min-h-screen bg-bgLight">
       {/* Navigation */}
@@ -17,10 +16,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               <span className="ml-2 text-xl font-bold text-textPrimary">LoquiHQ</span>
             </div>
             <div className="flex items-center space-x-4">
-              <button onClick={onLogin} className="text-textSecondary hover:text-textPrimary font-medium">Log in</button>
-              <button onClick={onLogin} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition font-medium">
+              <a href={APP_LOGIN_URL} className="text-textSecondary hover:text-textPrimary font-medium">Sign In</a>
+              <a href={APP_SIGNUP_URL} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition font-medium">
                 Get Started
-              </button>
+              </a>
             </div>
           </div>
         </div>
@@ -40,9 +39,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               Track what matters. Price sponsorships correctly. Build offers that fit your audience.
             </p>
             <div className="flex justify-center gap-4">
-              <button onClick={onLogin} className="px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary hover:-translate-y-1 transition transform">
+              <a href={APP_SIGNUP_URL} className="px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary hover:-translate-y-1 transition transform">
                 Get Your Podcast Readout
-              </button>
+              </a>
               <a href="#features" className="px-8 py-4 bg-gray-100 text-textSecondary border border-gray-300 rounded-xl text-lg font-bold shadow-sm hover:bg-gray-100 transition">
                 See How It Works
               </a>
@@ -69,7 +68,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
               <h3 className="text-xl font-bold text-textPrimary mb-2">Instant Summaries</h3>
               <p className="text-textSecondary">Get the key takeaways and highlights from an hour-long episode in seconds.</p>
             </div>
-            
+
             <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
               <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
                 <Share2 className="h-6 w-6 text-secondary" />
@@ -112,9 +111,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> 3 Transcripts / mo</li>
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Basic Summaries</li>
                </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-gray-100 text-textPrimary font-bold rounded-lg hover:bg-gray-200 transition">Get Started</button>
+               <a href={APP_SIGNUP_URL} className="mt-8 w-full py-3 bg-gray-100 text-textPrimary font-bold rounded-lg hover:bg-gray-200 transition block text-center">Get Started</a>
              </div>
-             
+
              {/* Pro Tier */}
              <div className="bg-gray-100 p-8 rounded-2xl shadow-xl border-2 border-primary relative transform md:-translate-y-4">
                <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">POPULAR</div>
@@ -125,7 +124,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> All AI Features</li>
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> Blog Generation</li>
                </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary transition">Start Free Trial</button>
+               <a href={APP_SIGNUP_URL} className="mt-8 w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary transition block text-center">Start Free Trial</a>
              </div>
 
              {/* Business Tier */}
@@ -136,16 +135,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Unlimited Transcripts</li>
                  <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Priority Support</li>
                </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-gray-100 text-textPrimary font-bold rounded-lg hover:bg-gray-200 transition">Contact Sales</button>
+               <a href={APP_SIGNUP_URL} className="mt-8 w-full py-3 bg-gray-100 text-textPrimary font-bold rounded-lg hover:bg-gray-200 transition block text-center">Contact Sales</a>
              </div>
           </div>
         </div>
       </div>
-      
+
       <footer className="bg-gray-200 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-textMuted">© 2026 LoquiHQ. Where podcasters get the truth.</p>
+            <p className="text-textMuted">&copy; 2026 LoquiHQ. Where podcasters get the truth.</p>
             <div className="flex items-center gap-6">
               <a href="/privacy" className="text-textMuted hover:text-textSecondary transition">Privacy Policy</a>
               <a href="/terms" className="text-textMuted hover:text-textSecondary transition">Terms of Service</a>
@@ -157,4 +156,4 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
   );
 };
 
-export default LandingPage;
+export default LandingPageStatic;

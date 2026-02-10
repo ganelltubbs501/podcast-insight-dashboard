@@ -121,8 +121,8 @@ export async function mailchimpCallback(req: Request, res: Response) {
 
   if (error) return res.status(500).send(`Failed to store Mailchimp connection: ${error.message}`);
 
-  const appBase = process.env.APP_URL || process.env.APP_PUBLIC_URL || "https://loquihq-beta.web.app";
-  res.redirect(`${appBase}/#/platform-content?connected=mailchimp`);
+  const frontendUrl = process.env.FRONTEND_PUBLIC_URL!;
+  res.redirect(`${frontendUrl}/?oauth=mailchimp`);
 }
 
 export async function mailchimpStatus(req: any, res: Response) {

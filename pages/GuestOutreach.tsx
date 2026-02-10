@@ -503,7 +503,7 @@ const GuestOutreach: React.FC = () => {
                           </button>
                         ) : (
                           <a
-                            href="/#/settings"
+                            href="/settings"
                             className="flex items-center gap-2 bg-gray-200 text-textMuted px-4 py-2 rounded-lg hover:bg-gray-300 transition font-medium text-sm"
                           >
                             <Mail className="h-4 w-4" />

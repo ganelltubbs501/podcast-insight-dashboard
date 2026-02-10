@@ -14,20 +14,28 @@ interface SocialCalendarViewProps {
 }
 
 // Map platform names to schedulable platform types
+// Only LinkedIn supports automated scheduling right now
 const platformToSchedulable: Record<string, string | null> = {
   'LinkedIn': 'linkedin',
-  'Twitter': 'twitter',
-  'Facebook': null,
-  'Instagram': null, // Not schedulable via API
-  'Instagram Stories': null, // Not schedulable via API
+  'X': null,        // Coming soon
+  'Twitter': null,  // Legacy name fallback
+  'Facebook': null, // Coming soon
+  'Instagram': null,
+  'Instagram Stories': null,
 };
 
-// Platform icons
+// Display name mapping (Twitter -> X)
+const getPlatformDisplayName = (platform: string): string => {
+  if (platform === 'Twitter') return 'X';
+  return platform;
+};
+
 const PlatformIcon: React.FC<{ platform: string; className?: string }> = ({ platform, className = "h-4 w-4" }) => {
   switch (platform) {
     case 'LinkedIn':
       return <Linkedin className={className} />;
     case 'Twitter':
+    case 'X':
       return <Twitter className={className} />;
     case 'Facebook':
       return <Facebook className={className} />;
@@ -328,13 +336,13 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
             ) : (
               <>
                 <Calendar className="h-4 w-4" />
-                Schedule Entire Series
+                Schedule LinkedIn Series
               </>
             )}
           </button>
         </div>
         <p className="text-sm text-textMuted mt-3">
-          Day 1 posts will be scheduled for {startDate} at {startTime}. Each subsequent day adds 24 hours.
+          Day 1 LinkedIn posts will be scheduled for {startDate} at {startTime}. Each subsequent day adds 24 hours. Other platforms require manual posting.
         </p>
       </div>
 
@@ -384,7 +392,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
                       <div
                         key={platform}
                         className={`p-1.5 rounded ${platformToSchedulable[platform] ? 'bg-gray-100' : 'bg-yellow-50'}`}
-                        title={platformToSchedulable[platform] ? platform : `${platform} (Manual only)`}
+                        title={platformToSchedulable[platform] ? getPlatformDisplayName(platform) : `${getPlatformDisplayName(platform)} (Manual only)`}
                       >
                         <PlatformIcon platform={platform} className="h-4 w-4 text-gray-600" />
                       </div>
@@ -417,7 +425,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
                       ) : (
                         <>
                           <Calendar className="h-3 w-3" />
-                          Schedule Day {day} ({schedulablePosts.length} posts)
+                          Schedule Day {day} LinkedIn ({schedulablePosts.length} post{schedulablePosts.length !== 1 ? 's' : ''})
                         </>
                       )}
                     </button>
@@ -439,9 +447,9 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
                               <PlatformIcon platform={post.platform} className="h-4 w-4" />
-                              <span className="font-medium text-textPrimary text-sm">{post.platform}</span>
+                              <span className="font-medium text-textPrimary text-sm">{getPlatformDisplayName(post.platform)}</span>
                               {!isSchedulable && (
-                                <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">
+                                <span className="text-xs bg-gray-200 text-gray-700 font-medium px-1.5 py-0.5 rounded">
                                   Manual only
                                 </span>
                               )}
@@ -466,7 +474,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
                   {/* Manual Only Notice */}
                   {manualOnlyPosts.length > 0 && (
                     <p className="text-xs text-textMuted mt-3">
-                      * Instagram and Instagram Stories require manual posting. Copy the content and post directly to the platform.
+                      * X, Facebook, Instagram, and Instagram Stories require manual posting. Copy the content and post directly to the platform.
                     </p>
                   )}
                 </div>

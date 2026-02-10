@@ -83,7 +83,7 @@ const AcceptInvite: React.FC = () => {
   };
 
   const handleGoHome = () => {
-    navigate('/');
+    navigate('/dashboard');
   };
 
   return (

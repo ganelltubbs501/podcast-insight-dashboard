@@ -32,12 +32,14 @@ async function joinWaitlist(email: string) {
 }
 
 interface LoginProps {
-  onClose: () => void;
+  onClose?: () => void;
   onSuccess: (user: User) => void;
+  defaultMode?: 'login' | 'signup';
+  variant?: 'modal' | 'page';
 }
 
-const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
-  const [isSignUp, setIsSignUp] = useState(true); // Default to sign up for new users
+const Login: React.FC<LoginProps> = ({ onClose, onSuccess, defaultMode = 'signup', variant = 'modal' }) => {
+  const [isSignUp, setIsSignUp] = useState(defaultMode === 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -99,16 +101,16 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose}></div>
-      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 light">
+  const content = (
+    <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 light">
+      {variant === 'modal' && onClose && (
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
         >
           <X className="h-5 w-5" />
         </button>
+      )}
 
         <div className="text-center mb-6">
           <div className="h-12 w-12 bg-primary rounded-xl flex items-center justify-center text-white font-bold text-xl mx-auto mb-3">
@@ -232,7 +234,21 @@ const Login: React.FC<LoginProps> = ({ onClose, onSuccess }) => {
             {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
           </button>
         </div>
+    </div>
+  );
+
+  if (variant === 'page') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        {content}
       </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose}></div>
+      {content}
     </div>
   );
 };

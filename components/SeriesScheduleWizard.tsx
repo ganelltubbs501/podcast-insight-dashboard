@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, Sparkles, X, Mail, Hash, Users, ChevronDown, Loader2 } from 'lucide-react';
-import { schedulePost } from '../services/transcripts';
+import { createScheduledPost } from '../services/transcripts';
 import { getEmailLists, getEmailList, EmailList } from '../services/emailLists';
 
 interface EmailSeriesItem {
@@ -110,25 +110,25 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
 
         if (type === 'email') {
           const emailItem = item as EmailSeriesItem;
-          await schedulePost({
+          await createScheduledPost({
             platform: 'email',
             content: `Subject: ${emailItem.subject}\n\n${emailItem.body}`,
             scheduledDate: scheduleTime.toISOString(),
-            status: 'Scheduled',
             transcriptId,
-            metadata: {
+            meta: {
+              emailType: 'email_series',
               recipientEmails: recipients,
-              recipientEmail: recipients[0] // Keep for backwards compatibility
-            }
+              recipientEmail: recipients[0],
+              seriesDay: emailItem.day,
+            },
           });
         } else {
           const socialItem = item as SocialCalendarItem;
-          await schedulePost({
+          await createScheduledPost({
             platform: socialItem.platform as any,
             content: socialItem.content,
             scheduledDate: scheduleTime.toISOString(),
-            status: 'Scheduled',
-            transcriptId
+            transcriptId,
           });
         }
       }
@@ -209,7 +209,7 @@ const SeriesScheduleWizard: React.FC<SeriesScheduleWizardProps> = ({
                 ) : (
                   <p className="text-sm text-textMuted py-2">
                     No email lists yet.{' '}
-                    <a href="/#/settings" className="text-primary hover:underline">
+                    <a href="/settings" className="text-primary hover:underline">
                       Import a CSV in Settings
                     </a>
                   </p>

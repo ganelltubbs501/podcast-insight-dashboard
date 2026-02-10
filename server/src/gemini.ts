@@ -138,6 +138,7 @@ export async function analyzeWithGemini(payload: {
             },
             required: ["subject", "body"],
           },
+          facebookPost: { type: Type.STRING },
         },
         required: [
           "linkedinPost",
@@ -147,6 +148,7 @@ export async function analyzeWithGemini(payload: {
           "emailNewsletter",
           "mediumArticle",
           "newsletterTeaser",
+          "facebookPost",
         ],
       },
       blogPost: {

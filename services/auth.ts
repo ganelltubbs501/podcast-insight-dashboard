@@ -11,7 +11,7 @@ function mapUser(u: any): User {
   };
 }
 
-async function ensureProfileExists(userId: string) {
+export async function ensureProfileExists(userId: string) {
   // Use upsert to be idempotent - won't fail if profile already exists
   // The beta cap trigger will still fire on new inserts
   const { error } = await supabase
@@ -41,12 +41,14 @@ async function ensureProfileExists(userId: string) {
 }
 
 export async function getStoredUser(): Promise<User | null> {
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
+  // Use getSession() first — reads from localStorage without a network call.
+  // getUser() makes an HTTP request that can fail/race after OAuth redirects.
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session?.user) return null;
 
-  await ensureProfileExists(data.user.id);
+  await ensureProfileExists(sessionData.session.user.id);
 
-  return mapUser(data.user);
+  return mapUser(sessionData.session.user);
 }
 
 export async function loginUser(email: string, password: string): Promise<User> {

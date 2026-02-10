@@ -295,6 +295,44 @@ export async function schedulePost(post: {
   return data;
 }
 
+/**
+ * Simplified scheduled post creation — only uses columns that exist in the DB.
+ * Preferred over schedulePost() for new code.
+ */
+export async function createScheduledPost(input: {
+  transcriptId?: string | null;
+  platform: string;
+  content: string;
+  scheduledDate: string;
+  status?: 'Scheduled' | 'Published' | 'Failed';
+  meta?: Record<string, any>;
+  provider?: string;
+  title?: string | null;
+}) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("scheduled_posts")
+    .insert({
+      user_id: user.id,
+      transcript_id: input.transcriptId ?? null,
+      platform: input.platform,
+      provider: input.provider ?? null,
+      title: input.title ?? null,
+      content: input.content,
+      scheduled_date: input.scheduledDate,
+      scheduled_at: input.scheduledDate,
+      status: input.status ?? 'Scheduled',
+      meta: input.meta ?? {},
+    })
+    .select(SCHEDULED_POST_SELECT)
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function deleteScheduledPost(id: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");

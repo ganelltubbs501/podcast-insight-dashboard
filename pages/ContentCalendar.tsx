@@ -198,11 +198,7 @@ const ContentCalendar: React.FC = () => {
             >
               <option value="all">All Platforms</option>
               <option value="linkedin">LinkedIn</option>
-              <option value="twitter">Twitter</option>
-              <option value="facebook">Facebook</option>
               <option value="email">Email</option>
-              <option value="tiktok">TikTok</option>
-              <option value="youtube">YouTube</option>
               <option value="medium">Medium</option>
               <option value="teaser">Newsletter Teaser</option>
             </select>

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:landing": "vite build --config vite.config.landing.ts",
+    "build:all": "tsc && vite build && vite build --config vite.config.landing.ts",
     "preview": "vite preview",
     "test": "vitest",
     "security-audit": "node scripts/security-audit.js",

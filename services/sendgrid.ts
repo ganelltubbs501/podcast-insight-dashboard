@@ -216,6 +216,31 @@ export async function getSendGridLists(): Promise<SendGridList[]> {
 }
 
 /**
+ * Get SendGrid dynamic templates (live from API)
+ */
+export async function getSendGridTemplates(): Promise<SendGridTemplate[]> {
+  try {
+    const token = await getAuthToken();
+    const response = await fetch(`${API_BASE}/api/integrations/sendgrid/templates`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const data = await response.json();
+    return data.templates || [];
+  } catch (error) {
+    console.error('Failed to fetch SendGrid templates:', error);
+    return [];
+  }
+}
+
+/**
  * Get SendGrid verified senders
  */
 export async function getSendGridSenders(): Promise<SendGridSender[]> {

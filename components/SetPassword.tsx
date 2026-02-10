@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 export default function SetPassword() {
   const [password, setPassword] = useState("");
@@ -10,14 +10,13 @@ export default function SetPassword() {
   const [loading, setLoading] = useState(false);
   const [isRecovery, setIsRecovery] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Detect if user came from a password recovery link
   useEffect(() => {
-    const hash = window.location.hash || "";
-    if (hash.includes("type=recovery")) {
-      setIsRecovery(true);
-    }
-  }, []);
+    const params = new URLSearchParams(location.search);
+    setIsRecovery(params.get("type") === "recovery");
+  }, [location.search]);
 
   const submit = async () => {
     setError(null);

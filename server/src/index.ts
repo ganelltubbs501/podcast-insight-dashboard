@@ -43,6 +43,7 @@ import type { MarketingProvider } from "./integrations/types.js";
 import { logIntegrationEvent } from "./integrations/events.js";
 import { kitAuthUrl, kitCallback, kitStatus } from "./kit-oauth.js";
 import { mailchimpAuthUrl, mailchimpCallback, mailchimpDisconnect, mailchimpStatus } from "./mailchimp-oauth.js";
+import { looksLikeSendGridKey, validateSendGridKey, fetchSendGridLists, fetchSendGridTemplates, createAndScheduleSendGridSingleSend } from "./sendgrid.js";
 
 // near top-level
 const rssParser = new Parser({
@@ -78,24 +79,33 @@ const app = express();
 // Trust proxy - required for rate limiting behind proxies (Vercel, Railway, etc.)
 app.set('trust proxy', 1);
 
-// CORS - Use environment configuration with validation
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
+// CORS — hardcoded allowed origins + env-based validation
+const allowedOrigins = new Set([
+  "https://app.loquihq.com",
+  "https://loquihq.com",
+  "https://www.loquihq.com",
+]);
 
-    if (backendEnv.cors.allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`🚫 Blocked CORS request from: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, cb) => {
+    // Allow non-browser tools with no Origin header (curl, Cloud Scheduler, etc.)
+    if (!origin) return cb(null, true);
+
+    if (allowedOrigins.has(origin)) return cb(null, true);
+
+    console.warn(`🚫 Blocked CORS request from: ${origin}`);
+    return cb(new Error(`CORS blocked origin: ${origin}`));
   },
-  credentials: true, // Required for cookies/auth
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  maxAge: 86400 // Cache preflight for 24h
-}));
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-cron-secret"],
+  credentials: true,
+  maxAge: 86400,
+};
+
+app.use(cors(corsOptions));
+
+// CRITICAL: handle preflight BEFORE auth/routes
+app.options("*", cors(corsOptions));
 
 // Different size limits for different endpoints (will be refined per-route)
 app.use(express.json({ limit: "5mb" })); // Default 5MB for most endpoints
@@ -1113,7 +1123,7 @@ app.post("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), asy
       .single();
 
     // Build invite URL (frontend will handle this)
-    const inviteUrl = `${process.env.FRONTEND_URL || 'https://loquihq-beta.web.app'}/#/invite?token=${token}`;
+    const inviteUrl = `${process.env.FRONTEND_PUBLIC_URL!}/invite?token=${token}`;
 
     console.log(`✅ Invite created for ${email} to team ${teamId.substring(0, 8)}...`);
 
@@ -1843,19 +1853,19 @@ app.get("/api/integrations/mailchimp/automations", requireAuth, async (req: Auth
 
 // LinkedIn OAuth callback - handles redirect from LinkedIn
 app.get("/api/integrations/linkedin/callback", async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_PUBLIC_URL!;
+
   try {
     const { code, state, error, error_description } = req.query;
-
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
 
     // Handle OAuth errors
     if (error) {
       console.error('LinkedIn OAuth error:', error, error_description);
-      return res.redirect(`${appPublicUrl}/#/settings?linkedin=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=linkedin&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
     }
 
     if (!code || !state) {
-      return res.redirect(`${appPublicUrl}/#/settings?linkedin=error&message=${encodeURIComponent('Missing authorization code')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=linkedin&message=${encodeURIComponent('Missing authorization code')}`);
     }
 
     // Decode state to get userId
@@ -1866,10 +1876,10 @@ app.get("/api/integrations/linkedin/callback", async (req, res) => {
 
       // Check state isn't too old (10 minute max)
       if (Date.now() - stateData.ts > 10 * 60 * 1000) {
-        return res.redirect(`${appPublicUrl}/#/settings?linkedin=error&message=${encodeURIComponent('Authorization expired, please try again')}`);
+        return res.redirect(`${frontendUrl}/?oauth_error=linkedin&message=${encodeURIComponent('Authorization expired, please try again')}`);
       }
     } catch {
-      return res.redirect(`${appPublicUrl}/#/settings?linkedin=error&message=${encodeURIComponent('Invalid state parameter')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=linkedin&message=${encodeURIComponent('Invalid state parameter')}`);
     }
 
     const { exchangeLinkedInCode, getLinkedInProfile, storeLinkedInConnection } = await import('./linkedin-oauth.js');
@@ -1893,11 +1903,10 @@ app.get("/api/integrations/linkedin/callback", async (req, res) => {
     console.log(`✅ LinkedIn connected for user: ${userId.substring(0, 8)}... (${profile.localizedFirstName} ${profile.localizedLastName})`);
 
     // Redirect back to frontend settings page
-    return res.redirect(`${appPublicUrl}/#/settings?linkedin=connected&name=${encodeURIComponent(profile.localizedFirstName)}`);
+    return res.redirect(`${frontendUrl}/?oauth=linkedin`);
   } catch (err: any) {
     console.error('LinkedIn callback failed:', err);
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
-    return res.redirect(`${appPublicUrl}/#/settings?linkedin=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+    return res.redirect(`${frontendUrl}/?oauth_error=linkedin&message=${encodeURIComponent(err.message || 'Connection failed')}`);
   }
 });
 
@@ -2047,17 +2056,18 @@ app.get("/api/integrations/gmail/auth-url", requireAuth, async (req: AuthRequest
 });
 
 app.get("/api/integrations/gmail/callback", async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_PUBLIC_URL!;
+
   try {
     const { code, state, error, error_description } = req.query;
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
 
     if (error) {
       console.error('Gmail OAuth error:', error, error_description);
-      return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=gmail&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
     }
 
     if (!code || !state) {
-      return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent('Missing authorization code')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=gmail&message=${encodeURIComponent('Missing authorization code')}`);
     }
 
     let userId: string;
@@ -2065,10 +2075,10 @@ app.get("/api/integrations/gmail/callback", async (req, res) => {
       const stateData = JSON.parse(Buffer.from(state as string, 'base64url').toString());
       userId = stateData.userId;
       if (Date.now() - stateData.ts > 10 * 60 * 1000) {
-        return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent('Authorization expired')}`);
+        return res.redirect(`${frontendUrl}/?oauth_error=gmail&message=${encodeURIComponent('Authorization expired')}`);
       }
     } catch {
-      return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent('Invalid state')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=gmail&message=${encodeURIComponent('Invalid state')}`);
     }
 
     const { exchangeGmailCode, getGmailProfile, storeGmailConnection } = await import('./oauth/gmail.js');
@@ -2084,11 +2094,10 @@ app.get("/api/integrations/gmail/callback", async (req, res) => {
     await storeGmailConnection(userId, tokens, profile);
 
     console.log(`✅ Gmail connected for user: ${userId.substring(0, 8)}... (${profile.email})`);
-    return res.redirect(`${appPublicUrl}/#/settings?gmail=connected&email=${encodeURIComponent(profile.email)}`);
+    return res.redirect(`${frontendUrl}/?oauth=gmail`);
   } catch (err: any) {
     console.error('Gmail callback failed:', err);
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
-    return res.redirect(`${appPublicUrl}/#/settings?gmail=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+    return res.redirect(`${frontendUrl}/?oauth_error=gmail&message=${encodeURIComponent(err.message || 'Connection failed')}`);
   }
 });
 
@@ -2211,19 +2220,19 @@ app.get("/api/integrations/facebook/auth-url", requireAuth, async (req: AuthRequ
 
 // Facebook OAuth callback - handles redirect from Facebook
 app.get("/api/integrations/facebook/callback", async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_PUBLIC_URL!;
+
   try {
     const { code, state, error, error_description } = req.query;
-
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
 
     // Handle OAuth errors
     if (error) {
       console.error('Facebook OAuth error:', error, error_description);
-      return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=facebook&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
     }
 
     if (!code || !state) {
-      return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent('Missing authorization code')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=facebook&message=${encodeURIComponent('Missing authorization code')}`);
     }
 
     // Decode state to get userId
@@ -2234,10 +2243,10 @@ app.get("/api/integrations/facebook/callback", async (req, res) => {
 
       // Check state isn't too old (10 minute max)
       if (Date.now() - stateData.ts > 10 * 60 * 1000) {
-        return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent('Authorization expired, please try again')}`);
+        return res.redirect(`${frontendUrl}/?oauth_error=facebook&message=${encodeURIComponent('Authorization expired, please try again')}`);
       }
     } catch {
-      return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent('Invalid state parameter')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=facebook&message=${encodeURIComponent('Invalid state parameter')}`);
     }
 
     const {
@@ -2273,12 +2282,11 @@ app.get("/api/integrations/facebook/callback", async (req, res) => {
 
     console.log(`✅ Facebook connected for user: ${userId.substring(0, 8)}... (${profile.name}, ${pages.length} pages)`);
 
-    // Redirect back to frontend settings page with page count
-    return res.redirect(`${appPublicUrl}/#/settings?facebook=connected&name=${encodeURIComponent(profile.name)}&pages=${pages.length}`);
+    // Redirect back to frontend settings page
+    return res.redirect(`${frontendUrl}/?oauth=facebook`);
   } catch (err: any) {
     console.error('Facebook callback failed:', err);
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
-    return res.redirect(`${appPublicUrl}/#/settings?facebook=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+    return res.redirect(`${frontendUrl}/?oauth_error=facebook&message=${encodeURIComponent(err.message || 'Connection failed')}`);
   }
 });
 
@@ -2508,19 +2516,19 @@ app.get("/api/integrations/x/auth-url", requireAuth, async (req: AuthRequest, re
 
 // X OAuth callback - handles redirect from X
 app.get("/api/integrations/x/callback", async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_PUBLIC_URL!;
+
   try {
     const { code, state, error, error_description } = req.query;
-
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
 
     // Handle OAuth errors
     if (error) {
       console.error('X OAuth error:', error, error_description);
-      return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=x&message=${encodeURIComponent(error_description as string || 'Authorization failed')}`);
     }
 
     if (!code || !state) {
-      return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent('Missing authorization code')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=x&message=${encodeURIComponent('Missing authorization code')}`);
     }
 
     const {
@@ -2533,7 +2541,7 @@ app.get("/api/integrations/x/callback", async (req, res) => {
     // Get stored state and code verifier
     const storedState = await getOAuthState(state as string);
     if (!storedState) {
-      return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent('Invalid or expired state. Please try again.')}`);
+      return res.redirect(`${frontendUrl}/?oauth_error=x&message=${encodeURIComponent('Invalid or expired state. Please try again.')}`);
     }
 
     const { userId, codeVerifier } = storedState;
@@ -2557,11 +2565,10 @@ app.get("/api/integrations/x/callback", async (req, res) => {
     console.log(`✅ X connected for user: ${userId.substring(0, 8)}... (@${profile.username})`);
 
     // Redirect back to frontend settings page
-    return res.redirect(`${appPublicUrl}/#/settings?x=connected&name=${encodeURIComponent(profile.name)}&username=${encodeURIComponent(profile.username)}`);
+    return res.redirect(`${frontendUrl}/?oauth=x`);
   } catch (err: any) {
     console.error('X callback failed:', err);
-    const appPublicUrl = process.env.APP_PUBLIC_URL || 'https://loquihq-beta.web.app';
-    return res.redirect(`${appPublicUrl}/#/settings?x=error&message=${encodeURIComponent(err.message || 'Connection failed')}`);
+    return res.redirect(`${frontendUrl}/?oauth_error=x&message=${encodeURIComponent(err.message || 'Connection failed')}`);
   }
 });
 
@@ -2805,35 +2812,78 @@ app.post("/api/integrations/medium/post", requireAuth, async (req: AuthRequest, 
 app.post("/api/integrations/sendgrid/connect", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-    const { apiKey } = req.body;
+    const apiKey = String(req.body?.apiKey ?? "").trim();
 
-    if (!apiKey || typeof apiKey !== 'string') {
-      return res.status(400).json({ message: 'SendGrid API key is required' });
+    if (!apiKey) {
+      return res.status(400).json({ error: "Missing apiKey" });
     }
 
-    const { validateSendGridApiKey, storeSendGridConnection } = await import('./oauth/sendgrid.js');
+    if (!looksLikeSendGridKey(apiKey)) {
+      return res.status(400).json({ error: "Invalid SendGrid API key format. Keys should start with 'SG.'" });
+    }
 
-    // Validate API key by fetching user profile
-    const profile = await validateSendGridApiKey(apiKey);
+    // Validate key via GET /user/account
+    const v = await validateSendGridKey(apiKey);
 
-    // Store connection
-    await storeSendGridConnection(userId, apiKey, profile);
+    // Fetch selectable resources so the UI can populate dropdowns
+    const [lists, templates] = await Promise.all([
+      fetchSendGridLists(apiKey).catch(() => []),
+      fetchSendGridTemplates(apiKey).catch(() => []),
+    ]);
 
-    console.log(`✅ SendGrid connected for user: ${userId.substring(0, 8)}... (username: ${profile.username})`);
+    // Also fetch verified senders
+    const { getSendGridSenders } = await import('./oauth/sendgrid.js');
+    const senders = await getSendGridSenders(apiKey).catch(() => []);
+
+    // Auto-select first verified sender as default
+    const defaultSender = senders.find((s: any) => s.verified) || senders[0] || null;
+
+    const now = new Date().toISOString();
+
+    // Store connection in connected_accounts (upsert by user+provider)
+    const { error } = await supabaseAdmin!
+      .from("connected_accounts")
+      .upsert({
+        user_id: userId,
+        provider: "sendgrid",
+        provider_user_id: v.profile.username,
+        access_token: apiKey,
+        refresh_token: null,
+        expires_at: null,
+        scopes: ["mail.send", "marketing.read", "templates.read"],
+        profile: {
+          username: v.profile.username,
+          email: v.profile.email,
+          firstName: v.profile.firstName,
+          lastName: v.profile.lastName,
+        },
+        status: "connected",
+        metadata: {
+          senders,
+          defaultSender: defaultSender ? { email: defaultSender.email, name: defaultSender.name } : null,
+          templates,
+          lists,
+          lastVerifiedAt: now,
+        },
+        updated_at: now,
+      }, { onConflict: "user_id,provider" });
+
+    if (error) throw new Error(error.message);
+
+    console.log(`✅ SendGrid connected for user: ${userId.substring(0, 8)}... (account: ${v.accountName})`);
 
     return res.json({
       success: true,
-      message: 'SendGrid account connected successfully!',
+      message: "SendGrid account connected successfully!",
       profile: {
-        username: profile.username,
-        email: profile.email,
+        username: v.profile.username,
+        email: v.profile.email,
       },
     });
   } catch (err: any) {
-    console.error('SendGrid connection failed:', err);
-
+    console.error("SendGrid connection failed:", err);
     return res.status(400).json({
-      message: err.message || 'Failed to connect SendGrid account',
+      error: err.message || "Failed to connect SendGrid account",
     });
   }
 });
@@ -2841,31 +2891,35 @@ app.post("/api/integrations/sendgrid/connect", requireAuth, async (req: AuthRequ
 app.get("/api/integrations/sendgrid/status", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-    const { getSendGridConnectionFull } = await import('./oauth/sendgrid.js');
 
-    const connection = await getSendGridConnectionFull(userId);
+    const { data, error } = await supabaseAdmin!
+      .from("connected_accounts")
+      .select("provider, provider_user_id, profile, metadata, updated_at")
+      .eq("user_id", userId)
+      .eq("provider", "sendgrid")
+      .maybeSingle();
 
-    if (!connection) {
-      return res.json({
-        status: { connected: false },
-      });
+    if (error) throw new Error(error.message);
+
+    if (!data) {
+      return res.json({ status: { connected: false } });
     }
 
     return res.json({
       status: {
         connected: true,
-        email: connection.email,
-        username: connection.username,
-        senders: connection.senders || [],
-        defaultSender: connection.defaultSender || null,
-        templates: connection.templates || [],
-        lists: connection.lists || [],
-        lastVerifiedAt: connection.lastVerifiedAt,
+        email: data.profile?.email || "",
+        username: data.profile?.username || data.provider_user_id || "",
+        senders: data.metadata?.senders || [],
+        defaultSender: data.metadata?.defaultSender || null,
+        templates: data.metadata?.templates || [],
+        lists: data.metadata?.lists || [],
+        lastVerifiedAt: data.metadata?.lastVerifiedAt || null,
       },
     });
   } catch (err: any) {
-    console.error('Failed to fetch SendGrid status:', err);
-    return res.status(500).json({ error: 'Failed to fetch SendGrid status' });
+    console.error("Failed to fetch SendGrid status:", err);
+    return res.status(500).json({ error: "Failed to fetch SendGrid status" });
   }
 });
 
@@ -2967,38 +3021,68 @@ app.post("/api/integrations/sendgrid/send", requireAuth, async (req: AuthRequest
 app.get("/api/integrations/sendgrid/lists", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-    const { getSendGridConnection, getSendGridLists } = await import('./oauth/sendgrid.js');
 
-    const connection = await getSendGridConnection(userId);
-    if (!connection) {
-      return res.status(401).json({ error: 'SendGrid account not connected' });
-    }
+    const { data, error } = await supabaseAdmin!
+      .from("connected_accounts")
+      .select("access_token")
+      .eq("user_id", userId)
+      .eq("provider", "sendgrid")
+      .maybeSingle();
 
-    const lists = await getSendGridLists(connection.accessToken);
+    if (error) throw new Error(error.message);
+    if (!data?.access_token) return res.status(400).json({ error: "SendGrid not connected" });
 
+    const lists = await fetchSendGridLists(String(data.access_token));
     return res.json({ lists });
   } catch (err: any) {
-    console.error('Failed to fetch SendGrid lists:', err);
-    return res.status(500).json({ error: err.message || 'Failed to fetch lists' });
+    console.error("SendGrid lists failed:", err);
+    return res.status(500).json({ error: err.message || "Failed to load lists" });
   }
 });
 
 app.get("/api/integrations/sendgrid/senders", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-    const { getSendGridConnection, getSendGridSenders } = await import('./oauth/sendgrid.js');
 
-    const connection = await getSendGridConnection(userId);
-    if (!connection) {
-      return res.status(401).json({ error: 'SendGrid account not connected' });
-    }
+    const { data, error } = await supabaseAdmin!
+      .from("connected_accounts")
+      .select("access_token")
+      .eq("user_id", userId)
+      .eq("provider", "sendgrid")
+      .maybeSingle();
 
-    const senders = await getSendGridSenders(connection.accessToken);
+    if (error) throw new Error(error.message);
+    if (!data?.access_token) return res.status(400).json({ error: "SendGrid not connected" });
+
+    const { getSendGridSenders } = await import('./oauth/sendgrid.js');
+    const senders = await getSendGridSenders(String(data.access_token));
 
     return res.json({ senders });
   } catch (err: any) {
-    console.error('Failed to fetch SendGrid senders:', err);
-    return res.status(500).json({ error: err.message || 'Failed to fetch senders' });
+    console.error("SendGrid senders failed:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch senders" });
+  }
+});
+
+app.get("/api/integrations/sendgrid/templates", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+
+    const { data, error } = await supabaseAdmin!
+      .from("connected_accounts")
+      .select("access_token")
+      .eq("user_id", userId)
+      .eq("provider", "sendgrid")
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!data?.access_token) return res.status(400).json({ error: "SendGrid not connected" });
+
+    const templates = await fetchSendGridTemplates(String(data.access_token));
+    return res.json({ templates });
+  } catch (err: any) {
+    console.error("SendGrid templates failed:", err);
+    return res.status(500).json({ error: err.message || "Failed to load templates" });
   }
 });
 
@@ -4016,6 +4100,12 @@ async function processEmailScheduledPosts() {
           retried++;
           continue;
         }
+      } else if (post.provider === 'sendgrid') {
+        const result = await dispatchSendGridCampaign(post, supabaseAdmin);
+        if (result === 'Failed') {
+          failed++;
+          continue;
+        }
       } else if (post.provider === 'kit') {
         const result = await publishToKitBroadcast(post, supabaseAdmin);
         if (result === 'NeedsManualSend') {
@@ -4371,6 +4461,82 @@ async function publishToMedium(post: any, supabaseAdmin: any) {
       },
     })
     .eq("id", post.id);
+}
+
+// Helper function to dispatch SendGrid Single Send campaign
+async function dispatchSendGridCampaign(post: any, supabaseAdmin: any): Promise<'Published' | 'Failed'> {
+  const meta = post.meta || {};
+
+  // Get SendGrid connection for this user
+  const { data: connection, error: connError } = await supabaseAdmin
+    .from("connected_accounts")
+    .select("access_token, metadata")
+    .eq("user_id", post.user_id)
+    .eq("provider", "sendgrid")
+    .maybeSingle();
+
+  if (connError || !connection?.access_token) {
+    await supabaseAdmin
+      .from("scheduled_posts")
+      .update({
+        status: "Failed",
+        meta: { ...meta, lastError: "SendGrid not connected for this user" },
+      })
+      .eq("id", post.id);
+    return "Failed";
+  }
+
+  const listId = meta.listId;
+  const templateId = meta.templateId;
+  const subject = meta.subject || "Newsletter";
+
+  if (!listId || !templateId) {
+    await supabaseAdmin
+      .from("scheduled_posts")
+      .update({
+        status: "Failed",
+        meta: { ...meta, lastError: "Missing listId or templateId in scheduled post meta" },
+      })
+      .eq("id", post.id);
+    return "Failed";
+  }
+
+  // Use the default sender from the connection metadata if available
+  const defaultSender = connection.metadata?.defaultSender;
+
+  try {
+    const result = await createAndScheduleSendGridSingleSend(connection.access_token, {
+      name: `LoquiHQ: ${subject} (${new Date().toISOString().slice(0, 10)})`,
+      subject,
+      listIds: [listId],
+      templateId,
+      senderEmail: defaultSender?.email,
+      senderName: defaultSender?.name,
+    });
+
+    await supabaseAdmin
+      .from("scheduled_posts")
+      .update({
+        status: "Published",
+        published_at: new Date().toISOString(),
+        external_id: result.id,
+        meta: { ...meta, singleSendId: result.id },
+      })
+      .eq("id", post.id);
+
+    console.log(`📧 SendGrid Single Send dispatched: ${result.id} for post ${post.id}`);
+    return "Published";
+  } catch (err: any) {
+    console.error(`❌ SendGrid dispatch failed for post ${post.id}:`, err.message);
+    await supabaseAdmin
+      .from("scheduled_posts")
+      .update({
+        status: "Failed",
+        meta: { ...meta, lastError: err.message || "SendGrid dispatch failed" },
+      })
+      .eq("id", post.id);
+    return "Failed";
+  }
 }
 
 // Helper function to publish email via Gmail
@@ -4804,7 +4970,7 @@ app.post("/api/signup", async (req, res) => {
     }
 
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: "https://loquihq-beta.web.app/",
+      redirectTo: `${process.env.FRONTEND_PUBLIC_URL!}/`,
     });
 
     if (error) {

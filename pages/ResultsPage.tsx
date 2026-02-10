@@ -15,6 +15,7 @@ import {
   updateTranscriptStatus,
   saveTranscriptResult,
   schedulePost,
+  createScheduledPost,
   getScheduledPosts,
 } from "../services/transcripts";
 
@@ -33,6 +34,7 @@ import {
   scheduleNewsletterTrigger
 } from '../services/integrations';
 
+import { getSendGridLists, getSendGridTemplates, SendGridList, SendGridTemplate } from '../services/sendgrid';
 import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
 import { MonetizationInput } from '../types/monetization';
@@ -99,7 +101,15 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const [mailchimpDestinations, setMailchimpDestinations] = useState<Array<{ id: string; name: string; audience_id: string }>>([]);
   const [mailchimpAutomations, setMailchimpAutomations] = useState<Array<{ id: string; name: string; destination_id: string; trigger_value: string }>>([]);
 
-  const [emailProvider, setEmailProvider] = useState<'mailchimp' | 'kit'>('mailchimp');
+  const [emailProvider, setEmailProvider] = useState<'mailchimp' | 'kit' | 'sendgrid'>('mailchimp');
+
+  // SendGrid scheduling state
+  const [sendgridLists, setSendgridLists] = useState<SendGridList[]>([]);
+  const [sendgridTemplates, setSendgridTemplates] = useState<SendGridTemplate[]>([]);
+  const [isLoadingSendGridData, setIsLoadingSendGridData] = useState(false);
+  const [selectedSendGridListId, setSelectedSendGridListId] = useState('');
+  const [selectedSendGridTemplateId, setSelectedSendGridTemplateId] = useState('');
+  const [emailSubjectOverride, setEmailSubjectOverride] = useState('');
 
   // Mailchimp newsletter scheduling
   const [newsletterDestinationId, setNewsletterDestinationId] = useState('');
@@ -374,7 +384,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
 
   const PLATFORM_FLAGS: Record<PlatformType, { canSchedule: boolean }> = {
     linkedin: { canSchedule: true },
-    twitter: { canSchedule: true },
+    twitter: { canSchedule: false },
     email: { canSchedule: true },
     medium: { canSchedule: true },
     teaser: { canSchedule: false },
@@ -386,12 +396,14 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const isSchedulingSupported = (platform: PlatformType) => PLATFORM_FLAGS[platform]?.canSchedule ?? true;
 
   const getSchedulingBadgeLabel = (platform: PlatformType) => {
-    if (platform === 'facebook') return 'Scheduling coming soon';
+    if (platform === 'twitter') return 'Coming soon';
+    if (platform === 'facebook') return 'Coming soon';
     return 'Manual publishing only';
   };
 
   const getSchedulingTooltip = (platform: PlatformType) => {
-    if (platform === 'facebook') return 'Facebook scheduling isn’t available yet. Generate content now and post manually.';
+    if (platform === 'twitter') return 'X scheduling is coming soon. Generate content now and post manually.';
+    if (platform === 'facebook') return 'Facebook scheduling is coming soon. Generate content now and post manually.';
     return 'Manual publishing only';
   };
 
@@ -444,6 +456,24 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     }
   };
 
+  const loadSendGridOptions = async () => {
+    setIsLoadingSendGridData(true);
+    try {
+      const [lists, templates] = await Promise.all([
+        getSendGridLists(),
+        getSendGridTemplates(),
+      ]);
+      setSendgridLists(lists || []);
+      setSendgridTemplates(templates || []);
+    } catch (e) {
+      console.error('Failed to load SendGrid options:', e);
+      setSendgridLists([]);
+      setSendgridTemplates([]);
+    } finally {
+      setIsLoadingSendGridData(false);
+    }
+  };
+
   const handleMailchimpDestinationChange = async (value: string) => {
     setNewsletterDestinationId(value);
     setNewsletterAutomationId('');
@@ -469,6 +499,10 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
   const handleScheduleClick = async () => {
     if (activePlatform === 'facebook') {
       alert('Facebook scheduling is coming soon. You can still generate content now.');
+      return;
+    }
+    if (activePlatform === 'twitter') {
+      alert('X scheduling is coming soon. You can still generate content now.');
       return;
     }
     // Check for Kit (email) platform
@@ -653,17 +687,40 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
             const selectedAutomation = mailchimpAutomations.find((a) => a.id === newsletterAutomationId);
             const tagName = selectedAutomation?.trigger_value || selectedAutomation?.name || 'selected tag';
             mailchimpSuccessMessage = `✅ Scheduled\nAt the scheduled time, LoquiHQ will apply the tag ${tagName} in Mailchimp.\nYour automation will handle delivery.`;
+          } else if (emailProvider === 'sendgrid') {
+            if (!selectedSendGridListId || !selectedSendGridTemplateId) {
+              setScheduleNotification({ message: 'You must select a marketing list and template before scheduling via SendGrid.', type: 'error' });
+              setTimeout(() => setScheduleNotification(null), 4000);
+              setIsScheduling(false);
+              return;
+            }
+
+            await createScheduledPost({
+              platform: 'email',
+              provider: 'sendgrid',
+              title: emailSubjectOverride || emailSubject || null,
+              content: emailContent,
+              scheduledDate: startDateTime.toISOString(),
+              transcriptId: transcript.id,
+              meta: {
+                provider: 'sendgrid',
+                emailType: 'newsletter',
+                listId: selectedSendGridListId,
+                templateId: selectedSendGridTemplateId,
+                subject: emailSubjectOverride || emailSubject || 'Newsletter',
+              },
+            });
           } else {
-            await schedulePost({
+            await createScheduledPost({
               platform: 'email',
               provider: 'kit',
-              title: undefined,
               content: emailContent,
-              contentHtml: undefined,
               scheduledDate: startDateTime.toISOString(),
-              status: 'Scheduled',
               transcriptId: transcript.id,
-              metadata: undefined
+              meta: {
+                provider: 'kit',
+                emailType: 'newsletter',
+              },
             });
           }
         } else {
@@ -1634,7 +1691,7 @@ ${(transcript.content || '').substring(0, 1000)}
 
                   <div className="p-4 bg-gray-100 rounded-lg border border-gray-300">
                     <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
-                    <p className="text-sm text-textSecondary mt-2">25 posts across 5 platforms (Instagram, Facebook, LinkedIn, Twitter, Instagram Stories) for 5 days.</p>
+                    <p className="text-sm text-textSecondary mt-2">25 posts across 5 platforms (Instagram, Facebook, LinkedIn, X, Instagram Stories) for 5 days.</p>
                     <div className="mt-4">
                       <button onClick={() => { setActiveRepurposeView('calendar'); }} className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm hover:bg-gray-200">Open</button>
                     </div>
@@ -1958,7 +2015,7 @@ ${(transcript.content || '').substring(0, 1000)}
         <div className="col-span-1 space-y-2">
           {[
             { id: 'linkedin', icon: Linkedin, label: 'LinkedIn' },
-            { id: 'twitter', icon: Twitter, label: 'Twitter / X' },
+            { id: 'twitter', icon: Twitter, label: 'X' },
             { id: 'facebook', icon: Facebook, label: 'Facebook' },
             { id: 'tiktok', icon: Video, label: 'TikTok / Reels' },
             { id: 'youtube', icon: Youtube, label: 'YouTube Shorts' },
@@ -1979,8 +2036,8 @@ ${(transcript.content || '').substring(0, 1000)}
               <platform.icon className="h-4 w-4" />
               <span>{platform.label}</span>
               {!PLATFORM_FLAGS[platform.id as PlatformType]?.canSchedule && (
-                <span className="text-[10px] uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-                  Scheduling coming soon
+                <span className="text-[10px] uppercase tracking-wide text-gray-600 bg-gray-200 border border-gray-300 font-semibold px-1.5 py-0.5 rounded">
+                  Coming soon
                 </span>
               )}
             </span>
@@ -2008,7 +2065,7 @@ ${(transcript.content || '').substring(0, 1000)}
             </div>
             <div className="flex items-center gap-2">
               {!isSchedulingSupported(activePlatform) && (
-                <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg font-medium">
+                <span className="text-xs text-gray-600 bg-gray-200 border border-gray-300 px-3 py-1.5 rounded-lg font-semibold">
                   {getSchedulingBadgeLabel(activePlatform)}
                 </span>
               )}
@@ -2563,10 +2620,15 @@ ${(transcript.content || '').substring(0, 1000)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
                       value={emailProvider}
                       onChange={(e) => {
-                        const next = e.target.value as 'mailchimp' | 'kit';
+                        const next = e.target.value as 'mailchimp' | 'kit' | 'sendgrid';
                         setEmailProvider(next);
                         if (next === 'mailchimp') {
                           loadMailchimpOptions();
+                        } else if (next === 'sendgrid') {
+                          loadSendGridOptions();
+                          // Pre-fill subject from generated content
+                          const subject = transcript?.result?.socialContent?.emailNewsletter?.subject || '';
+                          setEmailSubjectOverride(subject);
                         } else {
                           setNewsletterDestinationId('');
                           setNewsletterAutomationId('');
@@ -2577,10 +2639,12 @@ ${(transcript.content || '').substring(0, 1000)}
                     >
                       <option value="mailchimp">Mailchimp</option>
                       <option value="kit">Kit</option>
+                      <option value="sendgrid">SendGrid</option>
                     </select>
                     <p className="text-xs text-textMuted mt-1">
-                      LoquiHQ does not send emails on your behalf. It applies your trigger tag so your provider automation
-                      handles delivery.
+                      {emailProvider === 'sendgrid'
+                        ? 'LoquiHQ will create a SendGrid Single Send campaign and schedule it for delivery.'
+                        : 'LoquiHQ does not send emails on your behalf. It applies your trigger tag so your provider automation handles delivery.'}
                     </p>
                   </div>
                   {emailProvider === 'mailchimp' && (
@@ -2645,11 +2709,77 @@ ${(transcript.content || '').substring(0, 1000)}
                   </div>
                   </>
                   )}
+                  {emailProvider === 'sendgrid' && (
+                  <>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-textSecondary">Marketing list</label>
+                      <button
+                        type="button"
+                        onClick={loadSendGridOptions}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
+                      value={selectedSendGridListId}
+                      onChange={(e) => setSelectedSendGridListId(e.target.value)}
+                      disabled={isLoadingSendGridData}
+                    >
+                      <option value="">Select a list</option>
+                      {sendgridLists.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}{l.contactCount ? ` (${l.contactCount.toLocaleString()} contacts)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!isLoadingSendGridData && !sendgridLists.length && (
+                      <p className="text-xs text-textMuted mt-1">No lists found. Create one in your SendGrid dashboard.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-textSecondary mb-1">Email template</label>
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary"
+                      value={selectedSendGridTemplateId}
+                      onChange={(e) => setSelectedSendGridTemplateId(e.target.value)}
+                      disabled={isLoadingSendGridData}
+                    >
+                      <option value="">Select a template</option>
+                      {sendgridTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}{t.generation ? ` (${t.generation})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!isLoadingSendGridData && !sendgridTemplates.length && (
+                      <p className="text-xs text-textMuted mt-1">No templates found. Create one in your SendGrid dashboard.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-textSecondary mb-1">Subject line</label>
+                    <input
+                      type="text"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary text-sm"
+                      value={emailSubjectOverride}
+                      onChange={(e) => setEmailSubjectOverride(e.target.value)}
+                      placeholder="Enter email subject..."
+                    />
+                  </div>
+                  </>
+                  )}
                 </>
               )}
               {activePlatform === 'email' && emailProvider === 'mailchimp' && (!newsletterDestinationId || !newsletterAutomationId) && (
                 <p className="text-xs text-red-600">
                   You must connect your Mailchimp account and select a trigger tag before scheduling email content.
+                </p>
+              )}
+              {activePlatform === 'email' && emailProvider === 'sendgrid' && (!selectedSendGridListId || !selectedSendGridTemplateId) && (
+                <p className="text-xs text-red-600">
+                  You must select a marketing list and template before scheduling via SendGrid.
                 </p>
               )}
               <div>
@@ -2681,7 +2811,7 @@ ${(transcript.content || '').substring(0, 1000)}
               </button>
               <button
                 onClick={handleSchedulePost}
-                disabled={isScheduling || !scheduleDate || !scheduleTime}
+                disabled={isScheduling || !scheduleDate || !scheduleTime || (activePlatform === 'email' && emailProvider === 'sendgrid' && (!selectedSendGridListId || !selectedSendGridTemplateId))}
                 className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary text-sm flex items-center gap-2 disabled:opacity-50"
               >
                 {isScheduling && <Loader2 className="h-4 w-4 animate-spin" />}

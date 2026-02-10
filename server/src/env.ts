@@ -135,8 +135,8 @@ export const backendEnv = {
     allowedOrigins: parseOrigins(
       getEnv('ALLOWED_ORIGINS', false,
         process.env.NODE_ENV === 'production'
-          ? 'https://loquihq-beta.web.app'
-          : 'https://loquihq-beta.web.app,http://localhost:3000,http://localhost:5173'
+          ? 'https://app.loquihq.com'
+          : 'https://app.loquihq.com,http://localhost:3000,http://localhost:5173'
       )
     ),
   },
@@ -164,7 +164,7 @@ export const backendEnv = {
 
   // Public URLs for OAuth redirects
   publicUrls: {
-    app: getEnv('APP_PUBLIC_URL', false, 'https://loquihq-beta.web.app'),
+    app: getEnv('APP_PUBLIC_URL', false, 'https://app.loquihq.com'),
     api: getEnv('API_PUBLIC_URL', false, ''),
   },
 

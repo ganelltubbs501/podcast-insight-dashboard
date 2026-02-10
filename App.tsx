@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import NewAnalysis from './pages/NewAnalysis';
 import ResultsPage from './pages/ResultsPage';
@@ -19,12 +18,13 @@ import KnownIssues from './pages/KnownIssues';
 import BetaGuide from './pages/BetaGuide';
 import BetaFeedback from './pages/BetaFeedback';
 import Settings from './pages/Settings';
+import SettingsSendGrid from './pages/SettingsSendGrid';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
-import { getStoredUser, logoutUser } from './services/auth';
+import { logoutUser, ensureProfileExists } from './services/auth';
 import { supabase } from './lib/supabaseClient';
 import Login from './components/Login';
 import AuthCallback from './components/AuthCallback';
@@ -50,12 +50,11 @@ initSentry();
 // Wrapper to provide navigation props to pages
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [processingAuth, setProcessingAuth] = useState(false);
   const [authStatus, setAuthStatus] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [helpPanelOpen, setHelpPanelOpen] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -65,9 +64,6 @@ const AppContent: React.FC = () => {
     (async () => {
       const hash = window.location.hash || "";
 
-      // Check if hash contains Supabase auth tokens
-      // With HashRouter, tokens appear as: #access_token=xxx&type=invite
-      // or as: #/some-path#access_token=xxx (if there was a path)
       const hasTokens = hash.includes("access_token=");
       const isAuthType = hash.includes("type=invite") || hash.includes("type=signup") || hash.includes("type=recovery");
 
@@ -77,12 +73,9 @@ const AppContent: React.FC = () => {
       setAuthStatus("Processing your invite link...");
 
       try {
-        // Extract tokens from the hash
-        // The hash might be: #access_token=xxx&refresh_token=yyy&type=invite
-        // or: #/auth/callback#access_token=xxx (with HashRouter path prefix)
         const tokenPart = hash.includes("#access_token")
           ? hash.substring(hash.indexOf("#access_token") + 1)
-          : hash.substring(1); // Remove leading #
+          : hash.substring(1);
 
         const params = new URLSearchParams(tokenPart);
         const accessToken = params.get("access_token");
@@ -103,28 +96,24 @@ const AppContent: React.FC = () => {
             setAuthStatus("Error: " + error.message);
             setTimeout(() => {
               setProcessingAuth(false);
-              // Clear the hash and go to home
-              window.location.hash = "/";
+              navigate('/login', { replace: true });
             }, 2000);
             return;
           }
 
           if (data?.session) {
             console.log("Session established, redirecting to set-password");
-            // Clear the token hash and redirect to set-password
-            // We need to preserve that this was a recovery if applicable
             const isRecovery = type === "recovery";
-            window.location.hash = isRecovery ? "/set-password#type=recovery" : "/set-password";
+            navigate(isRecovery ? "/set-password?type=recovery" : "/set-password", { replace: true });
             setProcessingAuth(false);
             return;
           }
         }
 
-        // No valid tokens - show error
         setAuthStatus("Invalid or expired link. Redirecting...");
         setTimeout(() => {
           setProcessingAuth(false);
-          window.location.hash = "/";
+          navigate('/login', { replace: true });
         }, 2000);
 
       } catch (err: any) {
@@ -132,45 +121,92 @@ const AppContent: React.FC = () => {
         setAuthStatus("Error: " + err.message);
         setTimeout(() => {
           setProcessingAuth(false);
-          window.location.hash = "/";
+          navigate('/login', { replace: true });
         }, 2000);
       }
     })();
-  }, []);
+  }, [navigate]);
 
+  // Auth hydration gate: wait for Supabase to confirm session state
+  // Gates on "auth initialized", NOT "session exists"
   useEffect(() => {
-  (async () => {
-    // Don't load user if we're still processing auth tokens
     if (processingAuth) return;
 
-    try {
-      const storedUser = await getStoredUser();
-      if (storedUser) {
-        setUser(storedUser);
-        setSentryUser(storedUser); // Track user in Sentry
+    // Helper: map Supabase user to app User without extra network calls
+    const mapSessionUser = (supabaseUser: any): User => ({
+      id: supabaseUser.id,
+      email: supabaseUser.email ?? "",
+      name: (supabaseUser.email ?? "user").split("@")[0],
+      plan: "Free",
+      role: "Owner",
+    });
+
+    // Get existing session — reads from localStorage, no network call
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const u = mapSessionUser(session.user);
+        setUser(u);
+        setSentryUser(u);
+        // Ensure profile exists in background — don't block auth readiness
+        ensureProfileExists(session.user.id).catch(err => {
+          console.error("Profile ensure failed:", err);
+        });
       }
-    } catch (err: any) {
-      const message = err?.message || "Something went wrong.";
-      // Store this somewhere your UI can show it (toast, banner, modal, etc.)
-      // If you already have a toast system, use it here.
-      alert(message);
-    } finally {
-      setLoading(false);
+      setAuthReady(true);
+    }).catch(() => {
+      // Even if getSession fails, mark auth as ready so the app isn't stuck
+      setAuthReady(true);
+    });
+
+    // Listen for auth state changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const u = mapSessionUser(session.user);
+        setUser(u);
+        setSentryUser(u);
+      } else {
+        setUser(null);
+        setSentryUser(null);
+      }
+      setAuthReady(true);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [processingAuth]);
+
+  // Handle OAuth return — detect ?oauth=provider in query string
+  // Runs immediately on mount to consume the param and clean the URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthProvider = params.get('oauth');
+    const oauthError = params.get('oauth_error');
+    const errorMessage = params.get('message');
+
+    if (!oauthProvider && !oauthError) return;
+
+    const labels: Record<string, string> = {
+      linkedin: 'LinkedIn', x: 'X', gmail: 'Gmail',
+      facebook: 'Facebook', mailchimp: 'Mailchimp', kit: 'Kit', twilio: 'Twilio',
+    };
+
+    if (oauthProvider) {
+      const label = labels[oauthProvider] || oauthProvider;
+      console.log(`OAuth return: ${label} connected`);
+    } else if (oauthError) {
+      const label = labels[oauthError] || oauthError;
+      console.error(`OAuth error for ${label}: ${errorMessage}`);
+      alert(errorMessage || `Failed to connect ${label}. Please try again.`);
     }
-  })();
-}, [processingAuth]);
 
-
-  const handleLogin = () => {
-    // Open the real login/signup UI instead of using test credentials
-    setShowLogin(true);
-  };
+    // Clean the URL and redirect to dashboard — frontend owns routing from here
+    navigate('/dashboard', { replace: true });
+  }, [navigate]);
 
   const handleLogout = async () => {
     await logoutUser();
     setUser(null);
     setSentryUser(null); // Clear user from Sentry
-    navigate('/');
+    navigate('/login');
     setMobileMenuOpen(false);
   };
 
@@ -193,7 +229,7 @@ const AppContent: React.FC = () => {
     );
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-100">Loading...</div>;
+  if (!authReady) return <div className="min-h-screen flex items-center justify-center bg-gray-100">Loading...</div>;
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -384,26 +420,35 @@ const AppContent: React.FC = () => {
         </>
       )}
 
-      {showLogin && (
-        <Login
-          onClose={() => setShowLogin(false)}
-          onSuccess={(u) => {
-            setUser(u);
-            setSentryUser(u);
-            setShowLogin(false);
-            navigate('/dashboard');
-          }}
-        />
-      )}
-
       <Routes>
-        <Route path="/" element={!user ? <LandingPage onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
+        <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
 
         {/* Auth routes for invite flow and password reset */}
-        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/login" element={
+          <Login
+            variant="page"
+            defaultMode="login"
+            onSuccess={(u) => {
+              setUser(u);
+              setSentryUser(u);
+              navigate('/dashboard');
+            }}
+          />
+        } />
+        <Route path="/signup" element={
+          <Login
+            variant="page"
+            defaultMode="signup"
+            onSuccess={(u) => {
+              setUser(u);
+              setSentryUser(u);
+              navigate('/dashboard');
+            }}
+          />
+        } />
+        <Route path="/oauth/callback" element={<AuthCallback />} />
         <Route path="/set-password" element={<SetPassword />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/login" element={<LandingPage onLogin={handleLogin} />} />
         
         <Route path="/dashboard" element={
           user ? (
@@ -411,46 +456,50 @@ const AppContent: React.FC = () => {
               onNewAnalysis={() => navigate('/analysis')} 
               onViewResults={(id) => navigate(`/results/${id}`)}
             />
-          ) : <Navigate to="/" />
+          ) : <Navigate to="/login" />
         } />
         
         <Route path="/analytics" element={
-          user ? <SeriesAnalytics /> : <Navigate to="/" />
+          user ? <SeriesAnalytics /> : <Navigate to="/login" />
         } />
 
         <Route path="/usage" element={
-          user ? <UsageAnalytics /> : <Navigate to="/" />
+          user ? <UsageAnalytics /> : <Navigate to="/login" />
         } />
 
         <Route path="/calendar" element={
-          user ? <ContentCalendar /> : <Navigate to="/" />
+          user ? <ContentCalendar /> : <Navigate to="/login" />
         } />
 
         <Route path="/outreach" element={
-          user ? <GuestOutreach /> : <Navigate to="/" />
+          user ? <GuestOutreach /> : <Navigate to="/login" />
         } />
 
         <Route path="/team" element={
-          user ? <TeamWorkspace /> : <Navigate to="/" />
+          user ? <TeamWorkspace /> : <Navigate to="/login" />
         } />
 
         <Route path="/invite" element={<AcceptInvite />} />
 
 
         <Route path="/developer" element={
-          user ? <DeveloperSettings /> : <Navigate to="/" />
+          user ? <DeveloperSettings /> : <Navigate to="/login" />
         } />
 
         <Route path="/settings" element={
-          user ? <Settings /> : <Navigate to="/" />
+          user ? <Settings /> : <Navigate to="/login" />
+        } />
+
+        <Route path="/settings/sendgrid" element={
+          user ? <SettingsSendGrid /> : <Navigate to="/login" />
         } />
 
         <Route path="/connect-podcast" element={
-          user ? <ConnectPodcast /> : <Navigate to="/" />
+          user ? <ConnectPodcast /> : <Navigate to="/login" />
         } />
 
         <Route path="/podcast-analytics" element={
-          user ? <PodcastAnalytics /> : <Navigate to="/" />
+          user ? <PodcastAnalytics /> : <Navigate to="/login" />
         } />
 
         <Route path="/analysis" element={
@@ -459,30 +508,39 @@ const AppContent: React.FC = () => {
               onBack={() => navigate('/dashboard')}
               onComplete={(id) => navigate(`/results/${id}`)}
             />
-          ) : <Navigate to="/" />
+          ) : <Navigate to="/login" />
         } />
         
         <Route path="/results/:id" element={
           user ? (
             <ResultsPageWrapper onBack={() => navigate('/dashboard')} />
-          ) : <Navigate to="/" />
+          ) : <Navigate to="/login" />
         } />
 
         <Route path="/beta-admin" element={
-          user ? <BetaAdmin /> : <Navigate to="/" />
+          user ? <BetaAdmin /> : <Navigate to="/login" />
         } />
 
-        <Route path="/beta-guide" element={<BetaGuide />} />
+        <Route path="/beta-guide" element={
+          user ? <BetaGuide /> : <Navigate to="/login" />
+        } />
 
-        <Route path="/beta-feedback" element={<BetaFeedback />} />
+        <Route path="/beta-feedback" element={
+          user ? <BetaFeedback /> : <Navigate to="/login" />
+        } />
 
-        <Route path="/known-issues" element={<KnownIssues />} />
+        <Route path="/known-issues" element={
+          user ? <KnownIssues /> : <Navigate to="/login" />
+        } />
 
-        {/* Public legal pages */}
-        <Route path="/privacy" element={<PrivacyPolicy />} />
-        <Route path="/terms" element={<TermsOfService />} />
+        <Route path="/privacy" element={
+          user ? <PrivacyPolicy /> : <Navigate to="/login" />
+        } />
+        <Route path="/terms" element={
+          user ? <TermsOfService /> : <Navigate to="/login" />
+        } />
 
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>
     </AppErrorBoundary>
@@ -535,11 +593,11 @@ const App: React.FC = () => {
         </div>
       )}
     >
-      <HashRouter>
+      <BrowserRouter>
         <TeamProvider>
           <AppContent />
         </TeamProvider>
-      </HashRouter>
+      </BrowserRouter>
     </ErrorBoundary>
   );
 };

@@ -34,7 +34,8 @@ export default function AuthCallback() {
 
           if (data?.session) {
             console.log("Session established, redirecting to set-password");
-            navigate("/set-password");
+            const target = type === "recovery" ? "/set-password?type=recovery" : "/set-password";
+            navigate(target, { replace: true });
             return;
           }
         }
@@ -42,7 +43,8 @@ export default function AuthCallback() {
         // Check if we already have a session
         const { data: sessionData } = await supabase.auth.getSession();
         if (sessionData?.session) {
-          navigate("/set-password");
+          const target = type === "recovery" ? "/set-password?type=recovery" : "/set-password";
+          navigate(target, { replace: true });
           return;
         }
 

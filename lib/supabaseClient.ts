@@ -11,5 +11,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: false, // App handles URL tokens manually in AppContent
+    flowType: 'implicit',
+    lock: async (_name, _acquireTimeout, fn) => await fn(), // Bypass navigator.locks which can hang getSession()
   },
 });

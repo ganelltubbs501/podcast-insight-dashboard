@@ -48,25 +48,25 @@ export async function twilioCallback(req: Request, res: Response) {
   const error = req.query.error;
   const errorDescription = req.query.error_description;
 
-  const appBase = process.env.APP_PUBLIC_URL || process.env.APP_URL || "https://app.loquihq.com";
+  const appBase = process.env.FRONTEND_PUBLIC_URL!;
 
   if (error) {
     console.error(`Twilio OAuth error: ${error} - ${errorDescription}`);
-    return res.redirect(`${appBase}/#/settings?twilio=error&message=${encodeURIComponent(String(errorDescription || error))}`);
+    return res.redirect(`${appBase}/#/?oauth_error=twilio&message=${encodeURIComponent(String(errorDescription || error))}`);
   }
 
   if (!code || !state) {
-    return res.redirect(`${appBase}/#/settings?twilio=error&message=${encodeURIComponent("Missing code or state")}`);
+    return res.redirect(`${appBase}/#/?oauth_error=twilio&message=${encodeURIComponent("Missing code or state")}`);
   }
 
   let parsed: { userId: string; ts: number };
   try {
     parsed = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
     if (Date.now() - parsed.ts > 10 * 60 * 1000) {
-      return res.redirect(`${appBase}/#/settings?twilio=error&message=${encodeURIComponent("State expired")}`);
+      return res.redirect(`${appBase}/#/?oauth_error=twilio&message=${encodeURIComponent("State expired")}`);
     }
   } catch {
-    return res.redirect(`${appBase}/#/settings?twilio=error&message=${encodeURIComponent("Invalid state")}`);
+    return res.redirect(`${appBase}/#/?oauth_error=twilio&message=${encodeURIComponent("Invalid state")}`);
   }
 
   const clientId = mustEnv("TWILIO_CLIENT_ID");
@@ -94,7 +94,7 @@ export async function twilioCallback(req: Request, res: Response) {
   const tokenJson: any = await tokenResp.json().catch(() => ({}));
   if (!tokenResp.ok) {
     console.error("Twilio token exchange failed:", tokenJson);
-    return res.redirect(`${appBase}/#/settings?twilio=error&message=${encodeURIComponent("Token exchange failed")}`);
+    return res.redirect(`${appBase}/#/?oauth_error=twilio&message=${encodeURIComponent("Token exchange failed")}`);
   }
 
   const accessToken = tokenJson.access_token as string;
@@ -154,12 +154,12 @@ export async function twilioCallback(req: Request, res: Response) {
 
   if (dbError) {
     console.error("Failed to store Twilio connection:", dbError);
-    return res.redirect(`${appBase}/#/settings?twilio=error&message=${encodeURIComponent("Failed to store connection")}`);
+    return res.redirect(`${appBase}/#/?oauth_error=twilio&message=${encodeURIComponent("Failed to store connection")}`);
   }
 
   console.log(`✅ Twilio connected for user: ${parsed.userId.substring(0, 8)}...`);
 
-  res.redirect(`${appBase}/#/settings?twilio=connected`);
+  res.redirect(`${appBase}/#/?oauth=twilio`);
 }
 
 export async function twilioStatus(req: any, res: Response) {
