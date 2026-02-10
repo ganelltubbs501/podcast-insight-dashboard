@@ -3087,52 +3087,6 @@ app.get("/api/integrations/sendgrid/templates", requireAuth, async (req: AuthReq
 });
 
 // ============================================================================
-// TWILIO INTEGRATION (OAuth-based for SMS and Email)
-// ============================================================================
-
-import { twilioAuthUrl, twilioCallback, twilioStatus, twilioDisconnect, getTwilioConnection, sendTwilioSMS } from "./twilio-oauth.js";
-
-app.get("/api/integrations/twilio/auth-url", requireAuth, twilioAuthUrl);
-app.get("/api/integrations/twilio/callback", twilioCallback);
-app.get("/api/integrations/twilio/status", requireAuth, twilioStatus);
-app.post("/api/integrations/twilio/disconnect", requireAuth, twilioDisconnect);
-
-app.post("/api/integrations/twilio/send-sms", requireAuth, async (req: AuthRequest, res) => {
-  try {
-    const userId = getUserId(req);
-    const { from, to, body } = req.body;
-
-    if (!from || !to || !body) {
-      return res.status(400).json({ error: "from, to, and body are required" });
-    }
-
-    const connection = await getTwilioConnection(userId);
-    if (!connection) {
-      return res.status(401).json({ error: "Twilio account not connected" });
-    }
-
-    const result = await sendTwilioSMS(
-      connection.access_token,
-      connection.profile?.accountSid || connection.provider_user_id,
-      from,
-      to,
-      body
-    );
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error });
-    }
-
-    console.log(`📱 SMS sent via Twilio for user: ${userId.substring(0, 8)}... (sid: ${result.messageSid})`);
-
-    return res.json({ success: true, messageSid: result.messageSid });
-  } catch (err: any) {
-    console.error("Twilio SMS failed:", err);
-    return res.status(500).json({ error: err.message || "Failed to send SMS" });
-  }
-});
-
-// ============================================================================
 // EMAIL/CRM INTEGRATIONS (Unified Adapter Layer)
 // ============================================================================
 

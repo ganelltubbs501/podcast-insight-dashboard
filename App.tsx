@@ -186,7 +186,7 @@ const AppContent: React.FC = () => {
 
     const labels: Record<string, string> = {
       linkedin: 'LinkedIn', x: 'X', gmail: 'Gmail',
-      facebook: 'Facebook', mailchimp: 'Mailchimp', kit: 'Kit', twilio: 'Twilio',
+      facebook: 'Facebook', mailchimp: 'Mailchimp', kit: 'Kit',
     };
 
     if (oauthProvider) {

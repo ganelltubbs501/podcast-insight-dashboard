@@ -9,7 +9,7 @@ import { getGmailStatus, getGmailAuthUrl, disconnectGmail, GmailStatus } from '.
 import { getSendGridStatus, disconnectSendGrid, SendGridStatus } from '../services/sendgrid';
 import { getMailchimpStatus, connectMailchimp, disconnectMailchimp, MailchimpStatus } from '../services/mailchimp';
 import { getKitStatus, connectKit, disconnectKit, KitStatus } from '../services/kit';
-import { getTwilioStatus, connectTwilio, disconnectTwilio, TwilioStatus } from '../services/twilio';
+
 import { getEmailLists, createEmailList, deleteEmailList, parseCSVForEmails, EmailList } from '../services/emailLists';
 import { createTeam, getTeams, Team } from '../services/backend';
 import { useTeam } from '../contexts/TeamContext';
@@ -76,12 +76,6 @@ const Settings: React.FC = () => {
   const [kitConnecting, setKitConnecting] = useState(false);
   const [kitDisconnecting, setKitDisconnecting] = useState(false);
 
-  // Twilio state
-  const [twilio, setTwilio] = useState<TwilioStatus | null>(null);
-  const [twilioLoading, setTwilioLoading] = useState(true);
-  const [twilioConnecting, setTwilioConnecting] = useState(false);
-  const [twilioDisconnecting, setTwilioDisconnecting] = useState(false);
-
   // Podcast state
   const [podcast, setPodcast] = useState<PodcastStatus | null>(null);
   const [podcastLoading, setPodcastLoading] = useState(true);
@@ -115,7 +109,6 @@ const Settings: React.FC = () => {
     loadSendGridStatus();
     loadMailchimpStatus();
     loadKitStatus();
-    loadTwilioStatus();
     loadPodcastStatus();
     loadEmailLists();
   }, []);
@@ -208,19 +201,6 @@ const Settings: React.FC = () => {
       setKit({ connected: false });
     } finally {
       setKitLoading(false);
-    }
-  };
-
-  const loadTwilioStatus = async () => {
-    try {
-      setTwilioLoading(true);
-      const status = await getTwilioStatus();
-      setTwilio(status);
-    } catch (err: any) {
-      console.error('Failed to load Twilio status:', err);
-      setTwilio({ connected: false });
-    } finally {
-      setTwilioLoading(false);
     }
   };
 
@@ -468,36 +448,6 @@ const Settings: React.FC = () => {
       setMessage({ type: 'error', text: err.message || 'Failed to disconnect Kit' });
     } finally {
       setKitDisconnecting(false);
-    }
-  };
-
-  // Twilio handlers
-  const handleConnectTwilio = async () => {
-    try {
-      setTwilioConnecting(true);
-      setMessage(null);
-      await connectTwilio();
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to start Twilio connection' });
-      setTwilioConnecting(false);
-    }
-  };
-
-  const handleDisconnectTwilio = async () => {
-    if (!confirm('Are you sure you want to disconnect Twilio?')) {
-      return;
-    }
-
-    try {
-      setTwilioDisconnecting(true);
-      setMessage(null);
-      await disconnectTwilio();
-      setTwilio({ connected: false });
-      setMessage({ type: 'success', text: 'Twilio disconnected successfully' });
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to disconnect Twilio' });
-    } finally {
-      setTwilioDisconnecting(false);
     }
   };
 
@@ -985,59 +935,6 @@ const Settings: React.FC = () => {
                     <Mail className="h-4 w-4" />
                   )}
                   Connect Kit
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Twilio Connection */}
-          <div className="flex items-center justify-between p-4 bg-gray-200 rounded-lg border border-gray-300">
-            <div className="flex items-center gap-4">
-              <div className="h-12 w-12 bg-[#F22F46] rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-sm">TW</span>
-              </div>
-              <div>
-                <h3 className="font-medium text-textPrimary">Twilio</h3>
-                {twilioLoading ? (
-                  <p className="text-sm text-textMuted">Checking connection...</p>
-                ) : twilio?.connected ? (
-                  <p className="text-sm text-green-600 font-medium">
-                    Connected{twilio.accountName ? ` (${twilio.accountName})` : ''}
-                  </p>
-                ) : (
-                  <p className="text-sm text-textMuted">Send and schedule SMS messages</p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {twilioLoading ? (
-                <Loader2 className="h-5 w-5 text-textMuted animate-spin" />
-              ) : twilio?.connected ? (
-                <button
-                  onClick={handleDisconnectTwilio}
-                  disabled={twilioDisconnecting}
-                  className="px-4 py-2 bg-gray-300 text-textPrimary text-sm font-medium rounded-lg hover:bg-gray-400 transition disabled:opacity-50 flex items-center gap-2 border border-gray-400"
-                >
-                  {twilioDisconnecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Unplug className="h-4 w-4" />
-                  )}
-                  Disconnect
-                </button>
-              ) : (
-                <button
-                  onClick={handleConnectTwilio}
-                  disabled={twilioConnecting}
-                  className="px-4 py-2 bg-[#F22F46] text-white text-sm font-medium rounded-lg hover:bg-[#D91A32] transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  {twilioConnecting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Mail className="h-4 w-4" />
-                  )}
-                  Connect Twilio
                 </button>
               )}
             </div>
