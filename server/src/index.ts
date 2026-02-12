@@ -1086,7 +1086,7 @@ app.post("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), asy
       .select('id')
       .eq('team_id', teamId)
       .eq('email', email.toLowerCase())
-      .eq('revoked', false)
+      .is('revoked_at', null)
       .is('accepted_at', null)
       .single();
 
@@ -1103,6 +1103,7 @@ app.post("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), asy
         team_id: teamId,
         email: email.toLowerCase(),
         role,
+        token,
         token_hash: tokenHash,
         invited_by: userId,
         expires_at: expiresAt.toISOString()
@@ -1154,7 +1155,7 @@ app.get("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), asyn
       .from('team_invites')
       .select('*')
       .eq('team_id', teamId)
-      .eq('revoked', false)
+      .is('revoked_at', null)
       .is('accepted_at', null)
       .order('created_at', { ascending: false });
 
@@ -1206,7 +1207,7 @@ app.post("/api/team/invites/accept", requireAuth, async (req: AuthRequest, res) 
       .from('team_invites')
       .select('*, teams:team_id (name)')
       .eq('token_hash', tokenHash)
-      .eq('revoked', false)
+      .is('revoked_at', null)
       .is('accepted_at', null)
       .single();
 
@@ -1355,7 +1356,7 @@ app.post("/api/team/:teamId/invites/:inviteId/revoke", requireAuth, requireTeamR
 
     const { error } = await supabaseAdmin
       .from('team_invites')
-      .update({ revoked: true })
+      .update({ revoked_at: new Date().toISOString() })
       .eq('id', inviteId)
       .eq('team_id', teamId);
 
@@ -4342,7 +4343,14 @@ async function publishToLinkedIn(post: any, supabaseAdmin: any) {
     .from("scheduled_posts")
     .update({
       status: "Published",
-      metrics: { linkedin_post_id: postId, posted_at: new Date().toISOString() },
+      published_at: new Date().toISOString(),
+      external_id: postId || null,
+      last_error: null,
+      metrics: {
+        ...(post.metrics || {}),
+        linkedin_post_id: postId,
+        posted_at: new Date().toISOString(),
+      },
     })
     .eq("id", post.id);
 }
@@ -4924,7 +4932,7 @@ app.post("/api/signup", async (req, res) => {
     }
 
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.FRONTEND_PUBLIC_URL!}/`,
+      redirectTo: `${process.env.FRONTEND_PUBLIC_URL!}/set-password`,
     });
 
     if (error) {
@@ -6254,7 +6262,14 @@ async function publishScheduledPosts() {
           .from("scheduled_posts")
           .update({
             status: "Published",
-            metrics: { linkedin_post_id: postId, posted_at: new Date().toISOString() },
+            published_at: new Date().toISOString(),
+            external_id: postId || null,
+            last_error: null,
+            metrics: {
+              ...(post.metrics || {}),
+              linkedin_post_id: postId,
+              posted_at: new Date().toISOString(),
+            },
           })
           .eq("id", post.id);
 

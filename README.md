@@ -651,7 +651,7 @@ Or manually run the SQL from the migration files in your Supabase SQL editor.
 - **New Components**: `AuthCallback.tsx` (token handler), `SetPassword.tsx` (password setup)
 - **New Endpoints**: `/api/beta/status`, `/api/signup`, `/api/waitlist`
 - **Waitlist**: Users can join waitlist when beta is full
-- **HashRouter Support**: Invite links properly route to `/#/auth/callback`
+- **BrowserRouter Support**: Invite links properly route to `/oauth/callback`
 
 ### December 2024 - January 2025
 
@@ -789,7 +789,7 @@ User Signup Request
 
 Invite Link Flow
   → User clicks email link
-  → Redirects to /#/auth/callback with tokens in hash
+  → Redirects to /oauth/callback with tokens in hash
   → AuthCallback component extracts tokens
   → Sets Supabase session
   → Redirects to /set-password

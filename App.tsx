@@ -127,10 +127,12 @@ const AppContent: React.FC = () => {
     })();
   }, [navigate]);
 
-  // Auth hydration gate: wait for Supabase to confirm session state
-  // Gates on "auth initialized", NOT "session exists"
+  // Auth hydration gate: wait for INITIAL_SESSION before rendering routes
   useEffect(() => {
     if (processingAuth) return;
+
+    let mounted = true;
+    let initialSessionHandled = false;
 
     // Helper: map Supabase user to app User without extra network calls
     const mapSessionUser = (supabaseUser: any): User => ({
@@ -141,8 +143,8 @@ const AppContent: React.FC = () => {
       role: "Owner",
     });
 
-    // Get existing session — reads from localStorage, no network call
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const applySession = (session: any) => {
+      if (!mounted) return;
       if (session?.user) {
         const u = mapSessionUser(session.user);
         setUser(u);
@@ -151,27 +153,57 @@ const AppContent: React.FC = () => {
         ensureProfileExists(session.user.id).catch(err => {
           console.error("Profile ensure failed:", err);
         });
-      }
-      setAuthReady(true);
-    }).catch(() => {
-      // Even if getSession fails, mark auth as ready so the app isn't stuck
-      setAuthReady(true);
-    });
-
-    // Listen for auth state changes (login, logout, token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        const u = mapSessionUser(session.user);
-        setUser(u);
-        setSentryUser(u);
       } else {
         setUser(null);
         setSentryUser(null);
       }
+    };
+
+    const finishAuthReady = () => {
+      if (!mounted || !initialSessionHandled) return;
       setAuthReady(true);
+    };
+
+    // Kick hydration — reads from localStorage, triggers INITIAL_SESSION event
+    (async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) console.warn("getSession error:", error);
+        if (!mounted) return;
+        applySession(data.session);
+        // DO NOT set authReady here — wait for INITIAL_SESSION event below
+      } catch (e) {
+        console.error("Auth bootstrap failed:", e);
+        if (!mounted) return;
+        setUser(null);
+      }
+    })();
+
+    // Listen for auth state changes (INITIAL_SESSION, login, logout, token refresh)
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      applySession(session);
+
+      if (event === "INITIAL_SESSION") {
+        initialSessionHandled = true;
+        finishAuthReady();
+      }
     });
 
-    return () => subscription.unsubscribe();
+    // Safety: if INITIAL_SESSION never arrives (rare), release after 1.5s
+    const t = setTimeout(() => {
+      if (!mounted) return;
+      if (!initialSessionHandled) {
+        initialSessionHandled = true;
+        finishAuthReady();
+      }
+    }, 1500);
+
+    return () => {
+      mounted = false;
+      clearTimeout(t);
+      sub.subscription.unsubscribe();
+    };
   }, [processingAuth]);
 
   // Handle OAuth return — detect ?oauth=provider in query string

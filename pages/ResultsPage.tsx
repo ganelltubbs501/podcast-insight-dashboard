@@ -2065,7 +2065,7 @@ ${(transcript.content || '').substring(0, 1000)}
             </div>
             <div className="flex items-center gap-2">
               {!isSchedulingSupported(activePlatform) && (
-                <span className="text-xs text-gray-600 bg-gray-200 border border-gray-300 px-3 py-1.5 rounded-lg font-semibold">
+                <span className="text-xs text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-lg font-semibold">
                   {getSchedulingBadgeLabel(activePlatform)}
                 </span>
               )}
@@ -2104,15 +2104,25 @@ ${(transcript.content || '').substring(0, 1000)}
                   </div>
                 ))}
               </div>
+            ) : (activePlatform === 'email' || activePlatform === 'teaser') ? (
+              <div className="space-y-3">
+                <div className="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
+                  <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Subject</span>
+                  <p className="text-sm text-textPrimary font-medium mt-1">
+                    {activePlatform === 'email' ? socialContent.emailNewsletter?.subject : socialContent.newsletterTeaser?.subject}
+                  </p>
+                </div>
+                <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
+                  {activePlatform === 'email' ? socialContent.emailNewsletter?.body : socialContent.newsletterTeaser?.body}
+                </pre>
+              </div>
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
                 {activePlatform === 'linkedin' && socialContent.linkedinPost}
                 {activePlatform === 'facebook' && socialContent.facebookPost}
                 {activePlatform === 'tiktok' && socialContent.tiktokScript}
                 {activePlatform === 'youtube' && socialContent.youtubeDescription}
-                {activePlatform === 'email' && `Subject: ${socialContent.emailNewsletter?.subject}\n\n${socialContent.emailNewsletter?.body}`}
                 {activePlatform === 'medium' && socialContent.mediumArticle}
-                {activePlatform === 'teaser' && `Subject: ${socialContent.newsletterTeaser?.subject}\n\n${socialContent.newsletterTeaser?.body}`}
               </pre>
             )}
           </div>

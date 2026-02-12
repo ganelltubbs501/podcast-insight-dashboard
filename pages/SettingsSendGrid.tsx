@@ -137,7 +137,7 @@ const SettingsSendGrid: React.FC = () => {
 
   if (pageLoading) {
     return (
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-center justify-center min-h-[400px]">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex items-center justify-center min-h-100">
         <Loader2 className="h-8 w-8 text-textMuted animate-spin" />
       </div>
     );
