@@ -682,6 +682,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
               content: emailContent,
               destinationId: newsletterDestinationId,
               automationId: newsletterAutomationId,
+              transcriptId: transcript.id,
             });
 
             const selectedAutomation = mailchimpAutomations.find((a) => a.id === newsletterAutomationId);

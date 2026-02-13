@@ -1,14 +1,23 @@
 import { supabase } from "../lib/supabaseClient";
 import { User } from "../types";
 
-function mapUser(u: any): User {
+function mapUser(u: any, profileName?: string | null): User {
   return {
     id: u.id,
     email: u.email ?? "",
-    name: (u.email ?? "user").split("@")[0],
+    name: profileName || (u.email ?? "user").split("@")[0],
     plan: "Free",
     role: "Owner",
   };
+}
+
+export async function fetchProfileName(userId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .maybeSingle();
+  return data?.full_name || null;
 }
 
 export async function ensureProfileExists(userId: string) {
@@ -48,14 +57,17 @@ export async function getStoredUser(): Promise<User | null> {
 
   await ensureProfileExists(sessionData.session.user.id);
 
-  return mapUser(sessionData.session.user);
+  const profileName = await fetchProfileName(sessionData.session.user.id);
+  return mapUser(sessionData.session.user, profileName);
 }
 
 export async function loginUser(email: string, password: string): Promise<User> {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   if (!data.user) throw new Error("Login failed: no user returned");
-  return mapUser(data.user);
+
+  const profileName = await fetchProfileName(data.user.id);
+  return mapUser(data.user, profileName);
 }
 
 // NOTE: Direct signUp removed - beta signup now goes through /api/signup

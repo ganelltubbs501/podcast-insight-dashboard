@@ -284,7 +284,29 @@ app.post("/api/repurpose", requireAuth, repurposingLimiter, async (req: AuthRequ
 
     console.log(`🔄 Repurpose request (${type}) from user: ${userId.substring(0, 8)}...`);
 
-    const result = await repurposeWithGemini({ type, context });
+    // Get user's name from profiles table to personalize email sign-offs
+    let userName = '';
+    if (supabaseAdmin && (type === 'email_series')) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name')
+        .eq('id', userId)
+        .maybeSingle();
+      userName = profile?.full_name || '';
+      // Fallback to email prefix if no name stored
+      if (!userName) {
+        const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+        if (data?.user?.email) {
+          userName = data.user.email.split('@')[0];
+        }
+      }
+    }
+
+    const enrichedContext = userName
+      ? `${context}\n\nHost/Author Name: ${userName}`
+      : context;
+
+    const result = await repurposeWithGemini({ type, context: enrichedContext });
     return res.json(result);
   } catch (err: any) {
     console.error("REPURPOSE ERROR:", err);
@@ -1128,13 +1150,49 @@ app.post("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), asy
 
     console.log(`✅ Invite created for ${email} to team ${teamId.substring(0, 8)}...`);
 
+    // Auto-send invite email via Gmail (non-blocking)
+    let emailSent = false;
+    try {
+      const { getGmailConnection, getValidGmailToken, sendGmailEmail } = await import('./oauth/gmail.js');
+      const gmailConnection = await getGmailConnection(userId);
+
+      if (gmailConnection) {
+        const clientId = process.env.GOOGLE_CLIENT_ID || '';
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+        const apiPublicUrl = process.env.API_PUBLIC_URL || '';
+        const redirectUri = `${apiPublicUrl}/api/integrations/gmail/callback`;
+        const config = { clientId, clientSecret, redirectUri };
+
+        const accessToken = await getValidGmailToken(config, userId);
+
+        // Get inviter's name
+        const { data: inviterProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .maybeSingle();
+        const inviterName = inviterProfile?.full_name || gmailConnection.email || 'A team member';
+
+        const subject = `You've been invited to join ${team?.name || 'a team'} on LoquiHQ`;
+        const body = `Hi there,\n\n${inviterName} has invited you to join the team "${team?.name || 'their team'}" on LoquiHQ as ${role === 'admin' ? 'an' : 'a'} ${role}.\n\nClick the link below to accept:\n${inviteUrl}\n\nThis invite expires in 7 days.\n\nBest,\nThe LoquiHQ Team`;
+
+        await sendGmailEmail(accessToken, email, subject, body);
+        emailSent = true;
+        console.log(`📧 Invite email sent to ${email}`);
+      }
+    } catch (emailErr: any) {
+      console.warn(`⚠️ Could not send invite email to ${email}:`, emailErr?.message);
+      // Don't fail the invite — just fall back to manual link sharing
+    }
+
     return res.json({
       id: invite.id,
       email: invite.email,
       role: invite.role,
       expiresAt: invite.expires_at,
       inviteUrl,
-      teamName: team?.name
+      teamName: team?.name,
+      emailSent
     });
   } catch (err: any) {
     console.error("CREATE INVITE ERROR:", err?.message);
@@ -3748,7 +3806,7 @@ app.post("/api/email/schedule/newsletter", requireAuth, async (req: AuthRequest,
     }
 
     const userId = getUserId(req);
-    const { scheduledDate, content, destinationId, automationId } = validation.data;
+    const { scheduledDate, content, destinationId, automationId, transcriptId } = validation.data;
 
     const { data: connection } = await supabaseAdmin
       .from('connected_accounts')
@@ -3805,6 +3863,7 @@ app.post("/api/email/schedule/newsletter", requireAuth, async (req: AuthRequest,
       .from("scheduled_posts")
       .insert({
         user_id: userId,
+        transcript_id: transcriptId || null,
         platform: 'email',
         provider: 'mailchimp',
         content: content || 'Newsletter trigger',
@@ -4505,10 +4564,10 @@ async function dispatchSendGridCampaign(post: any, supabaseAdmin: any): Promise<
 async function publishToEmail(post: any, supabaseAdmin: any) {
   const { getGmailConnection, getValidGmailToken, sendGmailEmail } = await import('./oauth/gmail.js');
 
-  // Get recipients from metrics (stored during scheduling)
+  // Get recipients from meta or metrics (meta is the correct column, metrics is legacy fallback)
   // Support both array (recipientEmails) and single email (recipientEmail) for backwards compatibility
-  const recipientEmails: string[] = post.metrics?.recipientEmails || [];
-  const singleRecipient = post.metrics?.recipientEmail;
+  const recipientEmails: string[] = post.meta?.recipientEmails || post.metrics?.recipientEmails || [];
+  const singleRecipient = post.meta?.recipientEmail || post.metrics?.recipientEmail;
 
   // Build final recipient list
   const recipients = recipientEmails.length > 0 ? recipientEmails : (singleRecipient ? [singleRecipient] : []);

@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useLocation, useNavigate } from "react-router-dom";
 
 export default function SetPassword() {
+  const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +23,8 @@ export default function SetPassword() {
     setError(null);
     setOk(null);
 
-    if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (!isRecovery && !fullName.trim()) return setError("Please enter your full name.");
+    if (password.length < 8) return setError("Password must be at least 8 characters.");
     if (password !== confirm) return setError("Passwords do not match.");
 
     setLoading(true);
@@ -42,6 +44,18 @@ export default function SetPassword() {
         return;
       }
 
+      // Save name to profiles table (non-blocking for recovery)
+      if (!isRecovery && fullName.trim()) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ full_name: fullName.trim() })
+          .eq('id', userData.user.id);
+
+        if (profileError) {
+          console.warn('Failed to save name:', profileError);
+        }
+      }
+
       setOk(isRecovery ? "Password reset successfully!" : "Password set. You're all set!");
       setTimeout(() => navigate("/dashboard"), 800);
     } catch (e: any) {
@@ -59,16 +73,33 @@ export default function SetPassword() {
             LQ
           </div>
           <h2 className="text-2xl font-bold text-gray-900">
-            {isRecovery ? "Reset your password" : "Set your password"}
+            {isRecovery ? "Reset your password" : "Complete your account"}
           </h2>
           <p className="text-gray-500 mt-1">
             {isRecovery
               ? "Enter your new password below"
-              : "Create a password to complete your account setup"}
+              : "Tell us your name and create a password"}
           </p>
         </div>
 
         <div className="space-y-4">
+          {!isRecovery && (
+            <div>
+              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-1">
+                Full Name
+              </label>
+              <input
+                id="fullName"
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="w-full px-4 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent placeholder:text-gray-400"
+                placeholder="Your full name"
+                autoComplete="name"
+              />
+            </div>
+          )}
+
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               New Password
@@ -79,7 +110,7 @@ export default function SetPassword() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-4 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent placeholder:text-gray-400"
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
             />
           </div>
 
@@ -114,7 +145,7 @@ export default function SetPassword() {
             disabled={loading}
             className="w-full py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition disabled:opacity-50"
           >
-            {loading ? "Please wait..." : "Save Password"}
+            {loading ? "Please wait..." : isRecovery ? "Reset Password" : "Create Account"}
           </button>
         </div>
       </div>

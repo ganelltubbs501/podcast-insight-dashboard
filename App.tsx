@@ -24,7 +24,7 @@ import TermsOfService from './pages/TermsOfService';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
-import { logoutUser, ensureProfileExists } from './services/auth';
+import { logoutUser, ensureProfileExists, fetchProfileName } from './services/auth';
 import { supabase } from './lib/supabaseClient';
 import Login from './components/Login';
 import AuthCallback from './components/AuthCallback';
@@ -143,9 +143,10 @@ const AppContent: React.FC = () => {
       role: "Owner",
     });
 
-    const applySession = (session: any) => {
+    const applySession = async (session: any) => {
       if (!mounted) return;
       if (session?.user) {
+        // Set user immediately with email-prefix name, then update with profile name
         const u = mapSessionUser(session.user);
         setUser(u);
         setSentryUser(u);
@@ -153,6 +154,13 @@ const AppContent: React.FC = () => {
         ensureProfileExists(session.user.id).catch(err => {
           console.error("Profile ensure failed:", err);
         });
+        // Fetch stored name and update if available
+        fetchProfileName(session.user.id).then(profileName => {
+          if (!mounted || !profileName) return;
+          const updated = { ...u, name: profileName };
+          setUser(updated);
+          setSentryUser(updated);
+        }).catch(() => {});
       } else {
         setUser(null);
         setSentryUser(null);

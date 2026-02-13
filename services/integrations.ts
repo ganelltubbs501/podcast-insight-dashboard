@@ -83,4 +83,5 @@ export const scheduleNewsletterTrigger = (payload: {
   content?: string;
   destinationId: string;
   automationId: string;
+  transcriptId?: string;
 }) => postJSON<{ scheduled?: boolean; post?: any; error?: string }>("/api/email/schedule/newsletter", payload);

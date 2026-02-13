@@ -185,6 +185,7 @@ export interface TeamInvite {
   isExpired: boolean;
   inviteUrl?: string;
   teamName?: string;
+  emailSent?: boolean;
 }
 
 export interface IntegrationStatus {

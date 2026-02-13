@@ -305,6 +305,14 @@ export async function repurposeWithGemini(payload: { type: string; context: stri
 
   const systemInstruction = `You are an expert content repurposer. Given a transcript and analysis context, generate platform-optimized repurposed content.
 
+CRITICAL VOICE & PERSONALIZATION RULES:
+- Write ALL content in FIRST PERSON from the perspective of the podcast host. Use "I", "my", "me" — NOT "they", "their", or third-person references to the host.
+  Example: "I dive deep into..." NOT "John dives deep into..."
+  Example: "my new podcast" NOT "John's new podcast"
+- NEVER use placeholder brackets like [Your Name], [Podcast Name], [Host Name], or any [bracketed text]. This is an absolute rule with zero exceptions.
+- If the context includes "Host/Author Name:", use that exact name for email sign-offs (e.g., "Best,\nGanell"). Otherwise use a generic sign-off like "Best regards" with no name.
+- Use the actual podcast name from the transcript context, never a bracketed placeholder.
+
 IMPORTANT FORMATTING RULES:
 - For emailSeries: Generate 5 emails with day values 1, 2, 3, 4, 5 (one email per day). Each email should be sent on a different day.
 - For socialCalendar: Generate 25 social media posts (5 posts per day for 5 days). Each day should have one post for each platform: Instagram, Facebook, LinkedIn, Twitter, and Instagram Stories. Structure:

@@ -184,6 +184,7 @@ export const scheduleNewsletterSchema = z.object({
   content: z.string().optional(),
   destinationId: z.string().uuid(),
   automationId: z.string().uuid(),
+  transcriptId: z.string().optional(),
 }).strict();
 
 export type ScheduleNewsletter = z.infer<typeof scheduleNewsletterSchema>;
