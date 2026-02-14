@@ -57,7 +57,13 @@ export default function SetPassword() {
       }
 
       setOk(isRecovery ? "Password reset successfully!" : "Password set. You're all set!");
-      setTimeout(() => navigate("/dashboard"), 800);
+      // Check for pending team invite — redirect there instead of dashboard
+      const pendingToken = localStorage.getItem('pendingInviteToken');
+      if (pendingToken) {
+        setTimeout(() => navigate(`/invite?token=${pendingToken}`, { replace: true }), 800);
+      } else {
+        setTimeout(() => navigate("/dashboard"), 800);
+      }
     } catch (e: any) {
       setError(e?.message ?? "Failed to set password.");
     } finally {

@@ -93,10 +93,10 @@ const AcceptInvite: React.FC = () => {
         {(status === 'loading' || status === 'authenticating') && (
           <>
             <Loader2 className="h-16 w-16 text-primary animate-spin mx-auto mb-6" />
-            <h1 className="text-2xl font-bold text-textPrimary mb-2">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
               {status === 'authenticating' ? 'Checking authentication...' : 'Accepting Invite...'}
             </h1>
-            <p className="text-textMuted">Please wait while we process your invitation.</p>
+            <p className="text-gray-500">Please wait while we process your invitation.</p>
           </>
         )}
 
@@ -106,8 +106,8 @@ const AcceptInvite: React.FC = () => {
             <div className="h-16 w-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <LogIn className="h-8 w-8 text-yellow-600" />
             </div>
-            <h1 className="text-2xl font-bold text-textPrimary mb-2">Login Required</h1>
-            <p className="text-textMuted mb-6">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Login Required</h1>
+            <p className="text-gray-500 mb-6">
               You need to be logged in to accept this team invitation. Please log in or create an account to continue.
             </p>
             <button
@@ -116,7 +116,7 @@ const AcceptInvite: React.FC = () => {
             >
               Go to Login
             </button>
-            <p className="text-sm text-textMuted mt-4">
+            <p className="text-sm text-gray-500 mt-4">
               After logging in, you'll be automatically redirected to accept this invite.
             </p>
           </>
@@ -128,11 +128,11 @@ const AcceptInvite: React.FC = () => {
             <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle className="h-8 w-8 text-green-600" />
             </div>
-            <h1 className="text-2xl font-bold text-textPrimary mb-2">Welcome to the Team!</h1>
-            <p className="text-textMuted mb-2">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to the Team!</h1>
+            <p className="text-gray-500 mb-2">
               You've successfully joined <strong>{result.teamName}</strong>
             </p>
-            <p className="text-sm text-textMuted mb-6">
+            <p className="text-sm text-gray-500 mb-6">
               Your role: <span className="font-medium capitalize">{result.role}</span>
             </p>
             <button
@@ -146,7 +146,7 @@ const AcceptInvite: React.FC = () => {
             </button>
             <button
               onClick={handleGoHome}
-              className="w-full text-textSecondary font-medium px-6 py-2 hover:bg-gray-100 rounded-lg transition"
+              className="w-full text-gray-700 font-medium px-6 py-2 hover:bg-gray-100 rounded-lg transition"
             >
               Go to Dashboard
             </button>
@@ -159,8 +159,8 @@ const AcceptInvite: React.FC = () => {
             <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <XCircle className="h-8 w-8 text-red-600" />
             </div>
-            <h1 className="text-2xl font-bold text-textPrimary mb-2">Invitation Failed</h1>
-            <p className="text-textMuted mb-6">{error || 'Something went wrong with your invitation.'}</p>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Invitation Failed</h1>
+            <p className="text-gray-500 mb-6">{error || 'Something went wrong with your invitation.'}</p>
             <div className="space-y-3">
               <button
                 onClick={() => window.location.reload()}
@@ -170,15 +170,15 @@ const AcceptInvite: React.FC = () => {
               </button>
               <button
                 onClick={handleGoHome}
-                className="w-full text-textSecondary font-medium px-6 py-2 hover:bg-gray-100 rounded-lg transition"
+                className="w-full text-gray-700 font-medium px-6 py-2 hover:bg-gray-100 rounded-lg transition"
               >
                 Go to Dashboard
               </button>
             </div>
-            <p className="text-sm text-textMuted mt-6">
+            <p className="text-sm text-gray-500 mt-6">
               Common issues:
             </p>
-            <ul className="text-sm text-textMuted text-left mt-2 space-y-1">
+            <ul className="text-sm text-gray-500 text-left mt-2 space-y-1">
               <li>- The invite link has expired (valid for 7 days)</li>
               <li>- The invite has already been used</li>
               <li>- The invite was revoked by an admin</li>

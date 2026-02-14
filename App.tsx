@@ -196,6 +196,14 @@ const AppContent: React.FC = () => {
         initialSessionHandled = true;
         finishAuthReady();
       }
+
+      // After a fresh sign-in, check for a pending team invite token
+      if (event === "SIGNED_IN" && session?.user) {
+        const pendingToken = localStorage.getItem('pendingInviteToken');
+        if (pendingToken && window.location.pathname !== '/invite') {
+          setTimeout(() => navigate(`/invite?token=${pendingToken}`, { replace: true }), 300);
+        }
+      }
     });
 
     // Safety: if INITIAL_SESSION never arrives (rare), release after 1.5s
