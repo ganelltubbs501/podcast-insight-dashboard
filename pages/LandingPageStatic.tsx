@@ -308,7 +308,33 @@ const LandingPageStatic: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
+            {/* Free Tier */}
+            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
+              <h3 className="text-xl font-bold text-gray-900">Free</h3>
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$0</p>
+              <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                {[
+                  'Upload & analyze transcripts (5/mo)',
+                  'Generate LinkedIn posts',
+                  'Generate newsletter content',
+                  'Email series drafting',
+                  'Content calendar access',
+                  'Gmail integration',
+                  '1 user',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                    <CheckCircle className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href={APP_SIGNUP_URL} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+                Get Started Free
+              </a>
+            </div>
+
             {/* Beta Test — Free */}
             <div className="bg-gray-50 p-6 rounded-2xl border-2 border-green-600 relative flex flex-col">
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full">BETA ACCESS</div>
