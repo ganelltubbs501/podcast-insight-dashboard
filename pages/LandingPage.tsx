@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, Zap, FileText, Share2, CheckCircle } from 'lucide-react';
+import { Mic, FileText, Linkedin, Mail, CalendarClock, ArrowRight, CheckCircle, Upload, Sparkles, Send } from 'lucide-react';
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -7,18 +7,18 @@ interface LandingPageProps {
 
 const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
   return (
-    <div className="min-h-screen bg-bgLight">
+    <div className="min-h-screen bg-gray-50 text-gray-800">
       {/* Navigation */}
-      <nav className="bg-gray-100 border-b border-gray-300">
+      <nav className="bg-gray-50 border-b border-gray-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <Mic className="h-8 w-8 text-primary" />
-              <span className="ml-2 text-xl font-bold text-textPrimary">LoquiHQ</span>
+              <span className="ml-2 text-xl font-bold text-gray-900">LoquiHQ</span>
             </div>
             <div className="flex items-center space-x-4">
-              <button onClick={onLogin} className="text-textSecondary hover:text-textPrimary font-medium">Log in</button>
-              <button onClick={onLogin} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary transition font-medium">
+              <button onClick={onLogin} className="text-gray-600 hover:text-gray-900 font-medium">Sign In</button>
+              <button onClick={onLogin} className="bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition font-medium">
                 Get Started
               </button>
             </div>
@@ -27,128 +27,234 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </nav>
 
       {/* Hero Section */}
-      <div className="relative overflow-hidden pt-16 pb-32">
+      <section className="relative overflow-hidden pt-20 pb-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto">
-            <h1 className="text-5xl font-extrabold text-textPrimary tracking-tight mb-6 leading-tight">
-              Stop guessing. <span className="text-primary">Read the signal.</span>
+            <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 tracking-tight mb-6 leading-tight">
+              Stop Letting Your Podcast <span className="text-primary">Die After Publish Day</span>
             </h1>
-            <p className="text-xl text-textSecondary mb-4">
-              LoquiHQ turns podcast performance data into clear monetization and growth decisions—built exclusively for podcasters who treat their show like a business.
+            <p className="text-xl text-gray-700 mb-4">
+              LoquiHQ turns every episode into LinkedIn posts, newsletters, and scheduled content &mdash; automatically.
             </p>
-            <p className="text-base text-textMuted mb-10">
-              Track what matters. Price sponsorships correctly. Build offers that fit your audience.
+            <p className="text-lg text-gray-600 mb-10 leading-relaxed">
+              One upload. Multiple assets. Real distribution.
             </p>
-            <div className="flex justify-center gap-4">
-              <button onClick={onLogin} className="px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary hover:-translate-y-1 transition transform">
-                Get Your Podcast Readout
-              </button>
-              <a href="#features" className="px-8 py-4 bg-gray-100 text-textSecondary border border-gray-300 rounded-xl text-lg font-bold shadow-sm hover:bg-gray-100 transition">
-                See How It Works
-              </a>
-            </div>
+            <button onClick={onLogin} className="inline-flex items-center gap-2 px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary/90 hover:-translate-y-1 transition transform">
+              Turn My Episode Into Content
+              <ArrowRight className="h-5 w-5" />
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Features Grid */}
-      <div id="features" className="py-24 bg-white">
+      {/* Section 1 — The Brutal Truth */}
+      <section className="py-20 bg-gray-100">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8 text-center">
+            Recording Isn't the Hard Part. <span className="text-primary">Distribution Is.</span>
+          </h2>
+          <div className="space-y-5 text-lg text-gray-700 leading-relaxed">
+            <p>You don't need more episodes. You need more <strong className="text-gray-900">reach</strong>.</p>
+            <p>Right now:</p>
+            <ul className="space-y-3 pl-1">
+              <li className="flex items-start gap-3">
+                <span className="text-primary mt-1.5 shrink-0">&#9679;</span>
+                <span>Your transcript sits untouched.</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="text-primary mt-1.5 shrink-0">&#9679;</span>
+                <span>Your ideas fade after 48 hours.</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="text-primary mt-1.5 shrink-0">&#9679;</span>
+                <span>Your content never compounds.</span>
+              </li>
+            </ul>
+            <p className="pt-2">
+              You're creating assets. But you're not <strong className="text-gray-900">extracting value</strong>.
+            </p>
+            <p className="text-primary font-semibold text-xl">That's the leak.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 2 — The Shift */}
+      <section className="py-20 bg-gray-50">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8">
+            One Episode. <span className="text-primary">Multiple Pieces of Content.</span>
+          </h2>
+          <p className="text-lg text-gray-700 mb-10">
+            LoquiHQ analyzes your transcript and instantly generates:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto text-left">
+            {[
+              'LinkedIn-ready posts',
+              'AI-formatted newsletters',
+              'Structured email series',
+              'Platform-specific captions',
+              'Episode summaries that convert',
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-3 bg-gray-100 rounded-lg px-4 py-3 border border-gray-300">
+                <CheckCircle className="h-5 w-5 text-primary shrink-0" />
+                <span className="text-gray-800 font-medium">{item}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-gray-600 mt-8 text-lg">
+            Not generic AI output. <strong className="text-gray-900">Content shaped for distribution.</strong>
+          </p>
+        </div>
+      </section>
+
+      {/* Section 3 — What Makes This Different */}
+      <section className="py-20 bg-gray-100">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3">
+              This Isn't a Social Scheduler
+            </h2>
+            <p className="text-xl text-primary font-semibold">
+              It's an AI Podcast Content Repurposing Engine.
+            </p>
+          </div>
+          <p className="text-lg text-gray-700 text-center mb-10">
+            Most tools start with a blank box. We start with <strong className="text-gray-900">your episode</strong>. That changes everything.
+          </p>
+          <div className="space-y-4">
+            {[
+              'Analyzes your transcript',
+              'Extracts core ideas',
+              'Builds platform-specific content',
+              'Lets you schedule or publish',
+              'Sends newsletters from your connected email',
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-3 text-gray-800">
+                <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
+                <span className="text-lg">{item}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-10 text-center text-lg text-gray-600 space-y-1">
+            <p>No bouncing between five tools.</p>
+            <p>No manual rewriting.</p>
+            <p className="font-semibold text-gray-900">No wasted episodes.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 4 — SEO Feature Cards */}
+      <section className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-primary font-semibold tracking-wide uppercase">Features</h2>
-            <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-textPrimary sm:text-4xl">
-              Everything you need to grow your audience
+          <div className="text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
+              Podcast Content Automation <span className="text-primary">Built for Creators Who Move</span>
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
+              <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center mb-4">
+                <Sparkles className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">AI Transcript Analysis</h3>
+              <p className="text-gray-600">Upload your episode. Get structured insight instantly.</p>
+            </div>
+            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
+              <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center mb-4">
+                <Linkedin className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Podcast to LinkedIn Content</h3>
+              <p className="text-gray-600">Generate posts designed for authority and engagement.</p>
+            </div>
+            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
+              <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center mb-4">
+                <Mail className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">AI Podcast Newsletter Generator</h3>
+              <p className="text-gray-600">Turn conversations into formatted, ready-to-send emails.</p>
+            </div>
+            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
+              <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center mb-4">
+                <CalendarClock className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Schedule Podcast Social Posts</h3>
+              <p className="text-gray-600">Plan distribution from inside one dashboard.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 5 — Positioning */}
+      <section className="py-20 bg-gray-100">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8">
+            Your Podcast Is a Content Goldmine. <span className="text-primary">Start Mining It.</span>
+          </h2>
+          <div className="text-lg text-gray-700 space-y-4 leading-relaxed">
+            <p>You're already doing the hard work. Recording. Editing. Publishing.</p>
+            <p>
+              LoquiHQ makes sure the episode keeps working <strong className="text-gray-900">long after it goes live</strong>.
+            </p>
+            <p className="text-primary font-semibold text-xl pt-2">
+              Because attention compounds. And episodes shouldn't expire.
             </p>
           </div>
+        </div>
+      </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-4">
-                <Zap className="h-6 w-6 text-white" />
+      {/* Section 6 — How It Works */}
+      <section className="py-20 bg-gray-50">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3">
+              Simple. Focused. Effective.
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-lg mx-auto">
+            {[
+              { icon: Upload, label: 'Upload transcript' },
+              { icon: Sparkles, label: 'Run AI analysis' },
+              { icon: FileText, label: 'Generate content' },
+              { icon: Send, label: 'Schedule or publish' },
+            ].map(({ icon: Icon, label }, i) => (
+              <div key={label} className="flex items-center gap-4 bg-gray-100 rounded-xl px-5 py-4 border border-gray-300">
+                <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0">
+                  {i + 1}
+                </div>
+                <span className="text-gray-800 font-medium text-lg">{label}</span>
               </div>
-              <h3 className="text-xl font-bold text-textPrimary mb-2">Instant Summaries</h3>
-              <p className="text-textSecondary">Get the key takeaways and highlights from an hour-long episode in seconds.</p>
-            </div>
-            
-            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
-                <Share2 className="h-6 w-6 text-secondary" />
-              </div>
-              <h3 className="text-xl font-bold text-textPrimary mb-2">Social Clips</h3>
-              <p className="text-textSecondary">Perfectly formatted tweets, LinkedIn posts, and captions ready to copy & paste.</p>
-            </div>
-
-            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
-              <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
-                <FileText className="h-6 w-6 text-accent-violet" />
-              </div>
-              <h3 className="text-xl font-bold text-textPrimary mb-2">SEO Blog Posts</h3>
-              <p className="text-textSecondary">Turn audio into searchable text content with structured blog outlines.</p>
-            </div>
-
-            <div className="p-6 bg-gray-100 rounded-2xl border border-gray-300 hover:shadow-lg transition">
-               <div className="w-12 h-12 bg-accent-soft rounded-lg flex items-center justify-center mb-4">
-                <Mic className="h-6 w-6 text-accent-violet" />
-              </div>
-              <h3 className="text-xl font-bold text-textPrimary mb-2">Speaker Identification</h3>
-              <p className="text-textSecondary">Automatically highlight key contributions from each speaker.</p>
-            </div>
+            ))}
+          </div>
+          <div className="text-center mt-10 text-lg text-gray-600 space-y-1">
+            <p>That's the system.</p>
+            <p>No chaos. No scattered workflow. <strong className="text-gray-900">No content waste.</strong></p>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Pricing */}
-      <div className="py-24 bg-bgLight">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-extrabold text-textPrimary">Simple, Transparent Pricing</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-             {/* Free Tier */}
-             <div className="bg-gray-100 p-8 rounded-2xl shadow-sm border border-gray-300">
-               <h3 className="text-xl font-bold text-textPrimary">Free</h3>
-               <p className="text-4xl font-extrabold text-textPrimary mt-4">$0<span className="text-base font-normal text-textMuted">/mo</span></p>
-               <ul className="mt-6 space-y-4">
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> 3 Transcripts / mo</li>
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Basic Summaries</li>
-               </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-gray-100 text-textPrimary font-bold rounded-lg hover:bg-gray-200 transition">Get Started</button>
-             </div>
-             
-             {/* Pro Tier */}
-             <div className="bg-gray-100 p-8 rounded-2xl shadow-xl border-2 border-primary relative transform md:-translate-y-4">
-               <div className="absolute top-0 right-0 bg-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">POPULAR</div>
-               <h3 className="text-xl font-bold text-textPrimary">Pro Creator</h3>
-               <p className="text-4xl font-extrabold text-textPrimary mt-4">XX<span className="text-base font-normal text-textMuted">/mo</span></p>
-               <ul className="mt-6 space-y-4">
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> 50 Transcripts / mo</li>
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> All AI Features</li>
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-primary mr-2"/> Blog Generation</li>
-               </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary transition">Start Free Trial</button>
-             </div>
-
-             {/* Business Tier */}
-             <div className="bg-gray-100 p-8 rounded-2xl shadow-sm border border-gray-300">
-               <h3 className="text-xl font-bold text-textPrimary">Business</h3>
-               <p className="text-4xl font-extrabold text-textPrimary mt-4">XX<span className="text-base font-normal text-textMuted">/mo</span></p>
-               <ul className="mt-6 space-y-4">
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Unlimited Transcripts</li>
-                 <li className="flex items-center text-textSecondary"><CheckCircle className="h-5 w-5 text-green-500 mr-2"/> Priority Support</li>
-               </ul>
-               <button onClick={onLogin} className="mt-8 w-full py-3 bg-gray-100 text-textPrimary font-bold rounded-lg hover:bg-gray-200 transition">Contact Sales</button>
-             </div>
-          </div>
+      {/* Final CTA */}
+      <section className="py-24 bg-gray-100">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-6">
+            If You're Going to Record, <span className="text-primary">You Might As Well Distribute.</span>
+          </h2>
+          <p className="text-lg text-gray-700 mb-4">Stop publishing and praying.</p>
+          <p className="text-lg text-gray-700 mb-10">Start building momentum.</p>
+          <button onClick={onLogin} className="inline-flex items-center gap-2 px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary/90 hover:-translate-y-1 transition transform">
+            Turn My Episode Into Content
+            <ArrowRight className="h-5 w-5" />
+          </button>
         </div>
-      </div>
-      
+      </section>
+
+      {/* Footer */}
       <footer className="bg-gray-200 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-textMuted">© 2026 LoquiHQ. Where podcasters get the truth.</p>
+            <p className="text-gray-600">&copy; 2026 LoquiHQ. All rights reserved.</p>
             <div className="flex items-center gap-6">
-              <a href="/privacy" className="text-textMuted hover:text-textSecondary transition">Privacy Policy</a>
-              <a href="/terms" className="text-textMuted hover:text-textSecondary transition">Terms of Service</a>
+              <a href="/privacy" className="text-gray-600 hover:text-gray-800 transition">Privacy Policy</a>
+              <a href="/terms" className="text-gray-600 hover:text-gray-800 transition">Terms of Service</a>
             </div>
           </div>
         </div>
