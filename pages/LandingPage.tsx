@@ -25,6 +25,208 @@ const FAQItem: React.FC<{ question: string; answer: React.ReactNode }> = ({ ques
   );
 };
 
+const PricingInline: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+  const [annual, setAnnual] = useState(true);
+
+  const Cta: React.FC<{ className: string; children: React.ReactNode }> = ({ className, children }) => (
+    <button onClick={onLogin} className={className}>{children}</button>
+  );
+
+  return (
+    <section id="pricing" className="py-20 bg-gray-100">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-6">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
+            Turn One Podcast Episode Into 20+ Assets &mdash; <span className="text-primary">Without Hiring a Team</span>
+          </h2>
+          <div className="text-lg text-gray-600 space-y-1 mb-8">
+            <p>Stop paying freelancers. Stop duct-taping AI tools together.</p>
+            <p>Stop copying and pasting between apps.</p>
+            <p className="font-semibold text-gray-900 pt-2">LoquiHQ does the heavy lifting for you.</p>
+          </div>
+
+          {/* Billing Toggle */}
+          <div className="flex items-center justify-center gap-3 mb-10">
+            <span className={`text-sm font-medium ${!annual ? 'text-gray-900' : 'text-gray-500'}`}>Monthly</span>
+            <button
+              onClick={() => setAnnual(!annual)}
+              className={`relative w-14 h-7 rounded-full transition ${annual ? 'bg-primary' : 'bg-gray-300'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${annual ? 'translate-x-7' : ''}`} />
+            </button>
+            <span className={`text-sm font-medium ${annual ? 'text-gray-900' : 'text-gray-500'}`}>Annual</span>
+            {annual && <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">Save up to $398</span>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
+          {/* Free Tier */}
+          <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
+            <h3 className="text-xl font-bold text-gray-900">Free</h3>
+            <p className="text-4xl font-extrabold text-gray-900 mt-3">$0</p>
+            <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
+            <ul className="space-y-3 mb-8 flex-1">
+              {[
+                'Upload & analyze transcripts (5/mo)',
+                'Generate LinkedIn posts',
+                'Generate newsletter content',
+                'Email series drafting',
+                'Content calendar access',
+                'Gmail integration',
+                '1 user',
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <Cta className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+              Get Started Free
+            </Cta>
+          </div>
+
+          {/* Beta Test — Free */}
+          <div className="bg-gray-50 p-6 rounded-2xl border-2 border-green-600 relative flex flex-col">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full">BETA ACCESS</div>
+            <h3 className="text-xl font-bold text-gray-900 mt-2">Beta Test</h3>
+            <p className="text-4xl font-extrabold text-gray-900 mt-3">Free</p>
+            <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
+            <ul className="space-y-3 mb-8 flex-1">
+              {[
+                'Upload & analyze transcripts',
+                'Generate LinkedIn posts',
+                'Generate newsletter content',
+                'Email series drafting',
+                'Content calendar',
+                'Gmail integration',
+                '1 user',
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <Cta className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition text-center block">
+              Join the Beta
+            </Cta>
+          </div>
+
+          {/* Starter */}
+          <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
+            <h3 className="text-xl font-bold text-gray-900">Starter</h3>
+            {annual ? (
+              <>
+                <p className="text-4xl font-extrabold text-gray-900 mt-3">$490<span className="text-base font-normal text-gray-500">/yr</span></p>
+                <p className="text-sm text-green-600 font-semibold mt-1">Save $98 <span className="text-gray-500 font-normal">&mdash; $40.83/mo</span></p>
+              </>
+            ) : (
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$49<span className="text-base font-normal text-gray-500">/mo</span></p>
+            )}
+            <p className="text-sm text-gray-500 mt-1 mb-5">Perfect for solo podcasters</p>
+            <ul className="space-y-3 mb-6 flex-1">
+              {[
+                'Upload & analyze transcripts',
+                'Generate LinkedIn-ready posts',
+                'Generate email newsletter content',
+                'Email series drafting',
+                'Schedule LinkedIn posts',
+                'Schedule newsletters',
+                'Content calendar',
+                'Gmail integration',
+                '1 user',
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-gray-500 italic mb-4">Replaces 5&ndash;10 hours of manual posting per month.</p>
+            <p className="text-xs text-gray-500 mb-3 text-center">No contracts. Cancel anytime.</p>
+            <Cta className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+              Get Started
+            </Cta>
+          </div>
+
+          {/* Pro */}
+          <div className="bg-gray-50 p-6 rounded-2xl border-2 border-primary relative flex flex-col transform md:-translate-y-2">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
+            <h3 className="text-xl font-bold text-gray-900 mt-2">Pro</h3>
+            {annual ? (
+              <>
+                <p className="text-4xl font-extrabold text-gray-900 mt-3">$990<span className="text-base font-normal text-gray-500">/yr</span></p>
+                <p className="text-sm text-green-600 font-semibold mt-1">Save $198 <span className="text-gray-500 font-normal">&mdash; $82.50/mo</span></p>
+              </>
+            ) : (
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$99<span className="text-base font-normal text-gray-500">/mo</span></p>
+            )}
+            <p className="text-sm text-gray-500 mt-1 mb-5">For serious creators & growing brands</p>
+            <p className="text-xs font-semibold text-primary mb-3">Everything in Starter, plus:</p>
+            <ul className="space-y-3 mb-6 flex-1">
+              {[
+                'SendGrid integration',
+                'Kit (ConvertKit) integration',
+                'Advanced email scheduling',
+                'Multiple mailing list support',
+                'Team access (up to 3 members)',
+                'Priority support',
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-gray-500 italic mb-4">Replaces a VA + email automation tool stack.</p>
+            <Cta className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 transition text-center block">
+              Start Free Trial
+            </Cta>
+          </div>
+
+          {/* Growth */}
+          <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
+            <div className="flex items-center gap-2 mb-0">
+              <Crown className="h-5 w-5 text-amber-600" />
+              <h3 className="text-xl font-bold text-gray-900">Growth</h3>
+            </div>
+            {annual ? (
+              <>
+                <p className="text-4xl font-extrabold text-gray-900 mt-3">$1,990<span className="text-base font-normal text-gray-500">/yr</span></p>
+                <p className="text-sm text-green-600 font-semibold mt-1">Save $398 <span className="text-gray-500 font-normal">&mdash; $165.83/mo</span></p>
+              </>
+            ) : (
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$199<span className="text-base font-normal text-gray-500">/mo</span></p>
+            )}
+            <p className="text-sm text-gray-500 mt-1 mb-5">For agencies & podcast networks</p>
+            <p className="text-xs font-semibold text-gray-700 mb-3">Everything in Pro, plus:</p>
+            <ul className="space-y-3 mb-6 flex-1">
+              {[
+                'Expanded team seats',
+                'Multi-user workflow',
+                'Role-based permissions',
+                'Team scheduling visibility',
+                'Higher publishing limits',
+                'Dedicated onboarding call',
+              ].map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                  <CheckCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-gray-500 italic mb-4">Replaces internal content coordination overhead.</p>
+            <Cta className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+              Contact Sales
+            </Cta>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800">
@@ -296,157 +498,43 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-20 bg-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-6">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
-              Turn One Podcast Episode Into 20+ Assets &mdash; <span className="text-primary">Without Hiring a Team</span>
-            </h2>
-            <div className="text-lg text-gray-600 space-y-1 mb-10">
-              <p>Stop paying freelancers. Stop duct-taping AI tools together.</p>
-              <p>Stop copying and pasting between apps.</p>
-              <p className="font-semibold text-gray-900 pt-2">LoquiHQ does the heavy lifting for you.</p>
-            </div>
-          </div>
+      <PricingInline onLogin={onLogin} />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 max-w-7xl mx-auto">
-            {/* Free Tier */}
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
-              <h3 className="text-xl font-bold text-gray-900">Free</h3>
-              <p className="text-4xl font-extrabold text-gray-900 mt-3">$0</p>
-              <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
-              <ul className="space-y-3 mb-8 flex-1">
+      {/* Comparison Table */}
+      <section className="py-16 bg-gray-50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 text-center mb-10">
+            Compare <span className="text-primary">Plans</span>
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-gray-300">
+                  <th className="text-left py-3 pr-4 font-semibold text-gray-900">Feature</th>
+                  <th className="text-center py-3 px-2 font-semibold text-gray-900">Free</th>
+                  <th className="text-center py-3 px-2 font-semibold text-green-600">Beta</th>
+                  <th className="text-center py-3 px-2 font-semibold text-gray-900">Starter</th>
+                  <th className="text-center py-3 px-2 font-semibold text-primary">Pro</th>
+                  <th className="text-center py-3 px-2 font-semibold text-amber-600">Growth</th>
+                </tr>
+              </thead>
+              <tbody className="text-gray-700">
                 {[
-                  'Upload & analyze transcripts (5/mo)',
-                  'Generate LinkedIn posts',
-                  'Generate newsletter content',
-                  'Email series drafting',
-                  'Content calendar access',
-                  'Gmail integration',
-                  '1 user',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
-                    <CheckCircle className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
+                  ['Transcript Analysis', '5/mo', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited'],
+                  ['Auto Publishing', '\u2014', '\u2014', '\u2705', '\u2705', '\u2705'],
+                  ['CRM Integrations', 'Gmail', 'Gmail', 'Gmail', 'Gmail + SendGrid + Kit', 'All'],
+                  ['Team Access', '\u2014', '\u2014', '\u2014', '3 seats', 'Expanded'],
+                  ['Scheduling', 'Basic', 'Basic', 'Full', 'Advanced', 'Advanced'],
+                ].map(([feature, ...values]) => (
+                  <tr key={feature} className="border-b border-gray-200">
+                    <td className="py-3 pr-4 font-medium text-gray-900">{feature}</td>
+                    {values.map((v, i) => (
+                      <td key={i} className="text-center py-3 px-2">{v}</td>
+                    ))}
+                  </tr>
                 ))}
-              </ul>
-              <button onClick={onLogin} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
-                Get Started Free
-              </button>
-            </div>
-
-            {/* Beta Test — Free */}
-            <div className="bg-gray-50 p-6 rounded-2xl border-2 border-green-600 relative flex flex-col">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full">BETA ACCESS</div>
-              <h3 className="text-xl font-bold text-gray-900 mt-2">Beta Test</h3>
-              <p className="text-4xl font-extrabold text-gray-900 mt-3">Free</p>
-              <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  'Upload & analyze transcripts',
-                  'Generate LinkedIn posts',
-                  'Generate newsletter content',
-                  'Email series drafting',
-                  'Content calendar',
-                  'Gmail integration',
-                  '1 user',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
-                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <button onClick={onLogin} className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition text-center block">
-                Join the Beta
-              </button>
-            </div>
-
-            {/* Starter — $49/mo */}
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
-              <h3 className="text-xl font-bold text-gray-900">Starter</h3>
-              <p className="text-4xl font-extrabold text-gray-900 mt-3">$49<span className="text-base font-normal text-gray-500">/mo</span></p>
-              <p className="text-sm text-gray-500 mt-1 mb-5">Perfect for solo podcasters</p>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  'Upload & analyze transcripts',
-                  'Generate LinkedIn-ready posts',
-                  'Generate email newsletter content',
-                  'Email series drafting',
-                  'Schedule LinkedIn posts',
-                  'Schedule newsletters',
-                  'Content calendar',
-                  'Gmail integration',
-                  '1 user',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
-                    <CheckCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-xs text-gray-500 mb-3 text-center">No contracts. Cancel anytime.</p>
-              <button onClick={onLogin} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
-                Get Started
-              </button>
-            </div>
-
-            {/* Pro — $99/mo */}
-            <div className="bg-gray-50 p-6 rounded-2xl border-2 border-primary relative flex flex-col transform md:-translate-y-2">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
-              <h3 className="text-xl font-bold text-gray-900 mt-2">Pro</h3>
-              <p className="text-4xl font-extrabold text-gray-900 mt-3">$99<span className="text-base font-normal text-gray-500">/mo</span></p>
-              <p className="text-sm text-gray-500 mt-1 mb-5">For serious creators & growing brands</p>
-              <p className="text-xs font-semibold text-primary mb-3">Everything in Starter, plus:</p>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  'SendGrid integration',
-                  'Kit (ConvertKit) integration',
-                  'Advanced email scheduling',
-                  'Multiple mailing list support',
-                  'Team access (up to 3 members)',
-                  'Priority support',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
-                    <CheckCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <button onClick={onLogin} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 transition text-center block">
-                Start Free Trial
-              </button>
-            </div>
-
-            {/* Growth — $199/mo */}
-            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
-              <div className="flex items-center gap-2 mb-0">
-                <Crown className="h-5 w-5 text-amber-600" />
-                <h3 className="text-xl font-bold text-gray-900">Growth</h3>
-              </div>
-              <p className="text-4xl font-extrabold text-gray-900 mt-3">$199<span className="text-base font-normal text-gray-500">/mo</span></p>
-              <p className="text-sm text-gray-500 mt-1 mb-5">For agencies & podcast networks</p>
-              <p className="text-xs font-semibold text-gray-700 mb-3">Everything in Pro, plus:</p>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  'Expanded team seats',
-                  'Multi-user workflow',
-                  'Role-based permissions',
-                  'Team scheduling visibility',
-                  'Higher publishing limits',
-                  'Dedicated onboarding call',
-                ].map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
-                    <CheckCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <button onClick={onLogin} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
-                Contact Sales
-              </button>
-            </div>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
