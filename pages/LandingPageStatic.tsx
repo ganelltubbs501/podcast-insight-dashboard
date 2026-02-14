@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mic, FileText, Linkedin, Mail, CalendarClock, ArrowRight, CheckCircle, XCircle, Upload, Sparkles, Send, ChevronDown, ChevronUp, Zap, BarChart3, Users } from 'lucide-react';
+import { Mic, FileText, Linkedin, Mail, CalendarClock, ArrowRight, CheckCircle, XCircle, Upload, Sparkles, Send, ChevronDown, ChevronUp, BarChart3, Users, Crown, DollarSign } from 'lucide-react';
 
 const APP_LOGIN_URL = 'https://app.loquihq.com/login';
 const APP_SIGNUP_URL = 'https://app.loquihq.com/signup';
@@ -294,36 +294,165 @@ const LandingPageStatic: React.FC = () => {
         </div>
       </section>
 
-      {/* Proof-Focused Positioning */}
-      <section className="py-20 bg-gray-100">
+      {/* Pricing Section */}
+      <section id="pricing" className="py-20 bg-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-6">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">
+              Turn One Podcast Episode Into 20+ Assets &mdash; <span className="text-primary">Without Hiring a Team</span>
+            </h2>
+            <div className="text-lg text-gray-600 space-y-1 mb-10">
+              <p>Stop paying freelancers. Stop duct-taping AI tools together.</p>
+              <p>Stop copying and pasting between apps.</p>
+              <p className="font-semibold text-gray-900 pt-2">LoquiHQ does the heavy lifting for you.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            {/* Beta Test — Free */}
+            <div className="bg-gray-50 p-6 rounded-2xl border-2 border-green-600 relative flex flex-col">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full">BETA ACCESS</div>
+              <h3 className="text-xl font-bold text-gray-900 mt-2">Beta Test</h3>
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">Free<span className="text-base font-normal text-gray-500"></span></p>
+              <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                {[
+                  'Upload & analyze transcripts',
+                  'Generate LinkedIn posts',
+                  'Generate newsletter content',
+                  'Email series drafting',
+                  'Content calendar',
+                  'Gmail integration',
+                  '1 user',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                    <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href={APP_SIGNUP_URL} className="w-full py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition text-center block">
+                Join the Beta
+              </a>
+            </div>
+
+            {/* Starter — $49/mo */}
+            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
+              <h3 className="text-xl font-bold text-gray-900">Starter</h3>
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$49<span className="text-base font-normal text-gray-500">/mo</span></p>
+              <p className="text-sm text-gray-500 mt-1 mb-5">Perfect for solo podcasters</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                {[
+                  'Upload & analyze transcripts',
+                  'Generate LinkedIn-ready posts',
+                  'Generate email newsletter content',
+                  'Email series drafting',
+                  'Schedule LinkedIn posts',
+                  'Schedule newsletters',
+                  'Content calendar',
+                  'Gmail integration',
+                  '1 user',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                    <CheckCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-gray-500 mb-3 text-center">No contracts. Cancel anytime.</p>
+              <a href={APP_SIGNUP_URL} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+                Get Started
+              </a>
+            </div>
+
+            {/* Pro — $99/mo */}
+            <div className="bg-gray-50 p-6 rounded-2xl border-2 border-primary relative flex flex-col transform md:-translate-y-2">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-xs font-bold px-3 py-1 rounded-full">MOST POPULAR</div>
+              <h3 className="text-xl font-bold text-gray-900 mt-2">Pro</h3>
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$99<span className="text-base font-normal text-gray-500">/mo</span></p>
+              <p className="text-sm text-gray-500 mt-1 mb-5">For serious creators & growing brands</p>
+              <p className="text-xs font-semibold text-primary mb-3">Everything in Starter, plus:</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                {[
+                  'SendGrid integration',
+                  'Kit (ConvertKit) integration',
+                  'Advanced email scheduling',
+                  'Multiple mailing list support',
+                  'Team access (up to 3 members)',
+                  'Priority support',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                    <CheckCircle className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href={APP_SIGNUP_URL} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 transition text-center block">
+                Start Free Trial
+              </a>
+            </div>
+
+            {/* Growth — $199/mo */}
+            <div className="bg-gray-50 p-6 rounded-2xl border border-gray-300 flex flex-col">
+              <div className="flex items-center gap-2 mb-0">
+                <Crown className="h-5 w-5 text-amber-600" />
+                <h3 className="text-xl font-bold text-gray-900">Growth</h3>
+              </div>
+              <p className="text-4xl font-extrabold text-gray-900 mt-3">$199<span className="text-base font-normal text-gray-500">/mo</span></p>
+              <p className="text-sm text-gray-500 mt-1 mb-5">For agencies & podcast networks</p>
+              <p className="text-xs font-semibold text-gray-700 mb-3">Everything in Pro, plus:</p>
+              <ul className="space-y-3 mb-8 flex-1">
+                {[
+                  'Expanded team seats',
+                  'Multi-user workflow',
+                  'Role-based permissions',
+                  'Team scheduling visibility',
+                  'Higher publishing limits',
+                  'Dedicated onboarding call',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
+                    <CheckCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href={APP_SIGNUP_URL} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+                Contact Sales
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* What This Replaces */}
+      <section className="py-20 bg-gray-50">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-8">
-            This Isn't "AI for Everything."
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-10">
+            What This <span className="text-primary">Replaces</span>
           </h2>
-          <p className="text-lg text-gray-700 mb-6">This is:</p>
-          <div className="space-y-3 max-w-md mx-auto text-left mb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto text-left mb-10">
             {[
-              'AI podcast repurposing',
-              'AI LinkedIn post generator for podcasters',
-              'AI newsletter creator from podcast episodes',
-              'Podcast content automation',
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-3">
-                <Zap className="h-5 w-5 text-primary shrink-0" />
-                <span className="text-gray-800 font-medium text-lg">{item}</span>
+              { cost: '$800\u2013$2,000/mo', label: 'Social media manager' },
+              { cost: '$500+/mo', label: 'Newsletter copywriter' },
+              { cost: 'Hours/week', label: 'Manual scheduling' },
+              { cost: '3\u20135 tools', label: 'Disconnected workflow' },
+            ].map(({ cost, label }) => (
+              <div key={label} className="flex items-center gap-3 bg-gray-100 border border-gray-300 rounded-xl px-4 py-3">
+                <DollarSign className="h-5 w-5 text-red-500 shrink-0" />
+                <div>
+                  <span className="text-gray-900 font-bold text-sm">{cost}</span>
+                  <span className="text-gray-600 text-sm ml-1">{label}</span>
+                </div>
               </div>
             ))}
           </div>
-          <p className="text-lg text-gray-700 mb-2">
-            It removes the 80% friction that keeps creators inconsistent.
-          </p>
-          <p className="text-lg text-gray-700 mb-1">Consistency builds <strong className="text-gray-900">authority</strong>.</p>
-          <p className="text-xl text-primary font-bold">Authority builds growth.</p>
+          <p className="text-lg text-gray-700 mb-1">LoquiHQ costs less than <strong className="text-gray-900">one freelancer</strong>.</p>
+          <p className="text-xl text-primary font-bold">And it never sleeps.</p>
         </div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-20 bg-gray-100">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
@@ -332,47 +461,39 @@ const LandingPageStatic: React.FC = () => {
           </div>
           <div className="space-y-4">
             <FAQItem
-              question="What is the best way to turn a podcast into LinkedIn content?"
+              question="What is the best AI tool for podcasters?"
               answer={
-                <p>The most effective way is to analyze the episode structure, extract insights, and rewrite them into platform-native posts. LoquiHQ does this automatically by converting transcripts into LinkedIn-ready content with the right formatting, hooks, and structure for engagement.</p>
+                <p>LoquiHQ is built specifically for podcast transcript analysis and turning episodes into LinkedIn posts, newsletters, and email series &mdash; all in one place.</p>
               }
             />
             <FAQItem
-              question="Can I turn my podcast into a newsletter automatically?"
+              question="Can LoquiHQ post directly to LinkedIn?"
               answer={
-                <p>Yes. LoquiHQ generates structured newsletter drafts directly from your episode transcript. You can then schedule and send them using your connected email provider &mdash; Gmail, SendGrid, Kit, or Mailchimp.</p>
+                <p>Yes. You can connect LinkedIn and schedule posts directly from your dashboard.</p>
               }
             />
             <FAQItem
-              question="Does LoquiHQ publish directly to LinkedIn?"
+              question="Can I send newsletters from LoquiHQ?"
               answer={
-                <p>Yes. After connecting your LinkedIn account, you can schedule and publish posts directly from the platform. No copy-pasting required.</p>
+                <p>Yes. You can generate and schedule newsletters using Gmail, SendGrid, or Kit integrations.</p>
               }
             />
             <FAQItem
-              question="Is this better than using ChatGPT for podcast content?"
+              question="Does LoquiHQ replace ChatGPT?"
               answer={
-                <>
-                  <p className="mb-2">If you only want text output, generic AI works.</p>
-                  <p>If you want transcript analysis, platform formatting, scheduling, and publishing &mdash; LoquiHQ is built specifically for that workflow. It's the difference between a blank text box and a purpose-built content engine.</p>
-                </>
+                <p>LoquiHQ doesn't replace AI &mdash; it operationalizes it. Instead of prompting manually, you upload your transcript and get structured, platform-ready content instantly.</p>
               }
             />
             <FAQItem
-              question="Do I need multiple tools?"
+              question="Is LoquiHQ good for podcast marketing?"
               answer={
-                <>
-                  <p className="mb-3">No. LoquiHQ combines:</p>
-                  <ul className="space-y-1.5 ml-1">
-                    {['Transcript analysis', 'Content generation', 'Scheduling', 'Content calendar', 'LinkedIn publishing', 'Email sending'].map(item => (
-                      <li key={item} className="flex items-center gap-2">
-                        <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-3">Into one system.</p>
-                </>
+                <p>Yes. It's designed specifically to turn podcast episodes into marketing assets across social and email channels.</p>
+              }
+            />
+            <FAQItem
+              question="Do I need a credit card for the beta?"
+              answer={
+                <p>No. Beta access is completely free and does not require any payment information. Just sign up and start using LoquiHQ immediately.</p>
               }
             />
           </div>
@@ -380,24 +501,22 @@ const LandingPageStatic: React.FC = () => {
       </section>
 
       {/* Final CTA */}
-      <section className="py-24 bg-gray-100">
+      <section className="py-24 bg-gray-50">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-6">
             You Already Recorded the Episode.<br />
-            <span className="text-primary">Don't Let It Die After Upload.</span>
+            <span className="text-primary">Now Let It Work for You.</span>
           </h2>
           <p className="text-lg text-gray-700 mb-8">
             Turn every episode into authority, visibility, distribution, and growth.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <a href={APP_SIGNUP_URL} className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary text-white rounded-xl text-lg font-bold shadow-lg hover:bg-primary/90 hover:-translate-y-1 transition transform">
-              Get Your Podcast Readout
+              Start Turning Episodes Into Assets
               <ArrowRight className="h-5 w-5" />
             </a>
-            <a href={APP_SIGNUP_URL} className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-gray-200 text-gray-900 border border-gray-300 rounded-xl text-lg font-bold hover:bg-gray-300 transition">
-              Start Using LoquiHQ Today
-            </a>
           </div>
+          <p className="text-sm text-gray-500 mt-4">No credit card required for beta access.</p>
         </div>
       </section>
 
