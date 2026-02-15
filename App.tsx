@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import NewAnalysis from './pages/NewAnalysis';
 import ResultsPage from './pages/ResultsPage';
@@ -19,17 +19,22 @@ import BetaGuide from './pages/BetaGuide';
 import BetaFeedback from './pages/BetaFeedback';
 import Settings from './pages/Settings';
 import SettingsSendGrid from './pages/SettingsSendGrid';
+import SettingsBilling from './pages/SettingsBilling';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import HelpPanel from './components/HelpPanel';
 import LiveChatWidget from './components/LiveChatWidget';
 import { ThemeToggle } from './components/ThemeToggle';
 import { logoutUser, ensureProfileExists, fetchProfileName } from './services/auth';
+import { getMe, createCheckoutSession } from './services/backend';
 import { supabase } from './lib/supabaseClient';
 import Login from './components/Login';
 import AuthCallback from './components/AuthCallback';
 import SetPassword from './components/SetPassword';
 import ForgotPassword from './components/ForgotPassword';
+import BetaBanner from './components/BetaBanner';
+import UsageNudge from './components/UsageNudge';
+import Pricing from './pages/Pricing';
 import { User } from './types';
 import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp, Headphones, Settings as SettingsIcon } from 'lucide-react';
 import { validateEnv } from './src/utils/env';
@@ -47,6 +52,55 @@ try {
 // Initialize error tracking
 initSentry();
 
+// Signup route that checks for pending plan checkout via URL params or localStorage
+const SignupWithCheckout: React.FC<{
+  setUser: (u: User) => void;
+  setSentryUser: (u: User | null) => void;
+  navigate: (path: string) => void;
+}> = ({ setUser, setSentryUser, navigate }) => {
+  const [searchParams] = useSearchParams();
+
+  return (
+    <Login
+      variant="page"
+      defaultMode="signup"
+      onSuccess={async (u) => {
+        setUser(u);
+        setSentryUser(u);
+
+        // Check URL params first (from static landing page: /signup?plan=pro&interval=yearly)
+        let plan = searchParams.get('plan');
+        let interval = searchParams.get('interval');
+
+        // Fallback: check localStorage (from dynamic landing page CTA)
+        if (!plan) {
+          const pending = localStorage.getItem('pendingCheckout');
+          if (pending) {
+            localStorage.removeItem('pendingCheckout');
+            try {
+              const parsed = JSON.parse(pending);
+              plan = parsed.plan;
+              interval = parsed.interval;
+            } catch {}
+          }
+        }
+
+        // If a paid plan was selected, redirect to Stripe checkout
+        if (plan && interval && ['starter', 'pro', 'growth'].includes(plan)) {
+          try {
+            const { url } = await createCheckoutSession(plan, interval);
+            if (url) { window.location.href = url; return; }
+          } catch (err) {
+            console.error('Post-signup checkout redirect failed:', err);
+          }
+        }
+
+        navigate('/dashboard');
+      }}
+    />
+  );
+};
+
 // Wrapper to provide navigation props to pages
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -59,40 +113,34 @@ const AppContent: React.FC = () => {
   const location = useLocation();
 
   // Handle auth tokens from Supabase (invite/recovery links)
-  // This must run before normal routing to intercept token URLs
+  // Supports both implicit flow (#access_token=) and PKCE flow (?code=)
   useEffect(() => {
     (async () => {
       const hash = window.location.hash || "";
+      const search = window.location.search || "";
 
+      // Implicit flow: tokens in the hash fragment
       const hasTokens = hash.includes("access_token=");
       const isAuthType = hash.includes("type=invite") || hash.includes("type=signup") || hash.includes("type=recovery");
 
-      if (!hasTokens || !isAuthType) return;
+      // PKCE flow: authorization code in query string
+      const searchParams = new URLSearchParams(search);
+      const pkceCode = searchParams.get("code");
+
+      if (!hasTokens && !isAuthType && !pkceCode) return;
 
       setProcessingAuth(true);
       setAuthStatus("Processing your invite link...");
 
       try {
-        const tokenPart = hash.includes("#access_token")
-          ? hash.substring(hash.indexOf("#access_token") + 1)
-          : hash.substring(1);
-
-        const params = new URLSearchParams(tokenPart);
-        const accessToken = params.get("access_token");
-        const refreshToken = params.get("refresh_token");
-        const type = params.get("type");
-
-        console.log("Auth token detected, type:", type);
-
-        if (accessToken && refreshToken) {
+        // PKCE flow: exchange code for session
+        if (pkceCode) {
+          console.log("PKCE code detected, exchanging for session");
           setAuthStatus("Setting up your session...");
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
+          const { data, error } = await supabase.auth.exchangeCodeForSession(pkceCode);
 
           if (error) {
-            console.error("Session error:", error);
+            console.error("PKCE exchange error:", error);
             setAuthStatus("Error: " + error.message);
             setTimeout(() => {
               setProcessingAuth(false);
@@ -102,11 +150,53 @@ const AppContent: React.FC = () => {
           }
 
           if (data?.session) {
-            console.log("Session established, redirecting to set-password");
+            console.log("PKCE session established, redirecting to set-password");
+            // Determine if this is a recovery flow from the type param or URL path
+            const type = searchParams.get("type");
             const isRecovery = type === "recovery";
             navigate(isRecovery ? "/set-password?type=recovery" : "/set-password", { replace: true });
             setProcessingAuth(false);
             return;
+          }
+        }
+
+        // Implicit flow: tokens in the hash
+        if (hasTokens && isAuthType) {
+          const tokenPart = hash.includes("#access_token")
+            ? hash.substring(hash.indexOf("#access_token") + 1)
+            : hash.substring(1);
+
+          const params = new URLSearchParams(tokenPart);
+          const accessToken = params.get("access_token");
+          const refreshToken = params.get("refresh_token");
+          const type = params.get("type");
+
+          console.log("Auth token detected, type:", type);
+
+          if (accessToken && refreshToken) {
+            setAuthStatus("Setting up your session...");
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+
+            if (error) {
+              console.error("Session error:", error);
+              setAuthStatus("Error: " + error.message);
+              setTimeout(() => {
+                setProcessingAuth(false);
+                navigate('/login', { replace: true });
+              }, 2000);
+              return;
+            }
+
+            if (data?.session) {
+              console.log("Session established, redirecting to set-password");
+              const isRecovery = type === "recovery";
+              navigate(isRecovery ? "/set-password?type=recovery" : "/set-password", { replace: true });
+              setProcessingAuth(false);
+              return;
+            }
           }
         }
 
@@ -135,18 +225,19 @@ const AppContent: React.FC = () => {
     let initialSessionHandled = false;
 
     // Helper: map Supabase user to app User without extra network calls
-    const mapSessionUser = (supabaseUser: any): User => ({
+    const mapSessionUser = (supabaseUser: any, plan?: string, betaExpiresAt?: string | null): User => ({
       id: supabaseUser.id,
       email: supabaseUser.email ?? "",
       name: (supabaseUser.email ?? "user").split("@")[0],
-      plan: "Free",
+      plan: (plan as User['plan']) || "free",
+      betaExpiresAt: betaExpiresAt ?? null,
       role: "Owner",
     });
 
     const applySession = async (session: any) => {
       if (!mounted) return;
       if (session?.user) {
-        // Set user immediately with email-prefix name, then update with profile name
+        // Set user immediately with email-prefix name, then update with profile name + plan
         const u = mapSessionUser(session.user);
         setUser(u);
         setSentryUser(u);
@@ -154,13 +245,19 @@ const AppContent: React.FC = () => {
         ensureProfileExists(session.user.id).catch(err => {
           console.error("Profile ensure failed:", err);
         });
-        // Fetch stored name and update if available
-        fetchProfileName(session.user.id).then(profileName => {
-          if (!mounted || !profileName) return;
-          const updated = { ...u, name: profileName };
+        // Fetch profile name and plan info in parallel
+        const namePromise = fetchProfileName(session.user.id).catch(() => null);
+        const mePromise = getMe().catch(() => null);
+        Promise.all([namePromise, mePromise]).then(([profileName, meData]) => {
+          if (!mounted) return;
+          const updated = {
+            ...u,
+            ...(profileName ? { name: profileName } : {}),
+            ...(meData ? { plan: meData.plan as User['plan'], betaExpiresAt: meData.betaExpiresAt, graceExpiresAt: meData.graceExpiresAt } : {}),
+          };
           setUser(updated);
           setSentryUser(updated);
-        }).catch(() => {});
+        });
       } else {
         setUser(null);
         setSentryUser(null);
@@ -468,6 +565,9 @@ const AppContent: React.FC = () => {
         </>
       )}
 
+      {user && (user.plan === 'beta' || user.plan === 'beta_grace' || user.plan === 'free') && <BetaBanner user={user} />}
+      {user && user.plan === 'free' && <UsageNudge user={user} />}
+
       <Routes>
         <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
 
@@ -476,22 +576,30 @@ const AppContent: React.FC = () => {
           <Login
             variant="page"
             defaultMode="login"
-            onSuccess={(u) => {
+            onSuccess={async (u) => {
               setUser(u);
               setSentryUser(u);
+              // Check for pending checkout (from landing page paid plan CTA)
+              const pending = localStorage.getItem('pendingCheckout');
+              if (pending) {
+                localStorage.removeItem('pendingCheckout');
+                try {
+                  const { plan, interval } = JSON.parse(pending);
+                  if (plan && interval) {
+                    const { url } = await createCheckoutSession(plan, interval);
+                    if (url) { window.location.href = url; return; }
+                  }
+                } catch {}
+              }
               navigate('/dashboard');
             }}
           />
         } />
         <Route path="/signup" element={
-          <Login
-            variant="page"
-            defaultMode="signup"
-            onSuccess={(u) => {
-              setUser(u);
-              setSentryUser(u);
-              navigate('/dashboard');
-            }}
+          <SignupWithCheckout
+            setUser={setUser}
+            setSentryUser={setSentryUser}
+            navigate={navigate}
           />
         } />
         <Route path="/oauth/callback" element={<AuthCallback />} />
@@ -500,8 +608,9 @@ const AppContent: React.FC = () => {
         
         <Route path="/dashboard" element={
           user ? (
-            <Dashboard 
-              onNewAnalysis={() => navigate('/analysis')} 
+            <Dashboard
+              user={user}
+              onNewAnalysis={() => navigate('/analysis')}
               onViewResults={(id) => navigate(`/results/${id}`)}
             />
           ) : <Navigate to="/login" />
@@ -512,7 +621,7 @@ const AppContent: React.FC = () => {
         } />
 
         <Route path="/usage" element={
-          user ? <UsageAnalytics /> : <Navigate to="/login" />
+          user ? <UsageAnalytics user={user} /> : <Navigate to="/login" />
         } />
 
         <Route path="/calendar" element={
@@ -540,6 +649,10 @@ const AppContent: React.FC = () => {
 
         <Route path="/settings/sendgrid" element={
           user ? <SettingsSendGrid /> : <Navigate to="/login" />
+        } />
+
+        <Route path="/settings/billing" element={
+          user ? <SettingsBilling user={user} /> : <Navigate to="/login" />
         } />
 
         <Route path="/connect-podcast" element={
@@ -579,6 +692,10 @@ const AppContent: React.FC = () => {
 
         <Route path="/known-issues" element={
           user ? <KnownIssues /> : <Navigate to="/login" />
+        } />
+
+        <Route path="/pricing" element={
+          user ? <Pricing user={user} /> : <Navigate to="/login" />
         } />
 
         <Route path="/privacy" element={

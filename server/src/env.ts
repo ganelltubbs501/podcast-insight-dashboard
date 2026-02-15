@@ -54,6 +54,17 @@ interface BackendEnvConfig {
   // Cron Jobs
   PUBLISHER_CRON_SECRET?: string;
 
+  // Stripe
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PORTAL_RETURN_URL?: string;
+  STRIPE_PRICE_STARTER_MONTHLY?: string;
+  STRIPE_PRICE_STARTER_YEARLY?: string;
+  STRIPE_PRICE_PRO_MONTHLY?: string;
+  STRIPE_PRICE_PRO_YEARLY?: string;
+  STRIPE_PRICE_GROWTH_MONTHLY?: string;
+  STRIPE_PRICE_GROWTH_YEARLY?: string;
+
   // Monitoring
   SENTRY_DSN?: string;
 }
@@ -191,6 +202,13 @@ export const backendEnv = {
   // Cron Jobs
   cron: {
     publisherSecret: getEnv('PUBLISHER_CRON_SECRET', false),
+  },
+
+  // Stripe
+  stripe: {
+    secretKey: getEnv('STRIPE_SECRET_KEY', false),
+    webhookSecret: getEnv('STRIPE_WEBHOOK_SECRET', false),
+    portalReturnUrl: getEnv('STRIPE_PORTAL_RETURN_URL', false),
   },
 
   // Monitoring

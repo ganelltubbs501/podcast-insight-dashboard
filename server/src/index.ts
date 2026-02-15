@@ -16,6 +16,9 @@ import {
   captureException
 } from "./utils/sentry.js";
 import { requireAuth, optionalAuth, getUserId, AuthRequest } from "./middleware/auth.js";
+import { attachPlan } from "./middleware/planCheck.js";
+import { enforceAnalysisLimit, enforceScheduleLimit, enforceAutomationLimit, getUserUsage, FREE_LIMITS, getLimits } from "./middleware/planLimits.js";
+import { stripe, PRICE_MAP, PRICE_TO_PLAN, VALID_PRICE_IDS, getPriceId, type Stripe } from "./services/stripe.js";
 import { requireTeamRole, TeamAuthRequest, getPermissionsForRole } from "./middleware/teamAuth.js";
 import {
   analyzeRequestSchema,
@@ -107,6 +110,222 @@ app.use(cors(corsOptions));
 // CRITICAL: handle preflight BEFORE auth/routes
 app.options("*", cors(corsOptions));
 
+// MUST be before app.use(express.json())
+app.post(
+  "/api/stripe/webhooks",
+  express.raw({ type: "application/json" }),
+  async (req, res) => {
+    // === CAN'T-MISS diagnostic log — runs before anything else ===
+    console.log("🧾 STRIPE WEBHOOK HIT", {
+      hasStripe: !!stripe,
+      hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+      contentType: req.headers["content-type"],
+      hasSig: !!req.headers["stripe-signature"],
+      bodyType: typeof req.body,
+      bodyIsBuffer: Buffer.isBuffer(req.body),
+      bodyLen: Buffer.isBuffer(req.body) ? req.body.length : null,
+    });
+
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!stripe || !webhookSecret) {
+      console.error("Stripe not configured: missing stripe client or webhook secret");
+      return res.status(500).json({ error: "Stripe not configured" });
+    }
+
+    const sig = req.headers["stripe-signature"] as string;
+    let event: Stripe.Event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("❌ STRIPE WEBHOOK ERROR", {
+        message: err?.message,
+        stack: err?.stack,
+        name: err?.name,
+      });
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Post-verification log with event details
+    console.log("✅ STRIPE EVENT:", event.type, {
+      id: event.id,
+      created: event.created,
+    });
+
+    try {
+      if (!supabaseAdmin) {
+        console.error("supabaseAdmin not configured, skipping webhook processing");
+        return res.status(200).json({ received: true });
+      }
+
+      // Helper: update profile
+      const updateProfile = async (userId: string, patch: Record<string, any>) => {
+        const { error } = await supabaseAdmin
+          .from("profiles")
+          .update({ ...patch })
+          .eq("id", userId);
+
+        if (error) throw new Error(`Supabase update failed: ${error.message}`);
+      };
+
+      // Helper: determine plan from subscription items (returns null if unknown price)
+      const planFromSub = (sub: Stripe.Subscription): "starter" | "pro" | "growth" | null => {
+        const priceId = sub.items.data?.[0]?.price?.id || "";
+        const mapped = PRICE_TO_PLAN[priceId];
+        if (!mapped) {
+          console.error("Unknown Stripe priceId; not updating plan:", { priceId, subId: sub.id });
+          return null;
+        }
+        return mapped as "starter" | "pro" | "growth";
+      };
+
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+
+          const userId = session.metadata?.user_id;
+          if (!userId) {
+            console.warn("checkout.session.completed missing metadata.user_id");
+            break;
+          }
+
+          const subscriptionId =
+            typeof session.subscription === "string" ? session.subscription : null;
+
+          let plan: string | null = "starter";
+          if (subscriptionId) {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            plan = planFromSub(sub);
+            if (!plan) {
+              console.warn("checkout.session.completed: unknown price, skipping plan update for user", userId);
+              break;
+            }
+          } else {
+            plan = (session.metadata?.plan as string) || "starter";
+          }
+
+          await updateProfile(userId, {
+            plan,
+            stripe_customer_id: typeof session.customer === "string" ? session.customer : null,
+            stripe_subscription_id: subscriptionId,
+          });
+
+          console.log(`checkout completed -> user ${userId} plan=${plan}`);
+          break;
+        }
+
+        case "customer.subscription.updated": {
+          const sub = event.data.object as Stripe.Subscription;
+
+          const customerId = typeof sub.customer === "string" ? sub.customer : null;
+          const userId = (sub.metadata?.user_id as string | undefined) || null;
+
+          // Don't downgrade on cancel_at_period_end — user still has time left.
+          // Only downgrade when status is actually canceled/unpaid/incomplete_expired.
+          const badStatuses = new Set(["canceled", "unpaid", "incomplete_expired"]);
+          const shouldDowngrade = badStatuses.has(sub.status);
+
+          let finalPlan: string;
+          if (shouldDowngrade) {
+            finalPlan = "free";
+          } else {
+            const nextPlan = planFromSub(sub);
+            if (!nextPlan) {
+              // Unknown price — don't update plan, just bail
+              break;
+            }
+            finalPlan = nextPlan;
+          }
+
+          if (userId) {
+            await updateProfile(userId, {
+              plan: finalPlan,
+              stripe_subscription_id: sub.id,
+              ...(customerId ? { stripe_customer_id: customerId } : {}),
+            });
+            console.log(`subscription.updated -> user ${userId} plan=${finalPlan}`);
+          } else if (customerId) {
+            const { data, error } = await supabaseAdmin
+              .from("profiles")
+              .select("id")
+              .eq("stripe_customer_id", customerId)
+              .maybeSingle();
+
+            if (error || !data?.id) {
+              console.warn("subscription.updated could not find profile for customer", customerId);
+              break;
+            }
+
+            await updateProfile(data.id, {
+              plan: finalPlan,
+              stripe_subscription_id: sub.id,
+            });
+            console.log(`subscription.updated -> user ${data.id} plan=${finalPlan}`);
+          } else {
+            console.warn("subscription.updated missing customer id + metadata.user_id");
+          }
+
+          break;
+        }
+
+        case "customer.subscription.deleted": {
+          const sub = event.data.object as Stripe.Subscription;
+
+          const customerId = typeof sub.customer === "string" ? sub.customer : null;
+          const userId = (sub.metadata?.user_id as string | undefined) || null;
+
+          const patch = {
+            plan: "free",
+            stripe_subscription_id: null,
+          };
+
+          if (userId) {
+            await updateProfile(userId, patch);
+            console.log(`subscription.deleted -> user ${userId} downgraded to free`);
+          } else if (customerId) {
+            const { data, error } = await supabaseAdmin
+              .from("profiles")
+              .select("id")
+              .eq("stripe_customer_id", customerId)
+              .maybeSingle();
+
+            if (error || !data?.id) {
+              console.warn("subscription.deleted could not find profile for customer", customerId);
+              break;
+            }
+
+            await updateProfile(data.id, patch);
+            console.log(`subscription.deleted -> user ${data.id} downgraded to free`);
+          } else {
+            console.warn("subscription.deleted missing customer id + metadata.user_id");
+          }
+
+          break;
+        }
+
+        default:
+          console.log("STRIPE IGNORED EVENT:", event.type);
+          break;
+      }
+
+      // Always respond 200 — even for ignored or unhandled events
+      return res.status(200).json({ received: true });
+    } catch (err: any) {
+      // Log fully but don't crash Stripe with a 500 (prevents retry storms)
+      console.error("❌ STRIPE WEBHOOK ERROR", {
+        message: err?.message,
+        stack: err?.stack,
+        name: err?.name,
+        eventId: event.id,
+        type: event.type,
+      });
+
+      // Return 200 to stop retries while iterating
+      return res.status(200).json({ received: true, handled: false });
+    }
+  }
+);
+
 // Different size limits for different endpoints (will be refined per-route)
 app.use(express.json({ limit: "5mb" })); // Default 5MB for most endpoints
 
@@ -185,7 +404,7 @@ async function extractTextFromInlineDocument(inlineData: { mimeType: string; dat
 }
 
 // AI Analysis endpoint with strict rate limiting + auth + validation
-app.post("/api/analyze", requireAuth, aiAnalysisLimiter, async (req: AuthRequest, res) => {
+app.post("/api/analyze", requireAuth, attachPlan, enforceAnalysisLimit, aiAnalysisLimiter, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
 
@@ -3682,7 +3901,7 @@ app.post("/api/cron/email-dispatch", generalLimiter, async (req, res) => {
 });
 
 // Schedule automation trigger (Mailchimp/Kit)
-app.post("/api/email/schedule-automation-trigger", requireAuth, async (req: AuthRequest, res) => {
+app.post("/api/email/schedule-automation-trigger", requireAuth, attachPlan, enforceAutomationLimit, async (req: AuthRequest, res) => {
   try {
     if (!supabaseAdmin) {
       return res.status(503).json({ error: "Database not configured" });
@@ -4873,7 +5092,7 @@ app.get("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.post("/api/schedule", requireAuth, async (req: AuthRequest, res) => {
+app.post("/api/schedule", requireAuth, attachPlan, enforceScheduleLimit, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
 
@@ -5000,6 +5219,22 @@ app.post("/api/signup", async (req, res) => {
     }
 
     console.log("✅ INVITED:", data?.user?.id, data?.user?.email);
+
+    // Set plan to beta with 30-day trial + 5-day grace
+    if (data.user?.id) {
+      const now = new Date();
+      const betaExpires = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const graceExpires = new Date(now.getTime() + 35 * 24 * 60 * 60 * 1000);
+      await supabaseAdmin.from('profiles').upsert({
+        id: data.user.id,
+        plan: 'beta',
+        beta_started_at: now.toISOString(),
+        beta_expires_at: betaExpires.toISOString(),
+        grace_expires_at: graceExpires.toISOString(),
+        cycle_anchor_at: now.toISOString(),
+      }, { onConflict: 'id' });
+    }
+
     return res.json({ status: "invited", userId: data.user?.id });
   } catch (err: any) {
     console.error("SIGNUP ERROR:", err);
@@ -5025,6 +5260,196 @@ app.post("/api/waitlist", async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
 
   res.json({ status: "waitlisted" });
+});
+
+// GET /api/me - Returns authenticated user's plan info
+app.get("/api/me", requireAuth, attachPlan, async (req: AuthRequest, res) => {
+  const userId = getUserId(req);
+  const plan = req.user?.plan ?? 'free';
+  const betaExpiresAt = req.user?.betaExpiresAt ?? null;
+  const graceExpiresAt = req.user?.graceExpiresAt ?? null;
+
+  let daysRemaining: number | null = null;
+  if (plan === 'beta' && betaExpiresAt) {
+    const ms = new Date(betaExpiresAt).getTime() - Date.now();
+    daysRemaining = Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+  }
+
+  let graceDaysRemaining: number | null = null;
+  if (plan === 'beta_grace' && graceExpiresAt) {
+    const ms = new Date(graceExpiresAt).getTime() - Date.now();
+    graceDaysRemaining = Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+  }
+
+  res.json({
+    id: userId,
+    email: req.user?.email ?? null,
+    plan,
+    betaExpiresAt,
+    graceExpiresAt,
+    daysRemaining,
+    graceDaysRemaining,
+  });
+});
+
+// GET /api/me/usage - Returns current cycle usage and limits
+app.get("/api/me/usage", requireAuth, attachPlan, async (req: AuthRequest, res) => {
+  const userId = getUserId(req);
+  const plan = req.user?.plan ?? 'free';
+  const planLimits = getLimits(plan);
+
+  const usage = await getUserUsage(userId);
+
+  // Build limits object — null values mean unlimited
+  const limits = {
+    analysesPerCycle: planLimits.analysesPerCycle,
+    scheduledPostsPerCycle: planLimits.scheduledPostsPerCycle,
+    activeAutomations: planLimits.activeAutomations,
+  };
+
+  const isUnlimited = planLimits.analysesPerCycle === null && planLimits.scheduledPostsPerCycle === null && planLimits.activeAutomations === null;
+
+  const nearLimit = {
+    analyses: planLimits.analysesPerCycle !== null && usage.analyses >= Math.floor(planLimits.analysesPerCycle * 0.8),
+    scheduledPosts: planLimits.scheduledPostsPerCycle !== null && usage.scheduledPosts >= Math.floor(planLimits.scheduledPostsPerCycle * 0.8),
+    automations: planLimits.activeAutomations !== null && usage.activeAutomations >= planLimits.activeAutomations,
+  };
+
+  res.json({
+    plan,
+    usage: {
+      analyses: usage.analyses,
+      scheduledPosts: usage.scheduledPosts,
+      activeAutomations: usage.activeAutomations,
+    },
+    limits,
+    nearLimit,
+    isUnlimited,
+    cycleStart: usage.cycleStart,
+    cycleEnd: usage.cycleEnd,
+  });
+});
+
+// POST /api/billing/checkout - Creates a Stripe Checkout session for subscription
+app.post("/api/billing/checkout", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    if (!stripe) {
+      res.status(500).json({ error: 'Stripe not configured' });
+      return;
+    }
+
+    const userId = getUserId(req);
+    const { plan, interval } = req.body as {
+      plan: "starter" | "pro" | "growth";
+      interval: "monthly" | "yearly";
+    };
+
+    if (!plan || !interval) {
+      res.status(400).json({ error: "Missing plan or interval" });
+      return;
+    }
+
+    const frontendUrl = process.env.FRONTEND_PUBLIC_URL;
+    if (!frontendUrl) {
+      res.status(500).json({ error: "FRONTEND_PUBLIC_URL not configured" });
+      return;
+    }
+
+    const priceId = getPriceId(plan, interval);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${frontendUrl}/dashboard?billing=success`,
+      cancel_url: `${frontendUrl}/dashboard?billing=cancel`,
+      client_reference_id: userId,
+      metadata: { user_id: userId, plan, interval },
+      subscription_data: {
+        trial_period_days: 14,
+        metadata: { user_id: userId, plan, interval },
+      },
+      allow_promotion_codes: true,
+    });
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    console.error("Checkout session error:", err?.message || err);
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+// POST /api/billing/portal - Creates a Stripe Customer Portal session
+app.post("/api/billing/portal", requireAuth, async (req: AuthRequest, res) => {
+  if (!stripe || !supabaseAdmin) {
+    res.status(500).json({ error: 'Stripe not configured' });
+    return;
+  }
+
+  const userId = getUserId(req);
+
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!profile?.stripe_customer_id) {
+      res.status(400).json({ error: 'No active subscription found' });
+      return;
+    }
+
+    const returnUrl = process.env.STRIPE_PORTAL_RETURN_URL
+      || process.env.APP_BASE_URL
+      || 'https://app.loquihq.com/pricing';
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: profile.stripe_customer_id,
+      return_url: returnUrl,
+    });
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    console.error('Stripe portal session error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/cron/downgrade-expired-betas - Cron job to flip beta → free after grace expires
+app.post("/api/cron/downgrade-expired-betas", async (req, res) => {
+  const secret = req.header("x-cron-secret");
+  const expectedSecret = process.env.CRON_SECRET || process.env.PUBLISHER_CRON_SECRET;
+  if (!expectedSecret || secret !== expectedSecret) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  if (!supabaseAdmin) {
+    res.status(500).json({ error: "Supabase not configured" });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update({ plan: 'free' })
+      .eq('plan', 'beta')
+      .not('grace_expires_at', 'is', null)
+      .lt('grace_expires_at', new Date().toISOString())
+      .select('id');
+
+    if (error) {
+      console.error('Cron downgrade error:', error);
+      res.status(500).json({ error: error.message });
+      return;
+    }
+
+    console.log(`Cron: downgraded ${data?.length ?? 0} expired beta users to free`);
+    res.json({ downgraded: data?.length ?? 0 });
+  } catch (err: any) {
+    console.error('Cron downgrade error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/admin/sanity - Admin sanity check endpoint (auth required)

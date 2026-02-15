@@ -33,13 +33,16 @@ const SeriesAnalytics: React.FC = () => {
     );
   }
 
+  // Normalize sentiment score: Gemini returns 0–1, we display as 0–100%
+  const normScore = (raw: number) => raw <= 1 ? raw * 100 : raw;
+
   // Calculate Metrics
   const sortedTranscripts = [...transcripts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  
-  const avgSentiment = Math.round(transcripts.reduce((acc, t) => acc + (t.result?.sentiment?.score || 0), 0) / transcripts.length);
+
+  const avgSentiment = Math.round(transcripts.reduce((acc, t) => acc + normScore(t.result?.sentiment?.score || 0), 0) / transcripts.length);
   const totalWords = transcripts.reduce((acc, t) => acc + (t.content.split(' ').length), 0);
   const avgDuration = Math.round((totalWords / 150) / transcripts.length); // approx 150 wpm
-  
+
   // Topic Frequency
   const topicMap: Record<string, number> = {};
   transcripts.forEach(t => {
@@ -49,15 +52,15 @@ const SeriesAnalytics: React.FC = () => {
   });
   const topTopics = Object.entries(topicMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
-  // Sentiment Trend Calculation
+  // Sentiment Trend Calculation (normalized to 0–100)
   const sentimentTrend = sortedTranscripts.map(t => ({
       date: new Date(t.date).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}),
-      score: t.result?.sentiment?.score || 0
+      score: normScore(t.result?.sentiment?.score || 0)
   }));
 
   const lastScore = sentimentTrend[sentimentTrend.length - 1].score;
   const firstScore = sentimentTrend[0].score;
-  const growth = lastScore - firstScore;
+  const growth = Math.round((lastScore - firstScore) * 100) / 100;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -74,13 +77,13 @@ const SeriesAnalytics: React.FC = () => {
             <TrendingUp className={`h-5 w-5 ${avgSentiment >= 60 ? 'text-green-500' : 'text-yellow-500'}`} />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold text-textPrimary">{avgSentiment}</span>
-            <span className="text-sm text-textMuted">/ 100</span>
+            <span className="text-3xl font-bold text-textPrimary">{avgSentiment}%</span>
           </div>
-          <div className={`text-xs mt-2 flex items-center ${growth > 0 ? 'text-accent-emerald' : 'text-red-500'}`}>
-            {growth > 0 ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownRight className="h-3 w-3 mr-1" />}
-            {Math.abs(growth)} pts since first ep
+          <div className={`text-xs mt-2 flex items-center ${growth > 0 ? 'text-accent-emerald' : growth < 0 ? 'text-red-500' : 'text-textMuted'}`}>
+            {growth > 0 ? <ArrowUpRight className="h-3 w-3 mr-1" /> : growth < 0 ? <ArrowDownRight className="h-3 w-3 mr-1" /> : null}
+            {growth > 0 ? '+' : ''}{growth} pts since first ep
           </div>
+          <p className="text-[10px] text-textMuted mt-3 leading-tight">AI-scored positivity of language, tone, and emotional cues in each episode.</p>
         </div>
 
         <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
@@ -121,14 +124,15 @@ const SeriesAnalytics: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
         {/* Sentiment Chart */}
         <div className="lg:col-span-2 bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
-          <h3 className="font-bold text-textPrimary mb-6">Sentiment Trend</h3>
+          <h3 className="font-bold text-textPrimary mb-1">Sentiment Trend</h3>
+          <p className="text-xs text-textMuted mb-5">How positively your episodes are received over time, based on AI analysis of language and tone.</p>
           <div className="h-64 w-full relative">
             <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
                {/* Grid lines */}
                {[0, 25, 50, 75, 100].map((y) => (
                  <line key={y} x1="0" y1={`${100-y}%`} x2="100%" y2={`${100-y}%`} stroke="#f3f4f6" strokeWidth="1" />
                ))}
-               
+
                {/* Trend Line */}
                {(() => {
                  if (sentimentTrend.length < 2) return null;
@@ -137,7 +141,7 @@ const SeriesAnalytics: React.FC = () => {
                    const y = 100 - t.score;
                    return `${x}%,${y}%`;
                  }).join(' ');
-                 
+
                  return (
                    <polyline points={points} fill="none" stroke="#6366F1" strokeWidth="3" vectorEffect="non-scaling-stroke" />
                  );
@@ -152,7 +156,7 @@ const SeriesAnalytics: React.FC = () => {
                   );
                })}
             </svg>
-            
+
             {/* X-Axis Labels */}
             <div className="flex justify-between mt-4 text-xs text-textMuted">
               {sentimentTrend.map((t, i) => (
@@ -173,8 +177,8 @@ const SeriesAnalytics: React.FC = () => {
                    <span className="text-textMuted">{topic[1]} eps</span>
                  </div>
                  <div className="w-full bg-gray-100 rounded-full h-2">
-                   <div 
-                     className="bg-secondary h-2 rounded-full" 
+                   <div
+                     className="bg-secondary h-2 rounded-full"
                      style={{ width: `${(topic[1] / transcripts.length) * 100}%` }}
                    ></div>
                  </div>
@@ -201,21 +205,24 @@ const SeriesAnalytics: React.FC = () => {
               </tr>
             </thead>
             <tbody className="bg-gray-100 divide-y divide-gray-200">
-              {sortedTranscripts.slice().reverse().map((t) => (
-                <tr key={t.id} className="hover:bg-gray-200">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{t.title}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted">{new Date(t.date).toLocaleDateString()}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                     <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                       (t.result?.sentiment?.score || 0) > 60 ? 'bg-accent-soft text-accent-emerald' : 'bg-yellow-100 text-yellow-800'
-                     }`}>
-                       {t.result?.sentiment?.score || "N/A"}
-                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted max-w-xs truncate">{t.result?.sentiment?.tone || "-"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted">{t.result?.speakers.length || 0}</td>
-                </tr>
-              ))}
+              {sortedTranscripts.slice().reverse().map((t) => {
+                const scoreNorm = Math.round(normScore(t.result?.sentiment?.score || 0));
+                return (
+                  <tr key={t.id} className="hover:bg-gray-200">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary">{t.title}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted">{new Date(t.date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                         scoreNorm >= 60 ? 'bg-accent-soft text-accent-emerald' : 'bg-yellow-100 text-yellow-800'
+                       }`}>
+                         {scoreNorm}%
+                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted max-w-xs truncate">{t.result?.sentiment?.tone || "-"}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-textMuted">{t.result?.speakers.length || 0}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

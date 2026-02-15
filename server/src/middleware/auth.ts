@@ -8,6 +8,9 @@ export interface AuthRequest extends Request {
     id: string;
     email?: string;
     role?: string;
+    plan?: string;
+    betaExpiresAt?: string | null;
+    graceExpiresAt?: string | null;
   };
 }
 

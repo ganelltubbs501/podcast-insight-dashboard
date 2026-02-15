@@ -1,10 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { getUsageMetrics } from '../services/transcripts';
 import { downloadAnalyticsReport } from '../services/downloadService';
-import { UsageMetrics } from '../types';
+import { UsageMetrics, User } from '../types';
 import { PieChart, Download, Clock, Zap, TrendingUp, BarChart2, DollarSign, RefreshCw, FileText, CheckCircle, XCircle } from 'lucide-react';
 
-const UsageAnalytics: React.FC = () => {
+interface UsageAnalyticsProps {
+  user: User;
+}
+
+const PLAN_LABEL: Record<string, string> = {
+  free: 'Free',
+  beta: 'Beta',
+  beta_grace: 'Beta (Grace)',
+  starter: 'Starter',
+  pro: 'Pro',
+  growth: 'Growth',
+};
+
+const UsageAnalytics: React.FC<UsageAnalyticsProps> = ({ user }) => {
   const [metrics, setMetrics] = useState<UsageMetrics | null>(null);
   const [hourlyRate, setHourlyRate] = useState(50);
   const [loading, setLoading] = useState(true);
@@ -25,9 +38,10 @@ const UsageAnalytics: React.FC = () => {
 
   if (loading || !metrics) return <div className="p-12 text-center text-textMuted">Loading analytics...</div>;
 
-  const usagePercent = Math.round((metrics.transcriptsUsed / metrics.transcriptQuota) * 100);
+  const unlimited = metrics.isUnlimited ?? false;
+  const usagePercent = unlimited ? 0 : Math.round((metrics.transcriptsUsed / metrics.transcriptQuota) * 100);
   const estimatedSavings = metrics.hoursSaved * hourlyRate;
-  const isNearLimit = usagePercent >= 80;
+  const isNearLimit = !unlimited && usagePercent >= 80;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -53,7 +67,7 @@ const UsageAnalytics: React.FC = () => {
           
           {/* Main Usage Gauge */}
           <div className="lg:col-span-2 bg-gray-100 p-8 rounded-xl border border-gray-300 shadow-sm flex flex-col md:flex-row items-center gap-8">
-              <div className="relative w-48 h-48 flex-shrink-0">
+              <div className="relative w-48 h-48 shrink-0">
                  <svg className="w-full h-full transform -rotate-90">
                     <circle cx="96" cy="96" r="88" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
                     <circle 
@@ -68,21 +82,27 @@ const UsageAnalytics: React.FC = () => {
                  </svg>
                  <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-4xl font-extrabold text-textPrimary">{metrics.transcriptsUsed}</span>
-                    <span className="text-textMuted text-sm font-medium">of {metrics.transcriptQuota} Used</span>
+                    <span className="text-textMuted text-sm font-medium">{unlimited ? 'Unlimited' : `of ${metrics.transcriptQuota} Used`}</span>
                  </div>
               </div>
               <div className="flex-1">
                   <h3 className="text-lg font-bold text-textPrimary mb-2">Monthly Quota</h3>
-                  <p className="text-textSecondary mb-2">
-                      You have used <strong>{usagePercent}%</strong> of your transcript quota for {metrics.period}. 
-                  </p>
+                  {unlimited ? (
+                    <p className="text-textSecondary mb-2">
+                      You've analyzed <strong>{metrics.transcriptsUsed}</strong> transcripts this cycle. Your plan has <strong>unlimited</strong> analyses.
+                    </p>
+                  ) : (
+                    <p className="text-textSecondary mb-2">
+                      You have used <strong>{usagePercent}%</strong> of your transcript quota for {metrics.period}.
+                    </p>
+                  )}
                   <p className="text-sm text-textMuted mb-6">Quota resets on <strong>{metrics.quotaResetDate}</strong>.</p>
-                  
+
                   {isNearLimit && (
                       <div className="bg-red-50 border border-red-100 p-4 rounded-lg mb-6">
                           <p className="text-red-700 font-bold text-sm mb-1">Quota Warning</p>
                           <p className="text-red-600 text-xs">
-                              You are approaching your limit. Overage charges are <strong>$5 per transcript</strong> beyond {metrics.transcriptQuota}.
+                              You are approaching your limit. Upgrade your plan to get more transcripts.
                           </p>
                       </div>
                   )}
@@ -183,44 +203,59 @@ const UsageAnalytics: React.FC = () => {
           {/* Plan Comparison */}
           <div className="lg:col-span-1 bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm">
              <h3 className="font-bold text-textPrimary mb-6 flex items-center gap-2">
-                 <Zap className="h-5 w-5 text-yellow-500" /> Plan Comparison
+                 <Zap className="h-5 w-5 text-yellow-500" /> Your Plan
              </h3>
              <div className="space-y-4">
-                 <div className="grid grid-cols-3 text-xs font-bold text-textMuted uppercase border-b border-gray-300 pb-2">
+                 <div className="grid grid-cols-2 text-xs font-bold text-textMuted uppercase border-b border-gray-300 pb-2">
                      <div>Feature</div>
-                     <div className="text-center text-primary">Pro (You)</div>
-                     <div className="text-center">Business</div>
-                 </div>
-                 
-                 <div className="grid grid-cols-3 text-sm items-center py-2 border-b border-gray-50">
-                     <div className="font-medium text-textSecondary">Quota</div>
-                     <div className="text-center font-bold text-primary">50 / mo</div>
-                     <div className="text-center text-textSecondary">Unlimited</div>
-                 </div>
-                 <div className="grid grid-cols-3 text-sm items-center py-2 border-b border-gray-50">
-                     <div className="font-medium text-textSecondary">Team Seats</div>
-                     <div className="text-center font-bold text-primary">3</div>
-                     <div className="text-center text-textSecondary">10+</div>
-                 </div>
-                 <div className="grid grid-cols-3 text-sm items-center py-2 border-b border-gray-50">
-                     <div className="font-medium text-textSecondary">Support</div>
-                     <div className="text-center font-bold text-primary">Standard</div>
-                     <div className="text-center text-textSecondary">Priority</div>
-                 </div>
-                 <div className="grid grid-cols-3 text-sm items-center py-2 border-b border-gray-50">
-                     <div className="font-medium text-textSecondary">Custom Brand</div>
-                     <div className="text-center text-primary"><CheckCircle className="h-4 w-4 mx-auto"/></div>
-                     <div className="text-center text-textSecondary"><CheckCircle className="h-4 w-4 mx-auto"/></div>
-                 </div>
-                 <div className="grid grid-cols-3 text-sm items-center py-2 border-b border-gray-50">
-                     <div className="font-medium text-textSecondary">API Access</div>
-                     <div className="text-center text-gray-300"><XCircle className="h-4 w-4 mx-auto"/></div>
-                     <div className="text-center text-textSecondary"><CheckCircle className="h-4 w-4 mx-auto"/></div>
+                     <div className="text-center text-primary">{PLAN_LABEL[user.plan] ?? user.plan}</div>
                  </div>
 
-                 <button className="w-full mt-4 bg-gray-200 text-white py-2 rounded-lg font-bold text-sm hover:bg-gray-300 transition">
-                     Upgrade to Business
-                 </button>
+                 <div className="grid grid-cols-2 text-sm items-center py-2 border-b border-gray-50">
+                     <div className="font-medium text-textSecondary">Analyses / cycle</div>
+                     <div className="text-center font-bold text-primary">
+                       {{ free: '3', starter: '10', pro: '30', growth: '150', beta: 'Unlimited', beta_grace: 'Unlimited' }[user.plan] ?? '3'}
+                     </div>
+                 </div>
+                 <div className="grid grid-cols-2 text-sm items-center py-2 border-b border-gray-50">
+                     <div className="font-medium text-textSecondary">Scheduled posts / cycle</div>
+                     <div className="text-center font-bold text-primary">
+                       {{ free: '5', starter: '20', pro: '75', growth: '400', beta: 'Unlimited', beta_grace: 'Unlimited' }[user.plan] ?? '5'}
+                     </div>
+                 </div>
+                 <div className="grid grid-cols-2 text-sm items-center py-2 border-b border-gray-50">
+                     <div className="font-medium text-textSecondary">Team Seats</div>
+                     <div className="text-center font-bold text-primary">
+                       {{ free: '1', starter: '1', pro: '3', growth: 'Expanded', beta: '1', beta_grace: '1' }[user.plan] ?? '1'}
+                     </div>
+                 </div>
+                 <div className="grid grid-cols-2 text-sm items-center py-2 border-b border-gray-50">
+                     <div className="font-medium text-textSecondary">SendGrid / Kit</div>
+                     <div className="text-center">
+                       {user.plan === 'pro' || user.plan === 'growth' ? <CheckCircle className="h-4 w-4 mx-auto text-primary"/> : <XCircle className="h-4 w-4 mx-auto text-gray-300"/>}
+                     </div>
+                 </div>
+                 <div className="grid grid-cols-2 text-sm items-center py-2 border-b border-gray-50">
+                     <div className="font-medium text-textSecondary">Priority Support</div>
+                     <div className="text-center">
+                       {user.plan === 'pro' || user.plan === 'growth' ? <CheckCircle className="h-4 w-4 mx-auto text-primary"/> : <XCircle className="h-4 w-4 mx-auto text-gray-300"/>}
+                     </div>
+                 </div>
+                 <div className="grid grid-cols-2 text-sm items-center py-2 border-b border-gray-50">
+                     <div className="font-medium text-textSecondary">Role Permissions</div>
+                     <div className="text-center">
+                       {user.plan === 'growth' ? <CheckCircle className="h-4 w-4 mx-auto text-primary"/> : <XCircle className="h-4 w-4 mx-auto text-gray-300"/>}
+                     </div>
+                 </div>
+
+                 {user.plan !== 'growth' && user.plan !== 'beta' && (
+                   <button
+                     onClick={() => window.location.href = '/pricing'}
+                     className="w-full mt-4 bg-primary text-white py-2 rounded-lg font-bold text-sm hover:bg-primary/90 transition"
+                   >
+                     Upgrade Plan
+                   </button>
+                 )}
              </div>
           </div>
 

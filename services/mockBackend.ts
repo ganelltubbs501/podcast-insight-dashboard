@@ -22,7 +22,7 @@ export const loginUser = async (email: string): Promise<User> => {
     id: 'user_123',
     email,
     name: email.split('@')[0],
-    plan: 'Free',
+    plan: 'free',
     role: 'Owner'
   };
   localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
@@ -393,7 +393,7 @@ export const getUsageMetrics = async (): Promise<UsageMetrics> => {
     
     // Calculate simple stats based on existing data
     const transcriptsUsed = transcripts.length;
-    const transcriptQuota = 50; // Mock quota for Pro plan
+    const transcriptQuota = 30; // Mock quota matching Pro plan limits
     const totalWords = transcripts.reduce((acc, t) => acc + (t.content?.length || 0) / 5, 0); // approx words
     const hoursSaved = Math.round(transcriptsUsed * 3.5); // avg 3.5 hours per transcript manual work
     

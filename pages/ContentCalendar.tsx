@@ -200,7 +200,6 @@ const ContentCalendar: React.FC = () => {
               <option value="linkedin">LinkedIn</option>
               <option value="email">Email</option>
               <option value="medium">Medium</option>
-              <option value="teaser">Newsletter Teaser</option>
             </select>
           </div>
           <div className="flex items-center gap-2 bg-gray-100 p-1.5 rounded-lg border border-gray-300">
@@ -328,7 +327,7 @@ const ContentCalendar: React.FC = () => {
                       <div className="text-xs font-bold text-textMuted uppercase mb-2">Platform</div>
                       <div className="flex items-center gap-2 text-sm font-medium text-textSecondary capitalize">
                         {getPlatformIcon(selectedPost.platform)}
-                        {selectedPost.platform}
+                        {selectedPost.platform === 'twitter' ? 'X' : selectedPost.platform}
                       </div>
                    </div>
 
@@ -458,7 +457,7 @@ const ContentCalendar: React.FC = () => {
                       <div className="text-xs font-bold text-textMuted uppercase mb-2">Platform</div>
                       <div className="flex items-center gap-2 text-sm font-medium text-textSecondary capitalize">
                         {getPlatformIcon(selectedPost.platform)}
-                        {selectedPost.platform}
+                        {selectedPost.platform === 'twitter' ? 'X' : selectedPost.platform}
                       </div>
                    </div>
 

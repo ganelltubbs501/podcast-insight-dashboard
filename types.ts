@@ -22,7 +22,9 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  plan: 'Free' | 'Pro' | 'Business';
+  plan: 'free' | 'beta' | 'beta_grace' | 'starter' | 'pro' | 'growth';
+  betaExpiresAt?: string | null;
+  graceExpiresAt?: string | null;
   role?: 'Owner' | 'Editor' | 'Viewer';
   avatar?: string;
 }
@@ -62,7 +64,6 @@ export type Platform =
   | 'youtube'
   | 'facebook'
   | 'medium'
-  | 'teaser'
   | 'email'
   | 'kit'
   | 'mailchimp'
@@ -187,17 +188,23 @@ export interface BlogPost {
 export interface SocialPlatformContent {
   linkedinPost: string;
   twitterThread: string[];
-  tiktokScript: string;
-  youtubeDescription: string;
+  tiktokReels: {
+    title: string;
+    visual: string;
+    textOverlay: string;
+    caption: string;
+  }[];
+  youtubeShort: {
+    hook: string;
+    script: string;
+    caption: string;
+    hashtags: string[];
+  };
   emailNewsletter: {
     subject: string;
     body: string;
   };
   mediumArticle: string;
-  newsletterTeaser: {
-    subject: string;
-    body: string;
-  };
   facebookPost: string;
 }
 
@@ -352,4 +359,5 @@ export interface UsageMetrics {
   dailyUsage: { date: string; count: number }[];
   topPerformingType: string;
   quotaResetDate: string;
+  isUnlimited?: boolean;
 }

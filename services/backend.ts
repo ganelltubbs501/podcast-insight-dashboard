@@ -72,6 +72,41 @@ async function postJSON<T>(path: string, body: any): Promise<T> {
   return (await res.json()) as T;
 }
 
+// User / Plan
+export interface MeResponse {
+  id: string;
+  email: string | null;
+  plan: string;
+  betaExpiresAt: string | null;
+  graceExpiresAt: string | null;
+  daysRemaining: number | null;
+  graceDaysRemaining: number | null;
+}
+export async function getMe(): Promise<MeResponse> {
+  return getJSON<MeResponse>('/api/me');
+}
+
+export interface UsageResponse {
+  plan: string;
+  usage: { analyses: number; scheduledPosts: number; activeAutomations: number };
+  limits: { analysesPerCycle: number | null; scheduledPostsPerCycle: number | null; activeAutomations: number | null };
+  nearLimit: { analyses: boolean; scheduledPosts: boolean; automations: boolean } | null;
+  isUnlimited: boolean;
+  cycleStart: string;
+  cycleEnd: string;
+}
+export async function getUsage(): Promise<UsageResponse> {
+  return getJSON<UsageResponse>('/api/me/usage');
+}
+
+// Billing
+export async function createCheckoutSession(plan: string, interval: string) {
+  return postJSON<{ url: string }>('/api/billing/checkout', { plan, interval });
+}
+export async function createPortalSession() {
+  return postJSON<{ url: string }>('/api/billing/portal', {});
+}
+
 // Guests
 export async function getGuests() {
   return getJSON('/api/guests');

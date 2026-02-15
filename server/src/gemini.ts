@@ -62,7 +62,7 @@ export async function analyzeWithGemini(payload: {
 
   // Keep your system prompt logic (copied from your frontend)
   let systemInstruction =
-    "You are an expert podcast analyst, content strategist, and SEO specialist. Your goal is to extract deep insights, create platform-specific viral content, and provide structured analytics.";
+    "You are an expert podcast analyst, content strategist, and SEO specialist. Your goal is to extract deep insights, create platform-specific viral content, and provide structured analytics.\n\nYOUTUBE SHORTS RULES:\n- youtubeShort.hook: A punchy 1-2 sentence opening line (under 10 seconds spoken) that grabs attention immediately. Start with a bold claim, surprising stat, or provocative question from the episode.\n- youtubeShort.script: A 30-60 second spoken script (150-200 words) structured for vertical video. Use short sentences, natural pauses, and build to a punchline or key insight. Write it as if the host is speaking directly to camera.\n- youtubeShort.caption: The YouTube Shorts caption/description (under 100 characters) — concise, curiosity-driven, with a CTA like 'Full episode in bio'.\n- youtubeShort.hashtags: 3-5 relevant hashtags (without the # symbol) for YouTube Shorts discovery.\n\nTIKTOK / REELS RULES:\n- Generate exactly 3 short-form video ideas in tiktokReels array.\n- Each idea must have: title (catchy video title), visual (describe exactly what should be shown on screen — b-roll, talking head, text animations, transitions), textOverlay (the exact words to display on screen as text overlay — punchy, 2-8 words per line, designed for fast reading), and caption (post caption with hashtags).\n- Each idea should highlight a different angle or moment from the episode.\n- Write for vertical 9:16 video, 15-60 seconds, designed for maximum engagement and shareability.";
 
   const s = payload.settings;
   if (s) {
@@ -119,8 +119,29 @@ export async function analyzeWithGemini(payload: {
         properties: {
           linkedinPost: { type: Type.STRING },
           twitterThread: { type: Type.ARRAY, items: { type: Type.STRING } },
-          tiktokScript: { type: Type.STRING },
-          youtubeDescription: { type: Type.STRING },
+          tiktokReels: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                visual: { type: Type.STRING },
+                textOverlay: { type: Type.STRING },
+                caption: { type: Type.STRING },
+              },
+              required: ["title", "visual", "textOverlay", "caption"],
+            },
+          },
+          youtubeShort: {
+            type: Type.OBJECT,
+            properties: {
+              hook: { type: Type.STRING },
+              script: { type: Type.STRING },
+              caption: { type: Type.STRING },
+              hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+            required: ["hook", "script", "caption", "hashtags"],
+          },
           emailNewsletter: {
             type: Type.OBJECT,
             properties: {
@@ -130,24 +151,15 @@ export async function analyzeWithGemini(payload: {
             required: ["subject", "body"],
           },
           mediumArticle: { type: Type.STRING },
-          newsletterTeaser: {
-            type: Type.OBJECT,
-            properties: {
-              subject: { type: Type.STRING },
-              body: { type: Type.STRING },
-            },
-            required: ["subject", "body"],
-          },
           facebookPost: { type: Type.STRING },
         },
         required: [
           "linkedinPost",
           "twitterThread",
-          "tiktokScript",
-          "youtubeDescription",
+          "tiktokReels",
+          "youtubeShort",
           "emailNewsletter",
           "mediumArticle",
-          "newsletterTeaser",
           "facebookPost",
         ],
       },

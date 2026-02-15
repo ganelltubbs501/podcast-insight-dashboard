@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 import { Transcript, Comment, WorkflowStatus, UsageMetrics } from "../types";
+import { getUsage } from "./backend";
 
 /**
  * Helpers
@@ -205,17 +206,25 @@ export async function addCommentToTranscript(
 }
 
 /**
- * Basic usage metrics (client-side). You can make this smarter later.
+ * Usage metrics — merges real backend limits with transcript count.
  */
 export async function getUsageMetrics(): Promise<UsageMetrics> {
-  const list = await getTranscripts();
-  const used = list.length;
+  const [list, backendUsage] = await Promise.all([
+    getTranscripts(),
+    getUsage().catch(() => null),
+  ]);
+  const used = backendUsage?.usage?.analyses ?? list.length;
+  const quota = backendUsage?.limits?.analysesPerCycle ?? null; // null = unlimited
+  const cycleEnd = backendUsage?.cycleEnd
+    ? new Date(backendUsage.cycleEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : 'Next month';
 
   return {
     transcriptsUsed: used,
-    transcriptQuota: 100,
-    quotaResetDate: "Next month",
+    transcriptQuota: quota === null ? 0 : quota, // 0 when unlimited — consumers must check isUnlimited
+    quotaResetDate: cycleEnd,
     hoursSaved: Math.round(used * 0.5),
+    isUnlimited: backendUsage?.isUnlimited ?? false,
   } as UsageMetrics;
 }
 

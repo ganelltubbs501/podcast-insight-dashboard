@@ -292,7 +292,7 @@ export const downloadAnalyticsReport = async (stats: UsageMetrics) => {
         doc.setFontSize(10); doc.setTextColor(100, 100, 100);
         doc.text("TRANSCRIPTS PROCESSED", margin + 5, yPos + 10);
         doc.setFontSize(16); doc.setTextColor(0, 0, 0);
-        doc.text(`${stats.transcriptsUsed} / ${stats.transcriptQuota}`, margin + 5, yPos + 22);
+        doc.text(`${stats.transcriptsUsed} / ${stats.isUnlimited ? 'Unlimited' : stats.transcriptQuota}`, margin + 5, yPos + 22);
 
         // Box 2: ROI
         doc.roundedRect(margin + boxWidth + margin, yPos, boxWidth, 30, 3, 3, 'FD');
@@ -409,8 +409,18 @@ export const downloadDOCX = async (transcript: Transcript) => {
          sections.push(createText(`${i+1}. ${t}`));
       });
 
-      sections.push(createHeading("TikTok Script", HeadingLevel.HEADING_3));
-      sections.push(createText(result.socialContent.tiktokScript));
+      sections.push(createHeading("TikTok / Reels", HeadingLevel.HEADING_3));
+      const reels = result.socialContent.tiktokReels || (result.socialContent as any).tiktokScript;
+      if (typeof reels === 'string') {
+        sections.push(createText(reels));
+      } else if (Array.isArray(reels)) {
+        reels.forEach((r: any, i: number) => {
+          sections.push(createText(`Video ${i + 1}: ${r.title}`, true));
+          sections.push(createText(`Visual: ${r.visual}`));
+          sections.push(createText(`Text Overlay: ${r.textOverlay}`));
+          sections.push(createText(`Caption: ${r.caption}`));
+        });
+      }
 
       sections.push(createHeading("Email Newsletter", HeadingLevel.HEADING_3));
       sections.push(createText(`Subject: ${result.socialContent.emailNewsletter.subject}`, true));

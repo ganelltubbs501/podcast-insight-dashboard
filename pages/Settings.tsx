@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter, Mail, Upload, Trash2, Users, FileSpreadsheet } from 'lucide-react';
+import { Linkedin, Facebook, Check, X, AlertCircle, ExternalLink, Loader2, Unplug, Rss, Podcast, Clock, Twitter, Mail, Upload, Trash2, Users, FileSpreadsheet, CreditCard, ChevronRight } from 'lucide-react';
 import { getLinkedInStatus, connectLinkedIn, disconnectLinkedIn } from '../services/linkedin';
 import { getTwitterStatus, connectTwitter, disconnectTwitter, TwitterStatus } from '../services/twitter';
 import { getAnalyticsSources, disconnectPodcast } from '../services/podcast';
@@ -600,6 +600,23 @@ const Settings: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* Billing & Plan */}
+      <div
+        onClick={() => navigate('/settings/billing')}
+        className="bg-gray-100 rounded-xl border border-gray-300 shadow-sm p-5 mb-6 flex items-center justify-between cursor-pointer hover:bg-gray-200 transition"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+            <CreditCard className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold text-textPrimary">Billing & Plan</h2>
+            <p className="text-sm text-textMuted">Manage your subscription, view usage, and upgrade</p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-textMuted" />
+      </div>
 
       {/* Connected Accounts Section */}
       <div className="bg-gray-100 rounded-xl border border-gray-300 shadow-sm">

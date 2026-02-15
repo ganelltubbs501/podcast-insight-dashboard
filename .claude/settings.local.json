@@ -83,7 +83,10 @@
       "Bash(tr:*)",
       "Bash(gcloud run revisions list:*)",
       "Bash(gcloud logging read:*)",
-      "Bash(gcloud run services delete:*)"
+      "Bash(gcloud run services delete:*)",
+      "Bash(npx vite build:*)",
+      "Read(//c/Users/ganel/OneDrive/Desktop/AI/**)",
+      "Bash(gcloud projects list:*)"
     ]
   }
 }

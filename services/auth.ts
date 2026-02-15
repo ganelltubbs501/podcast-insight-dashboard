@@ -1,12 +1,14 @@
 import { supabase } from "../lib/supabaseClient";
 import { User } from "../types";
 
-function mapUser(u: any, profileName?: string | null): User {
+function mapUser(u: any, profileName?: string | null, plan?: string, betaExpiresAt?: string | null, graceExpiresAt?: string | null): User {
   return {
     id: u.id,
     email: u.email ?? "",
     name: profileName || (u.email ?? "user").split("@")[0],
-    plan: "Free",
+    plan: (plan as User['plan']) || "free",
+    betaExpiresAt: betaExpiresAt ?? null,
+    graceExpiresAt: graceExpiresAt ?? null,
     role: "Owner",
   };
 }

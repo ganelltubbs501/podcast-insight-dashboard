@@ -27,12 +27,17 @@ const FAQItem: React.FC<{ question: string; answer: React.ReactNode }> = ({ ques
 const PricingSection: React.FC<{ linkMode: 'href' | 'onClick'; onLogin?: () => void }> = ({ linkMode, onLogin }) => {
   const [annual, setAnnual] = useState(true);
 
-  const CtaLink: React.FC<{ className: string; children: React.ReactNode }> = ({ className, children }) =>
-    linkMode === 'href' ? (
-      <a href={APP_SIGNUP_URL} className={className}>{children}</a>
+  const CtaLink: React.FC<{ className: string; children: React.ReactNode; href?: string }> = ({ className, children, href }) => {
+    const url = href || APP_SIGNUP_URL;
+    return linkMode === 'href' ? (
+      <a href={url} className={className}>{children}</a>
     ) : (
-      <button onClick={onLogin} className={className}>{children}</button>
+      <button onClick={() => { if (href) { window.location.href = href; } else { onLogin?.(); } }} className={className}>{children}</button>
     );
+  };
+
+  const checkoutUrl = (plan: string) =>
+    `${APP_SIGNUP_URL}?plan=${plan}&interval=${annual ? 'yearly' : 'monthly'}`;
 
   return (
     <section id="pricing" className="py-20 bg-gray-100">
@@ -88,21 +93,23 @@ const PricingSection: React.FC<{ linkMode: 'href' | 'onClick'; onLogin?: () => v
             </CtaLink>
           </div>
 
-          {/* Beta Test — Free */}
+          {/* Beta Test — All Growth features free for 30 days */}
           <div className="bg-gray-50 p-6 rounded-2xl border-2 border-green-600 relative flex flex-col">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full">BETA ACCESS</div>
             <h3 className="text-xl font-bold text-gray-900 mt-2">Beta Test</h3>
             <p className="text-4xl font-extrabold text-gray-900 mt-3">Free</p>
-            <p className="text-sm text-gray-500 mt-1 mb-5">No credit card required</p>
+            <p className="text-sm text-gray-500 mt-1 mb-5">All Growth features &mdash; 30 days</p>
             <ul className="space-y-3 mb-8 flex-1">
               {[
-                'Upload & analyze transcripts',
-                'Generate LinkedIn posts',
-                'Generate newsletter content',
+                'Unlimited transcript analyses',
+                'Generate & schedule LinkedIn posts',
+                'Generate & schedule newsletters',
                 'Email series drafting',
+                'SendGrid & Kit integrations',
+                'Advanced email scheduling',
+                'Team access & role permissions',
                 'Content calendar',
-                'Gmail integration',
-                '1 user',
+                'Priority support',
               ].map((f) => (
                 <li key={f} className="flex items-start gap-2 text-sm text-gray-700">
                   <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
@@ -147,8 +154,8 @@ const PricingSection: React.FC<{ linkMode: 'href' | 'onClick'; onLogin?: () => v
             </ul>
             <p className="text-xs text-gray-500 italic mb-4">Replaces 5&ndash;10 hours of manual posting per month.</p>
             <p className="text-xs text-gray-500 mb-3 text-center">No contracts. Cancel anytime.</p>
-            <CtaLink className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
-              Get Started
+            <CtaLink href={checkoutUrl('starter')} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+              Start 14-Day Free Trial
             </CtaLink>
           </div>
 
@@ -182,8 +189,8 @@ const PricingSection: React.FC<{ linkMode: 'href' | 'onClick'; onLogin?: () => v
               ))}
             </ul>
             <p className="text-xs text-gray-500 italic mb-4">Replaces a VA + email automation tool stack.</p>
-            <CtaLink className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 transition text-center block">
-              Start Free Trial
+            <CtaLink href={checkoutUrl('pro')} className="w-full py-3 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 transition text-center block">
+              Start 14-Day Free Trial
             </CtaLink>
           </div>
 
@@ -219,8 +226,8 @@ const PricingSection: React.FC<{ linkMode: 'href' | 'onClick'; onLogin?: () => v
               ))}
             </ul>
             <p className="text-xs text-gray-500 italic mb-4">Replaces internal content coordination overhead.</p>
-            <CtaLink className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
-              Contact Sales
+            <CtaLink href={checkoutUrl('growth')} className="w-full py-3 bg-gray-200 text-gray-900 font-bold rounded-lg hover:bg-gray-300 transition text-center block">
+              Start 14-Day Free Trial
             </CtaLink>
           </div>
         </div>
@@ -522,11 +529,12 @@ const LandingPageStatic: React.FC = () => {
               </thead>
               <tbody className="text-gray-700">
                 {[
-                  ['Transcript Analysis', '5/mo', 'Unlimited', 'Unlimited', 'Unlimited', 'Unlimited'],
-                  ['Auto Publishing', '\u2014', '\u2014', '\u2705', '\u2705', '\u2705'],
-                  ['CRM Integrations', 'Gmail', 'Gmail', 'Gmail', 'Gmail + SendGrid + Kit', 'All'],
-                  ['Team Access', '\u2014', '\u2014', '\u2014', '3 seats', 'Expanded'],
-                  ['Scheduling', 'Basic', 'Basic', 'Full', 'Advanced', 'Advanced'],
+                  ['Transcript Analysis', '3/cycle', 'Unlimited', '10/cycle', '30/cycle', '150/cycle'],
+                  ['Scheduled Posts', '5/cycle', 'Unlimited', '20/cycle', '75/cycle', '400/cycle'],
+                  ['Auto Publishing', '\u2014', '\u2705', '\u2705', '\u2705', '\u2705'],
+                  ['CRM Integrations', 'Gmail', 'All', 'Gmail', 'Gmail + SendGrid + Kit', 'All'],
+                  ['Team Access', '\u2014', 'Expanded', '1 user', '3 seats', 'Expanded'],
+                  ['Scheduling', 'Basic', 'Advanced', 'Full', 'Advanced', 'Advanced'],
                 ].map(([feature, ...values]) => (
                   <tr key={feature} className="border-b border-gray-200">
                     <td className="py-3 pr-4 font-medium text-gray-900">{feature}</td>

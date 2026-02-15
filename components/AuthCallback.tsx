@@ -9,15 +9,41 @@ export default function AuthCallback() {
   useEffect(() => {
     (async () => {
       try {
-        // Get the full URL hash which contains the tokens
+        const search = window.location.search || "";
+        const searchParams = new URLSearchParams(search);
+        const pkceCode = searchParams.get("code");
+        const type = searchParams.get("type");
+
+        // Get the full URL hash which contains the tokens (implicit flow)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const accessToken = hashParams.get("access_token");
         const refreshToken = hashParams.get("refresh_token");
-        const type = hashParams.get("type");
+        const hashType = hashParams.get("type");
+        const effectiveType = type || hashType;
 
-        console.log("AuthCallback: type=", type, "hasAccessToken=", !!accessToken);
+        console.log("AuthCallback: type=", effectiveType, "hasAccessToken=", !!accessToken, "hasPkceCode=", !!pkceCode);
 
-        // If we have tokens in the URL (invite/recovery link), set the session
+        // PKCE flow: exchange code for session
+        if (pkceCode) {
+          setStatus("Setting up your session...");
+          const { data, error } = await supabase.auth.exchangeCodeForSession(pkceCode);
+
+          if (error) {
+            console.error("PKCE exchange error:", error);
+            setStatus("Error: " + error.message);
+            setTimeout(() => navigate("/login"), 2000);
+            return;
+          }
+
+          if (data?.session) {
+            console.log("PKCE session established, redirecting to set-password");
+            const target = effectiveType === "recovery" ? "/set-password?type=recovery" : "/set-password";
+            navigate(target, { replace: true });
+            return;
+          }
+        }
+
+        // Implicit flow: tokens in URL hash
         if (accessToken && refreshToken) {
           setStatus("Setting up your session...");
           const { data, error } = await supabase.auth.setSession({
@@ -34,7 +60,7 @@ export default function AuthCallback() {
 
           if (data?.session) {
             console.log("Session established, redirecting to set-password");
-            const target = type === "recovery" ? "/set-password?type=recovery" : "/set-password";
+            const target = effectiveType === "recovery" ? "/set-password?type=recovery" : "/set-password";
             navigate(target, { replace: true });
             return;
           }
@@ -43,7 +69,7 @@ export default function AuthCallback() {
         // Check if we already have a session
         const { data: sessionData } = await supabase.auth.getSession();
         if (sessionData?.session) {
-          const target = type === "recovery" ? "/set-password?type=recovery" : "/set-password";
+          const target = effectiveType === "recovery" ? "/set-password?type=recovery" : "/set-password";
           navigate(target, { replace: true });
           return;
         }

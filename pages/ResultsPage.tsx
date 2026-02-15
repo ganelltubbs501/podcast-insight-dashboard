@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ArrowLeft, Check, Copy, Download, Share2, Quote, FileText, BarChart3, Clock,
-  Linkedin, Twitter, Video, Mail, Youtube, FileType, Send, File, Link2, Loader2,
+  Linkedin, Twitter, Video, Mail, Youtube, FileType, File, Link2, Loader2,
   Sparkles, Activity, MessageSquare, ChevronDown, Calendar as CalendarIcon,
   DollarSign, Target, Briefcase, Calculator, ExternalLink, Settings, FileJson,
   Table, Facebook
@@ -53,7 +53,7 @@ interface ResultsPageProps {
 }
 
 type TabType = 'overview' | 'platform' | 'blog' | 'speakers' | 'collaboration' | 'monetization' | 'repurpose';
-type PlatformType = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium' | 'teaser' | 'facebook';
+type PlatformType = 'linkedin' | 'twitter' | 'tiktok' | 'youtube' | 'email' | 'medium' | 'facebook';
 type BlogSubTab = 'article' | 'shownotes' | 'seo' | 'faq';
 
 const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
@@ -374,11 +374,18 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     if (platform === 'linkedin') return socialContent.linkedinPost;
     if (platform === 'twitter') return socialContent.twitterThread?.join('\n\n') || '';
     if (platform === 'facebook') return socialContent.facebookPost;
-    if (platform === 'tiktok') return socialContent.tiktokScript;
-    if (platform === 'youtube') return socialContent.youtubeDescription;
+    if (platform === 'tiktok') {
+      const reels = socialContent.tiktokReels || socialContent.tiktokScript;
+      if (typeof reels === 'string') return reels;
+      return reels.map((r: any, i: number) => `VIDEO ${i + 1}: ${r.title}\n\nVISUAL: ${r.visual}\n\nTEXT OVERLAY:\n${r.textOverlay}\n\nCAPTION: ${r.caption}`).join('\n\n---\n\n');
+    }
+    if (platform === 'youtube') {
+      const yt = socialContent.youtubeShort || socialContent.youtubeDescription;
+      if (typeof yt === 'string') return yt;
+      return `HOOK:\n${yt.hook}\n\nSCRIPT:\n${yt.script}\n\nCAPTION:\n${yt.caption}\n\nHASHTAGS:\n${yt.hashtags?.map((h: string) => `#${h}`).join(' ') || ''}`;
+    }
     if (platform === 'email') return `Subject: ${socialContent.emailNewsletter?.subject}\n\n${socialContent.emailNewsletter?.body}`;
     if (platform === 'medium') return socialContent.mediumArticle;
-    if (platform === 'teaser') return `Subject: ${socialContent.newsletterTeaser?.subject}\n\n${socialContent.newsletterTeaser?.body}`;
     return '';
   };
 
@@ -387,7 +394,6 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     twitter: { canSchedule: false },
     email: { canSchedule: true },
     medium: { canSchedule: true },
-    teaser: { canSchedule: false },
     facebook: { canSchedule: false },
     tiktok: { canSchedule: false },
     youtube: { canSchedule: false },
@@ -623,7 +629,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     try {
       const startDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
 
-      // Special handling for Twitter threads - schedule 1 tweet per day
+      // Special handling for X threads - schedule 1 post per day
       if (activePlatform === 'twitter' && transcript.result.socialContent.twitterThread && transcript.result.socialContent.twitterThread.length > 1) {
         const tweets = transcript.result.socialContent.twitterThread;
 
@@ -749,7 +755,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
         }));
 
         // Show success notification
-        const platformName = activePlatform === 'teaser' ? 'Newsletter Teaser' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1);
+        const platformName = activePlatform === 'twitter' ? 'X' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1);
         const defaultSuccessMessage = `✓ ${platformName} post scheduled for ${startDateTime.toLocaleDateString()} at ${startDateTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         const successMessage = mailchimpSuccessMessage || defaultSuccessMessage;
         setScheduleNotification({ message: successMessage, type: 'success' });
@@ -806,7 +812,7 @@ SEO KEYWORDS (Topics Covered):
 ${transcript.result.seo?.keywords?.join(', ') || 'Not available'}
 
 AUDIENCE TONE & SENTIMENT:
-Sentiment: ${transcript.result.sentiment?.label || 'N/A'} (${transcript.result.sentiment?.score || 'N/A'}/100)
+Sentiment: ${transcript.result.sentiment?.label || 'N/A'} (${transcript.result.sentiment?.score ? (transcript.result.sentiment.score <= 1 ? Math.round(transcript.result.sentiment.score * 100) : transcript.result.sentiment.score) + '%' : 'N/A'})
 Tone: ${transcript.result.sentiment?.tone || 'N/A'}
 
 TRANSCRIPT EXCERPT (First 1000 chars):
@@ -855,7 +861,7 @@ SEO KEYWORDS (Topics Covered):
 ${transcript.result.seo?.keywords?.join(', ') || 'Not available'}
 
 AUDIENCE TONE & SENTIMENT:
-Sentiment: ${transcript.result.sentiment?.label || 'N/A'} (${transcript.result.sentiment?.score || 'N/A'}/100)
+Sentiment: ${transcript.result.sentiment?.label || 'N/A'} (${transcript.result.sentiment?.score ? (transcript.result.sentiment.score <= 1 ? Math.round(transcript.result.sentiment.score * 100) : transcript.result.sentiment.score) + '%' : 'N/A'})
 Tone: ${transcript.result.sentiment?.tone || 'N/A'}
 
 TRANSCRIPT EXCERPT (First 1000 chars):
@@ -975,11 +981,10 @@ ${(transcript.content || '').substring(0, 1000)}
   const socialContent = result.socialContent || {
     linkedinPost: "No content generated.",
     twitterThread: [],
-    tiktokScript: "No content generated.",
-    youtubeDescription: "No content generated.",
+    tiktokReels: [],
+    youtubeShort: { hook: "", script: "", caption: "", hashtags: [] },
     emailNewsletter: { subject: "", body: "" },
     mediumArticle: "No content generated.",
-    newsletterTeaser: { subject: "", body: "" }
   };
 
   const seo = result.seo || {
@@ -991,13 +996,22 @@ ${(transcript.content || '').substring(0, 1000)}
     internalLinks: []
   };
 
-  const sentiment = result.sentiment || {
+  const rawSentiment = result.sentiment || {
     score: 50,
     label: "Neutral",
     emotionalKeywords: [],
     tone: "N/A",
     audiencePrediction: "N/A",
     timeline: []
+  };
+  // Normalize: Gemini returns 0–1, display as 0–100
+  const sentiment = {
+    ...rawSentiment,
+    score: rawSentiment.score <= 1 ? Math.round(rawSentiment.score * 100) : rawSentiment.score,
+    timeline: rawSentiment.timeline?.map(t => ({
+      ...t,
+      score: t.score <= 1 ? Math.round(t.score * 100) : t.score,
+    })) || [],
   };
 
   const repurposed = result.repurposed || {};
@@ -1929,11 +1943,14 @@ ${(transcript.content || '').substring(0, 1000)}
         </div>
 
         <div className="bg-gray-100 rounded-xl shadow-sm border border-gray-300 p-6">
-          <div className="flex justify-between items-center mb-6">
+          <div className="mb-6">
             <h2 className="text-lg font-bold text-textPrimary flex items-center gap-2">
               <Activity className="h-5 w-5 text-secondary" />
               Sentiment & Tone Analysis
             </h2>
+            <p className="text-xs text-textMuted mt-1">
+              AI analysis of the episode's emotional tone, language positivity, and audience engagement cues. Score reflects overall positivity from 0% (negative) to 100% (very positive), based on word choice, speaker energy, and conversational dynamics.
+            </p>
           </div>
 
           <div className="flex flex-col md:flex-row items-center gap-8 mb-8 border-b border-gray-300 pb-8">
@@ -2022,7 +2039,6 @@ ${(transcript.content || '').substring(0, 1000)}
             { id: 'youtube', icon: Youtube, label: 'YouTube Shorts' },
             { id: 'email', icon: Mail, label: 'Newsletter' },
             { id: 'medium', icon: FileType, label: 'Medium Article' },
-            { id: 'teaser', icon: Send, label: 'Teaser' },
           ].map((platform) => (
           <button
             key={platform.id}
@@ -2036,11 +2052,6 @@ ${(transcript.content || '').substring(0, 1000)}
             <span className="flex items-center gap-3">
               <platform.icon className="h-4 w-4" />
               <span>{platform.label}</span>
-              {!PLATFORM_FLAGS[platform.id as PlatformType]?.canSchedule && (
-                <span className="text-[10px] uppercase tracking-wide text-gray-600 bg-gray-200 border border-gray-300 font-semibold px-1.5 py-0.5 rounded">
-                  Coming soon
-                </span>
-              )}
             </span>
             {scheduledByPlatform[platform.id] && isSchedulingSupported(platform.id as PlatformType) && (
               <span className={`w-2 h-2 rounded-full ${activePlatform === platform.id ? 'bg-white' : 'bg-green-500'}`} title="Scheduled" />
@@ -2054,7 +2065,7 @@ ${(transcript.content || '').substring(0, 1000)}
           <div className="p-6 border-b border-gray-300 flex justify-between items-center bg-gray-50">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-textPrimary capitalize">{activePlatform.replace('teaser', 'Newsletter Teaser')}</h3>
+                <h3 className="font-bold text-textPrimary">{activePlatform === 'twitter' ? 'X' : activePlatform === 'tiktok' ? 'TikTok / Reels' : activePlatform === 'youtube' ? 'YouTube Shorts' : activePlatform === 'email' ? 'Newsletter' : activePlatform === 'medium' ? 'Medium Article' : activePlatform.charAt(0).toUpperCase() + activePlatform.slice(1)}</h3>
                 {scheduledByPlatform[activePlatform] && isSchedulingSupported(activePlatform) && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full border border-green-200">
                     <CalendarIcon className="h-3 w-3" />
@@ -2065,11 +2076,7 @@ ${(transcript.content || '').substring(0, 1000)}
               <p className="text-xs text-textMuted mt-1">Optimized content ready to post</p>
             </div>
             <div className="flex items-center gap-2">
-              {!isSchedulingSupported(activePlatform) && (
-                <span className="text-xs text-amber-900 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-lg font-semibold">
-                  {getSchedulingBadgeLabel(activePlatform)}
-                </span>
-              )}
+              {!['tiktok', 'youtube', 'twitter', 'facebook'].includes(activePlatform) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2081,6 +2088,7 @@ ${(transcript.content || '').substring(0, 1000)}
               >
                 {(isCheckingLinkedIn || isCheckingX || isCheckingMailchimp || isCheckingKit) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarIcon className="h-4 w-4" />} {scheduledByPlatform[activePlatform] ? 'Reschedule' : 'Schedule'}
               </button>
+              )}
               <button
                 onClick={() => {
                   const content = getContentForPlatform(activePlatform, socialContent);
@@ -2105,25 +2113,96 @@ ${(transcript.content || '').substring(0, 1000)}
                   </div>
                 ))}
               </div>
-            ) : (activePlatform === 'email' || activePlatform === 'teaser') ? (
+            ) : (activePlatform === 'email') ? (
               <div className="space-y-3">
                 <div className="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
                   <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Subject</span>
                   <p className="text-sm text-textPrimary font-medium mt-1">
-                    {activePlatform === 'email' ? socialContent.emailNewsletter?.subject : socialContent.newsletterTeaser?.subject}
+                    {socialContent.emailNewsletter?.subject}
                   </p>
                 </div>
-                <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
-                  {activePlatform === 'email' ? socialContent.emailNewsletter?.body : socialContent.newsletterTeaser?.body}
-                </pre>
+                <div className="space-y-3">
+                  {socialContent.emailNewsletter?.body?.split('\n').map((para: string, i: number) => {
+                    const trimmed = para.trim();
+                    if (!trimmed) return null;
+                    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return <li key={i} className="ml-4 text-sm text-textSecondary list-disc">{trimmed.slice(2)}</li>;
+                    return <p key={i} className="text-sm text-textSecondary leading-relaxed">{trimmed}</p>;
+                  })}
+                </div>
+              </div>
+            ) : activePlatform === 'youtube' ? (() => {
+              const yt = socialContent.youtubeShort || socialContent.youtubeDescription;
+              if (typeof yt === 'string') return <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">{yt}</pre>;
+              return (
+                <div className="space-y-4">
+                  <div className="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
+                    <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Hook</span>
+                    <p className="text-sm text-textPrimary font-medium mt-1">{yt.hook}</p>
+                  </div>
+                  <div className="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
+                    <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Script</span>
+                    <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed mt-1">{yt.script}</pre>
+                  </div>
+                  <div className="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
+                    <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Caption</span>
+                    <p className="text-sm text-textSecondary mt-1">{yt.caption}</p>
+                  </div>
+                  {yt.hashtags?.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {yt.hashtags.map((tag: string, i: number) => (
+                        <span key={i} className="px-2.5 py-1 bg-red-50 text-red-700 text-xs font-medium rounded-full border border-red-200">#{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })() : activePlatform === 'tiktok' ? (() => {
+              const reels = socialContent.tiktokReels || socialContent.tiktokScript;
+              if (typeof reels === 'string') return <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">{reels}</pre>;
+              if (!reels?.length) return <p className="text-textMuted text-sm">No content generated.</p>;
+              return (
+                <div className="space-y-6">
+                  {reels.map((reel: any, i: number) => (
+                    <div key={i} className="bg-gray-100 border border-gray-300 rounded-xl overflow-hidden">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-300 flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                        <span className="font-semibold text-sm text-textPrimary">{reel.title}</span>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        <div>
+                          <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Visual</span>
+                          <p className="text-sm text-textSecondary mt-1">{reel.visual}</p>
+                        </div>
+                        <div className="rounded-lg px-4 py-3" style={{ backgroundColor: '#111827' }}>
+                          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#9ca3af' }}>Text Overlay</span>
+                          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed mt-1" style={{ color: '#ffffff' }}>{reel.textOverlay}</pre>
+                        </div>
+                        <div>
+                          <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Caption</span>
+                          <p className="text-sm text-textSecondary mt-1">{reel.caption}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })() : activePlatform === 'medium' ? (
+              <div className="prose prose-sm max-w-none text-textSecondary">
+                {socialContent.mediumArticle?.split('\n').map((para: string, i: number) => {
+                  const trimmed = para.trim();
+                  if (!trimmed) return null;
+                  if (trimmed.startsWith('# ')) return <h1 key={i} className="text-xl font-bold text-textPrimary mt-6 mb-2">{trimmed.slice(2)}</h1>;
+                  if (trimmed.startsWith('## ')) return <h2 key={i} className="text-lg font-bold text-textPrimary mt-5 mb-2">{trimmed.slice(3)}</h2>;
+                  if (trimmed.startsWith('### ')) return <h3 key={i} className="text-base font-bold text-textPrimary mt-4 mb-1">{trimmed.slice(4)}</h3>;
+                  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return <li key={i} className="ml-4 text-sm text-textSecondary list-disc">{trimmed.slice(2)}</li>;
+                  if (trimmed.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-textMuted text-sm my-2">{trimmed.slice(2)}</blockquote>;
+                  return <p key={i} className="text-sm text-textSecondary leading-relaxed mb-3">{trimmed}</p>;
+                })}
               </div>
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-textSecondary text-sm leading-relaxed">
                 {activePlatform === 'linkedin' && socialContent.linkedinPost}
                 {activePlatform === 'facebook' && socialContent.facebookPost}
-                {activePlatform === 'tiktok' && socialContent.tiktokScript}
-                {activePlatform === 'youtube' && socialContent.youtubeDescription}
-                {activePlatform === 'medium' && socialContent.mediumArticle}
               </pre>
             )}
           </div>
@@ -2613,7 +2692,7 @@ ${(transcript.content || '').substring(0, 1000)}
               Choose a date and time to publish this {activePlatform === 'twitter' ? 'X' : activePlatform} post.
             </p>
 
-            {/* Twitter thread info */}
+            {/* X thread info */}
             {activePlatform === 'twitter' && transcript?.result?.socialContent?.twitterThread && transcript.result.socialContent.twitterThread.length > 1 && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
                 <p className="text-sm text-blue-800">
