@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { Copy, Check, Calendar, Clock, Loader2, ChevronDown, ChevronUp, Linkedin, Twitter, Facebook, Instagram } from 'lucide-react';
+import { Copy, Check, Calendar, Clock, Loader2, ChevronDown, ChevronUp, Linkedin, Twitter, Facebook, Instagram, X as CloseIcon } from 'lucide-react';
 import { schedulePost } from '../services/transcripts';
+import { getLinkedInStatus, getLinkedInAuthUrl } from '../services/linkedin';
 import { SocialCalendarItem, RepurposedContent, Transcript } from '../types';
 
 interface SocialCalendarViewProps {
@@ -17,9 +18,9 @@ interface SocialCalendarViewProps {
 // Only LinkedIn supports automated scheduling right now
 const platformToSchedulable: Record<string, string | null> = {
   'LinkedIn': 'linkedin',
-  'X': null,        // Coming soon
+  'X': null,
   'Twitter': null,  // Legacy name fallback
-  'Facebook': null, // Coming soon
+  'Facebook': null,
   'Instagram': null,
   'Instagram Stories': null,
 };
@@ -72,6 +73,12 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
   // Expanded days state
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([1]));
 
+  // Schedule modal state
+  const [showScheduleDayModal, setShowScheduleDayModal] = useState(false);
+  const [scheduleDayNumber, setScheduleDayNumber] = useState<number | null>(null);
+  const [scheduleDayDate, setScheduleDayDate] = useState('');
+  const [scheduleDayTime, setScheduleDayTime] = useState('09:00');
+
   // Group posts by day
   const postsByDay = useMemo(() => {
     if (!repurposed.socialCalendar) return {};
@@ -117,15 +124,49 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
     });
   };
 
-  // Schedule all posts for a specific day
-  const handleScheduleDay = async (dayNumber: number) => {
-    if (!transcript?.id) return;
+  // Open schedule day modal with LinkedIn check
+  const handleScheduleDayClick = async (dayNumber: number) => {
+    // Check if LinkedIn is connected
+    try {
+      const status = await getLinkedInStatus();
+      if (!status.connected) {
+        const confirmConnect = window.confirm(
+          'LinkedIn is not connected. Would you like to connect your LinkedIn account now to schedule posts?'
+        );
+        if (confirmConnect) {
+          const url = await getLinkedInAuthUrl();
+          window.location.href = url;
+        }
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to check LinkedIn status:', error);
+      setScheduleNotification({ 
+        message: 'Failed to verify LinkedIn connection. Please try again.', 
+        type: 'error' 
+      });
+      setTimeout(() => setScheduleNotification(null), 5000);
+      return;
+    }
 
+    // Open scheduling modal
+    setScheduleDayNumber(dayNumber);
+    const defaultDate = getDateForDay(dayNumber);
+    setScheduleDayDate(defaultDate.toISOString().split('T')[0]);
+    setScheduleDayTime(startTime);
+    setShowScheduleDayModal(true);
+  };
+
+  // Schedule all posts for a specific day
+  const handleScheduleDay = async () => {
+    if (!transcript?.id || scheduleDayNumber === null) return;
+
+    const dayNumber = scheduleDayNumber;
     const posts = postsByDay[dayNumber];
     if (!posts || posts.length === 0) return;
 
     setSchedulingDay(dayNumber);
-    const scheduledDate = getDateForDay(dayNumber).toISOString();
+    const scheduledDate = new Date(`${scheduleDayDate}T${scheduleDayTime}`).toISOString();
 
     let successCount = 0;
     let skipCount = 0;
@@ -161,10 +202,15 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
     }
 
     setSchedulingDay(null);
+    setShowScheduleDayModal(false);
 
     if (successCount > 0) {
       setScheduledDays((prev) => new Set([...prev, dayNumber]));
-      const dateStr = formatDate(getDateForDay(dayNumber));
+      const dateStr = new Date(`${scheduleDayDate}T${scheduleDayTime}`).toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      });
       let message = `Day ${dayNumber} scheduled for ${dateStr}: ${successCount} post${successCount > 1 ? 's' : ''} scheduled`;
       if (skipCount > 0) {
         message += `, ${skipCount} skipped (manual only)`;
@@ -181,6 +227,29 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
 
   // Schedule entire series
   const handleScheduleAll = async () => {
+    // Check if LinkedIn is connected
+    try {
+      const status = await getLinkedInStatus();
+      if (!status.connected) {
+        const confirmConnect = window.confirm(
+          'LinkedIn is not connected. Would you like to connect your LinkedIn account now to schedule posts?'
+        );
+        if (confirmConnect) {
+          const url = await getLinkedInAuthUrl();
+          window.location.href = url;
+        }
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to check LinkedIn status:', error);
+      setScheduleNotification({ 
+        message: 'Failed to verify LinkedIn connection. Please try again.', 
+        type: 'error' 
+      });
+      setTimeout(() => setScheduleNotification(null), 5000);
+      return;
+    }
+
     if (!transcript?.id || days.length === 0) return;
 
     setIsSchedulingAll(true);
@@ -253,9 +322,9 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
       <div>
         <div className="flex items-center justify-between mb-4">
           <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
-          <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">Back</button>
+          <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-200 border border-gray-300 rounded-md text-textSecondary text-sm">Back</button>
         </div>
-        <div className="p-6 text-center text-textMuted">No social calendar generated. Click "Social Calendar" above to generate.</div>
+        <div className="p-6 text-center text-textSecondary">No social calendar generated. Click "Social Calendar" above to generate.</div>
       </div>
     );
   }
@@ -266,7 +335,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
       <div className="flex items-center justify-between mb-4">
         <h4 className="font-semibold text-textPrimary">Social Calendar</h4>
         <div className="flex gap-2">
-          <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-100 border rounded-md">
+          <button onClick={() => setActiveRepurposeView('hub')} className="px-3 py-1 bg-gray-200 border border-gray-300 rounded-md text-textPrimary text-sm">
             Back
           </button>
           <button
@@ -274,7 +343,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
               e.stopPropagation();
               handleCopyJSON(repurposed.socialCalendar, 'copy-json');
             }}
-            className="px-3 py-1 bg-gray-100 border rounded-md"
+            className="px-3 py-1 bg-gray-200 border border-gray-300 rounded-md text-textPrimary text-sm"
           >
             {copiedSection === 'copy-json' ? 'Copied' : 'Copy JSON'}
           </button>
@@ -295,33 +364,33 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
       )}
 
       {/* Start Date/Time Picker */}
-      <div className="bg-linear-to-r from-primary/5 to-secondary/5 rounded-xl p-4 mb-6 border border-gray-200">
+      <div className="bg-gray-100 rounded-xl p-4 mb-6 border border-gray-300">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
-            <span className="font-medium text-textPrimary">Start Date:</span>
+            <span className="font-semibold text-textPrimary text-sm">Start Date:</span>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-textPrimary"
+              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-gray-200 text-textPrimary text-sm"
             />
           </div>
           <div className="flex items-center gap-2">
             <Clock className="h-5 w-5 text-primary" />
-            <span className="font-medium text-textPrimary">Time:</span>
+            <span className="font-semibold text-textPrimary text-sm">Time:</span>
             <input
               type="time"
               value={startTime}
               onChange={(e) => setStartTime(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-textPrimary"
+              className="px-3 py-1.5 border border-gray-300 rounded-lg bg-gray-200 text-textPrimary text-sm"
             />
           </div>
           <div className="flex-1"></div>
           <button
             onClick={handleScheduleAll}
             disabled={isSchedulingAll || days.every((d) => scheduledDays.has(d))}
-            className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2 text-sm"
           >
             {isSchedulingAll ? (
               <>
@@ -341,7 +410,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
             )}
           </button>
         </div>
-        <p className="text-sm text-textMuted mt-3">
+        <p className="text-sm text-textPrimary mt-3">
           Day 1 LinkedIn posts will be scheduled for {startDate} at {startTime}. Each subsequent day adds 24 hours. Other platforms require manual posting.
         </p>
       </div>
@@ -360,27 +429,27 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
           return (
             <div
               key={day}
-              className={`rounded-xl border ${isScheduled ? 'border-green-300 bg-green-50/30' : 'border-gray-200 bg-white'}`}
+              className={`rounded-xl border ${isScheduled ? 'border-green-300 bg-green-50/30' : 'border-gray-300 bg-gray-100'}`}
             >
               {/* Day Header */}
               <button
                 onClick={() => toggleDay(day)}
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50/50 transition rounded-t-xl"
+                className="w-full flex items-center justify-between p-4 hover:bg-gray-200/50 transition rounded-t-xl"
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-lg ${isScheduled ? 'bg-green-100 text-green-700' : 'bg-primary/10 text-primary'}`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-lg ${isScheduled ? 'bg-green-100 text-green-800' : 'bg-primary/20 text-primary'}`}>
                     {day}
                   </div>
                   <div className="text-left">
                     <div className="font-semibold text-textPrimary flex items-center gap-2">
                       Day {day}
                       {isScheduled && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-green-100 text-green-800 font-semibold px-2 py-0.5 rounded-full">
                           Scheduled
                         </span>
                       )}
                     </div>
-                    <div className="text-sm text-textMuted">
+                    <div className="text-sm text-textPrimary">
                       {formatDate(date)} • {posts.length} posts
                     </div>
                   </div>
@@ -391,24 +460,24 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
                     {([...new Set(posts.map((p) => p.platform))] as string[]).map((platform) => (
                       <div
                         key={platform}
-                        className={`p-1.5 rounded ${platformToSchedulable[platform] ? 'bg-gray-100' : 'bg-yellow-50'}`}
+                        className="p-1.5 rounded bg-gray-200"
                         title={platformToSchedulable[platform] ? getPlatformDisplayName(platform) : `${getPlatformDisplayName(platform)} (Manual only)`}
                       >
-                        <PlatformIcon platform={platform} className="h-4 w-4 text-gray-600" />
+                        <PlatformIcon platform={platform} className="h-4 w-4 text-textPrimary" />
                       </div>
                     ))}
                   </div>
-                  {isExpanded ? <ChevronUp className="h-5 w-5 text-textMuted" /> : <ChevronDown className="h-5 w-5 text-textMuted" />}
+                  {isExpanded ? <ChevronUp className="h-5 w-5 text-textPrimary" /> : <ChevronDown className="h-5 w-5 text-textPrimary" />}
                 </div>
               </button>
 
               {/* Day Content */}
               {isExpanded && (
-                <div className="border-t border-gray-200 p-4">
+                <div className="border-t border-gray-300 p-4">
                   {/* Schedule Day Button */}
                   <div className="flex justify-end mb-4">
                     <button
-                      onClick={() => handleScheduleDay(day)}
+                      onClick={() => handleScheduleDayClick(day)}
                       disabled={isScheduling || isScheduled || schedulablePosts.length === 0}
                       className="px-3 py-1.5 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
                     >
@@ -438,30 +507,26 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
                       return (
                         <div
                           key={i}
-                          className={`p-3 rounded-lg border ${
-                            isSchedulable
-                              ? 'bg-gray-50 border-gray-200'
-                              : 'bg-yellow-50/50 border-yellow-200'
-                          }`}
+                          className="p-3 rounded-lg border bg-gray-200 border-gray-300"
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2">
-                              <PlatformIcon platform={post.platform} className="h-4 w-4" />
-                              <span className="font-medium text-textPrimary text-sm">{getPlatformDisplayName(post.platform)}</span>
+                              <PlatformIcon platform={post.platform} className="h-4 w-4 text-textPrimary" />
+                              <span className="font-semibold text-textPrimary text-sm">{getPlatformDisplayName(post.platform)}</span>
                               {!isSchedulable && (
-                                <span className="text-xs bg-gray-200 text-gray-700 font-medium px-1.5 py-0.5 rounded">
+                                <span className="text-xs bg-gray-300 text-textPrimary font-bold px-1.5 py-0.5 rounded">
                                   Manual only
                                 </span>
                               )}
                             </div>
-                            <span className="text-xs text-textMuted bg-gray-100 px-2 py-0.5 rounded">
+                            <span className="text-xs text-textPrimary bg-gray-300 font-semibold px-2 py-0.5 rounded">
                               {post.type}
                             </span>
                           </div>
-                          <p className="text-sm text-textSecondary mb-2 line-clamp-3">{post.content}</p>
+                          <p className="text-sm text-textPrimary mb-2 line-clamp-3 leading-relaxed">{post.content}</p>
                           <button
                             onClick={() => handleCopy(post.content)}
-                            className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                            className="text-xs text-primary hover:text-primary/80 font-medium flex items-center gap-1"
                           >
                             <Copy className="h-3 w-3" />
                             Copy
@@ -473,7 +538,7 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
 
                   {/* Manual Only Notice */}
                   {manualOnlyPosts.length > 0 && (
-                    <p className="text-xs text-textMuted mt-3">
+                    <p className="text-xs text-textSecondary mt-3">
                       * X, Facebook, Instagram, and Instagram Stories require manual posting. Copy the content and post directly to the platform.
                     </p>
                   )}
@@ -483,6 +548,101 @@ const SocialCalendarView: React.FC<SocialCalendarViewProps> = ({
           );
         })}
       </div>
+
+      {/* Schedule Day Modal */}
+      {showScheduleDayModal && scheduleDayNumber !== null && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowScheduleDayModal(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-primary" />
+                Schedule Day {scheduleDayNumber} LinkedIn Posts
+              </h3>
+              <button
+                onClick={() => setShowScheduleDayModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                Schedule {postsByDay[scheduleDayNumber]?.filter((p) => platformToSchedulable[p.platform]).length} LinkedIn post(s) to be published.
+              </p>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Schedule Date
+                </label>
+                <input
+                  type="date"
+                  value={scheduleDayDate}
+                  onChange={(e) => setScheduleDayDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Schedule Time
+                </label>
+                <input
+                  type="time"
+                  value={scheduleDayTime}
+                  onChange={(e) => setScheduleDayTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  <strong>Scheduled for:</strong> {new Date(`${scheduleDayDate}T${scheduleDayTime}`).toLocaleString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowScheduleDayModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-900 font-medium rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleScheduleDay}
+                disabled={schedulingDay !== null || !scheduleDayDate || !scheduleDayTime}
+                className="flex-1 px-4 py-2 bg-primary text-white font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {schedulingDay === scheduleDayNumber ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Scheduling...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Confirm Schedule
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

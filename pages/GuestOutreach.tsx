@@ -3,8 +3,20 @@ import { getGuests, addGuest, updateGuest, deleteGuest } from '../services/backe
 import { getTranscripts } from '../services/transcripts';
 import { suggestGuests, generateOutreachEmail } from '../services/geminiService';
 import { getGmailStatus, sendGmailEmail, GmailStatus } from '../services/gmail';
+import { getSendGridStatus, sendEmailViaSendGrid } from '../services/sendgrid';
+import { getKitStatus, sendKitEmail } from '../services/kit';
+import { getMailchimpStatus, sendMailchimpEmail } from '../services/mailchimp';
 import { Guest, Transcript } from '../types';
-import { Users, Mail, Search, Plus, UserCheck, Trash2, ExternalLink, Loader2, Sparkles, X, Copy, Check, Send, AlertCircle } from 'lucide-react';
+import { Users, Mail, Search, Plus, UserCheck, Trash2, ExternalLink, Loader2, Sparkles, X, Copy, Check, Send, AlertCircle, ChevronDown } from 'lucide-react';
+
+type EmailProvider = 'gmail' | 'sendgrid' | 'kit' | 'mailchimp';
+
+interface ProviderStatus {
+  id: EmailProvider;
+  label: string;
+  connected: boolean;
+  canSend: boolean; // Can send individual emails (vs list-only)
+}
 
 const GuestOutreach: React.FC = () => {
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -26,16 +38,19 @@ const GuestOutreach: React.FC = () => {
   const [emailDraft, setEmailDraft] = useState<{subject: string, body: string} | null>(null);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
-  // Gmail State
-  const [gmail, setGmail] = useState<GmailStatus | null>(null);
-  const [isSendingGmail, setIsSendingGmail] = useState(false);
-  const [gmailSent, setGmailSent] = useState(false);
-  const [gmailError, setGmailError] = useState<string | null>(null);
+  // Email Provider State
+  const [providers, setProviders] = useState<ProviderStatus[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<EmailProvider | null>(null);
+  const [showProviderPicker, setShowProviderPicker] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [loadingProviders, setLoadingProviders] = useState(true);
 
   useEffect(() => {
     loadData();
-    loadGmailStatus();
+    loadProviderStatuses();
   }, []);
 
   const loadData = async () => {
@@ -47,15 +62,41 @@ const GuestOutreach: React.FC = () => {
     setLoading(false);
   };
 
-  const loadGmailStatus = async () => {
+  const loadProviderStatuses = async () => {
+    setLoadingProviders(true);
     try {
-      const status = await getGmailStatus();
-      setGmail(status);
+      const [gmailRes, sendgridRes, kitRes, mailchimpRes] = await Promise.all([
+        getGmailStatus().catch(() => ({ connected: false })),
+        getSendGridStatus().catch(() => ({ connected: false })),
+        getKitStatus().catch(() => ({ connected: false })),
+        getMailchimpStatus().catch(() => ({ connected: false })),
+      ]);
+
+      const statuses: ProviderStatus[] = [
+        { id: 'gmail', label: 'Gmail', connected: !!gmailRes?.connected, canSend: true },
+        { id: 'sendgrid', label: 'SendGrid', connected: !!sendgridRes?.connected, canSend: true },
+        { id: 'kit', label: 'Kit (ConvertKit)', connected: !!kitRes?.connected, canSend: true },
+        { id: 'mailchimp', label: 'Mailchimp', connected: !!mailchimpRes?.connected, canSend: true },
+      ];
+
+      setProviders(statuses);
+
+      // Auto-select first connected provider that can send
+      const defaultProvider = statuses.find(p => p.connected && p.canSend);
+      if (defaultProvider) {
+        setSelectedProvider(defaultProvider.id);
+      }
     } catch (err) {
-      console.error('Failed to load Gmail status:', err);
-      setGmail({ connected: false });
+      console.error('Failed to load provider statuses:', err);
+    } finally {
+      setLoadingProviders(false);
     }
   };
+
+  const connectedProviders = providers.filter(p => p.connected);
+  const sendableProviders = providers.filter(p => p.connected && p.canSend);
+  const hasAnyConnection = connectedProviders.length > 0;
+  const hasAnySendable = sendableProviders.length > 0;
 
   const handleFindGuests = async () => {
     if (!selectedTranscriptId) return;
@@ -178,33 +219,48 @@ const GuestOutreach: React.FC = () => {
     }
   };
 
-  const handleSendViaGmail = async () => {
-    if (!emailDraft || !selectedGuest) return;
+  const handleSendViaProvider = async () => {
+    if (!emailDraft || !selectedGuest || !selectedProvider) return;
 
     const to = selectedGuest.email || recipientEmail;
     if (!to) {
-      setGmailError('Please enter a recipient email address');
+      setSendError('Please enter a recipient email address');
       return;
     }
 
     try {
-      setIsSendingGmail(true);
-      setGmailError(null);
-      setGmailSent(false);
+      setIsSending(true);
+      setSendError(null);
+      setSendSuccess(false);
 
-      await sendGmailEmail(to, emailDraft.subject, emailDraft.body);
+      if (selectedProvider === 'gmail') {
+        await sendGmailEmail(to, emailDraft.subject, emailDraft.body);
+      } else if (selectedProvider === 'sendgrid') {
+        const result = await sendEmailViaSendGrid({
+          to,
+          subject: emailDraft.subject,
+          text: emailDraft.body,
+        });
+        if (!result.success) {
+          throw new Error(result.message || 'Failed to send via SendGrid');
+        }
+      } else if (selectedProvider === 'kit') {
+        await sendKitEmail(to, emailDraft.subject, emailDraft.body);
+      } else if (selectedProvider === 'mailchimp') {
+        await sendMailchimpEmail(to, emailDraft.subject, emailDraft.body);
+      }
 
-      setGmailSent(true);
-      setTimeout(() => setGmailSent(false), 3000);
+      setSendSuccess(true);
+      setTimeout(() => setSendSuccess(false), 3000);
 
       // Auto-update status to Contacted
       if (selectedGuest.status === 'Suggested') {
         handleStatusChange(selectedGuest.id, 'Contacted');
       }
     } catch (err: any) {
-      setGmailError(err.message || 'Failed to send email');
+      setSendError(err.message || 'Failed to send email');
     } finally {
-      setIsSendingGmail(false);
+      setIsSending(false);
     }
   };
 
@@ -439,7 +495,8 @@ const GuestOutreach: React.FC = () => {
                           placeholder={selectedGuest.email || "Enter recipient email..."}
                           value={recipientEmail}
                           onChange={(e) => setRecipientEmail(e.target.value)}
-                          className="w-full bg-gray-800 p-3 rounded border border-gray-600 text-white placeholder-gray-400 outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full p-3 rounded outline-none focus:ring-1 focus:ring-primary"
+                          style={{ backgroundColor: '#1A1A26', border: '1px solid #3A3A55', color: '#FFFFFF' }}
                         />
                         {selectedGuest.email && !recipientEmail && (
                           <p className="text-xs text-textMuted mt-1">Will use: {selectedGuest.email}</p>
@@ -447,28 +504,36 @@ const GuestOutreach: React.FC = () => {
                      </div>
                      <div>
                         <label className="block text-xs font-bold text-textMuted uppercase mb-1">Subject</label>
-                        <div className="bg-gray-800 p-3 rounded border border-gray-600 text-white font-medium">{emailDraft.subject}</div>
+                        <div className="p-3 rounded font-medium" style={{ backgroundColor: '#1A1A26', border: '1px solid #3A3A55', color: '#FFFFFF' }}>{emailDraft.subject}</div>
                      </div>
                      <div>
                         <label className="block text-xs font-bold text-textMuted uppercase mb-1">Body</label>
                         <textarea
-                          className="w-full h-40 bg-gray-800 p-3 rounded border border-gray-600 text-white text-sm outline-none focus:ring-1 focus:ring-primary"
+                          className="w-full h-40 p-3 rounded text-sm outline-none focus:ring-1 focus:ring-primary"
+                          style={{ backgroundColor: '#1A1A26', border: '1px solid #3A3A55', color: '#FFFFFF' }}
                           value={emailDraft.body}
                           readOnly
                         ></textarea>
                      </div>
 
-                     {/* Gmail Status & Error Messages */}
-                     {gmailError && (
+                     {/* Send Status Messages */}
+                     {sendError && (
                        <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
                          <AlertCircle className="h-4 w-4" />
-                         {gmailError}
+                         {sendError}
                        </div>
                      )}
-                     {gmailSent && (
+                     {sendSuccess && (
                        <div className="flex items-center gap-2 text-green-600 text-sm bg-green-50 p-3 rounded-lg">
                          <Check className="h-4 w-4" />
                          Email sent successfully!
+                       </div>
+                     )}
+
+                     {/* Connected Integrations Info */}
+                     {!loadingProviders && connectedProviders.length > 0 && (
+                       <div className="text-xs text-textMuted">
+                         Connected: {connectedProviders.map(p => p.label).join(', ')}
                        </div>
                      )}
 
@@ -481,33 +546,58 @@ const GuestOutreach: React.FC = () => {
                            {copiedEmail ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                            {copiedEmail ? "Copied!" : "Copy"}
                         </button>
-                        <button
-                           onClick={handleSendEmail}
-                           className="flex items-center gap-2 border border-gray-300 text-textSecondary px-4 py-2 rounded-lg hover:bg-gray-50 transition font-medium"
-                        >
-                           <ExternalLink className="h-4 w-4" />
-                           Open in Email App
-                        </button>
-                        {gmail?.connected ? (
-                          <button
-                             onClick={handleSendViaGmail}
-                             disabled={isSendingGmail}
-                             className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition font-medium disabled:opacity-50"
-                          >
-                             {isSendingGmail ? (
-                               <Loader2 className="h-4 w-4 animate-spin" />
-                             ) : (
-                               <Mail className="h-4 w-4" />
-                             )}
-                             {isSendingGmail ? "Sending..." : "Send via Gmail"}
-                          </button>
+                        {hasAnySendable ? (
+                          <div className="relative flex">
+                            <button
+                               onClick={handleSendViaProvider}
+                               disabled={isSending || !selectedProvider}
+                               className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-l-lg hover:bg-primary/90 transition font-medium disabled:opacity-50"
+                            >
+                               {isSending ? (
+                                 <Loader2 className="h-4 w-4 animate-spin" />
+                               ) : (
+                                 <Send className="h-4 w-4" />
+                               )}
+                               {isSending ? "Sending..." : `Send via ${providers.find(p => p.id === selectedProvider)?.label || 'Email'}`}
+                            </button>
+                            {sendableProviders.length > 1 && (
+                              <div className="relative">
+                                <button
+                                  onClick={() => setShowProviderPicker(!showProviderPicker)}
+                                  className="flex items-center bg-primary text-white px-2 py-2 rounded-r-lg hover:bg-primary/90 transition border-l border-white/20"
+                                >
+                                  <ChevronDown className="h-4 w-4" />
+                                </button>
+                                {showProviderPicker && (
+                                  <div className="absolute right-0 bottom-full mb-1 w-48 bg-gray-100 rounded-lg shadow-xl border border-gray-300 z-50 overflow-hidden">
+                                    {sendableProviders.map(p => (
+                                      <button
+                                        key={p.id}
+                                        onClick={() => {
+                                          setSelectedProvider(p.id);
+                                          setShowProviderPicker(false);
+                                        }}
+                                        className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 hover:bg-gray-200 transition ${
+                                          selectedProvider === p.id ? 'text-primary bg-gray-200' : 'text-textBody'
+                                        }`}
+                                      >
+                                        <Mail className="h-4 w-4" />
+                                        {p.label}
+                                        {selectedProvider === p.id && <Check className="h-3 w-3 ml-auto" />}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <a
                             href="/settings"
                             className="flex items-center gap-2 bg-gray-200 text-textMuted px-4 py-2 rounded-lg hover:bg-gray-300 transition font-medium text-sm"
                           >
                             <Mail className="h-4 w-4" />
-                            Connect Gmail
+                            Connect Email Provider
                           </a>
                         )}
                      </div>

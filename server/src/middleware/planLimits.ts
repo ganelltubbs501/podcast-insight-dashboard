@@ -11,13 +11,13 @@ const supabase = supabaseUrl && supabaseKey
   : null;
 
 // Per-plan limits (per 30-day billing cycle). null = unlimited.
-const PLAN_LIMITS: Record<string, { analysesPerCycle: number | null; scheduledPostsPerCycle: number | null; activeAutomations: number | null }> = {
-  free:        { analysesPerCycle: 3,    scheduledPostsPerCycle: 5,    activeAutomations: 1 },
-  starter:     { analysesPerCycle: 10,   scheduledPostsPerCycle: 20,   activeAutomations: 3 },
-  pro:         { analysesPerCycle: 30,   scheduledPostsPerCycle: 75,   activeAutomations: null },
-  growth:      { analysesPerCycle: 150,  scheduledPostsPerCycle: 400,  activeAutomations: null },
-  beta:        { analysesPerCycle: null, scheduledPostsPerCycle: null, activeAutomations: null },
-  beta_grace:  { analysesPerCycle: null, scheduledPostsPerCycle: null, activeAutomations: null },
+const PLAN_LIMITS: Record<string, { analysesPerCycle: number | null; scheduledPostsPerCycle: number | null; activeAutomations: number | null; teamMembers: number }> = {
+  free:        { analysesPerCycle: 3,    scheduledPostsPerCycle: 5,    activeAutomations: 1,    teamMembers: 0 },
+  starter:     { analysesPerCycle: 10,   scheduledPostsPerCycle: 20,   activeAutomations: 3,    teamMembers: 0 },
+  pro:         { analysesPerCycle: 30,   scheduledPostsPerCycle: 75,   activeAutomations: null, teamMembers: 3 },
+  growth:      { analysesPerCycle: 150,  scheduledPostsPerCycle: 400,  activeAutomations: null, teamMembers: 10 },
+  beta:        { analysesPerCycle: null, scheduledPostsPerCycle: null, activeAutomations: null, teamMembers: 10 },
+  beta_grace:  { analysesPerCycle: null, scheduledPostsPerCycle: null, activeAutomations: null, teamMembers: 10 },
 };
 
 function getLimits(plan: string) {
@@ -237,6 +237,10 @@ export async function enforceAutomationLimit(
     console.error('Automation limit check error:', err);
     next();
   }
+}
+
+export function getTeamMemberLimit(plan: string): number {
+  return getLimits(plan).teamMembers;
 }
 
 export { FREE_LIMITS, PLAN_LIMITS, getLimits };

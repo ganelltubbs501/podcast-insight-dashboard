@@ -34,7 +34,8 @@ import {
   scheduleNewsletterTrigger
 } from '../services/integrations';
 
-import { getSendGridLists, getSendGridTemplates, SendGridList, SendGridTemplate } from '../services/sendgrid';
+import { getSendGridLists, getSendGridTemplates, SendGridList, SendGridTemplate, getSendGridStatus } from '../services/sendgrid';
+import { getGmailStatus } from '../services/gmail';
 import { generateSponsorshipInsights, generateRepurposedContent, generateTruthBasedMonetization } from '../services/geminiService';
 import { Transcript, Comment, WorkflowStatus, Platform, RepurposedContent } from '../types';
 import { MonetizationInput } from '../types/monetization';
@@ -46,6 +47,7 @@ import { MonetizationInputModal } from '../components/MonetizationInputModal';
 import SeriesScheduleWizard from '../components/SeriesScheduleWizard';
 import SocialCalendarView from '../components/SocialCalendarView';
 import { DataConfidenceDisplay, CompactConfidenceIndicator } from '../components/DataConfidenceDisplay';
+import { MarkdownParagraph, MarkdownListItem, MarkdownHeading } from '../utils/markdownParser';
 
 interface ResultsPageProps {
   id: string;
@@ -393,7 +395,7 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
     linkedin: { canSchedule: true },
     twitter: { canSchedule: false },
     email: { canSchedule: true },
-    medium: { canSchedule: true },
+    medium: { canSchedule: false },
     facebook: { canSchedule: false },
     tiktok: { canSchedule: false },
     youtube: { canSchedule: false },
@@ -511,46 +513,41 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
       alert('X scheduling is coming soon. You can still generate content now.');
       return;
     }
-    // Check for Kit (email) platform
+    // Check for email platform — verify at least one email provider is connected
     if (activePlatform === 'email') {
-      if (emailProvider === 'mailchimp') {
-        setIsCheckingMailchimp(true);
-        try {
-          const status = await getMailchimpStatus();
-          if (!status.connected) {
-            if (status.revoked) {
-              setScheduleNotification({ message: 'Mailchimp access was revoked. Reconnect to continue.', type: 'error' });
-              setTimeout(() => setScheduleNotification(null), 5000);
-            }
-            setShowConnectMailchimpModal(true);
-            return;
-          }
-        } catch (e) {
-          console.error('Failed to check Mailchimp status:', e);
-          setShowConnectMailchimpModal(true);
+      setIsCheckingMailchimp(true);
+      try {
+        const [gmailStatus, sendgridStatus, kitStatus, mailchimpStatus] = await Promise.all([
+          getGmailStatus().catch(() => ({ connected: false })),
+          getSendGridStatus().catch(() => ({ connected: false })),
+          getKitStatus().catch(() => ({ connected: false })),
+          getMailchimpStatus().catch(() => ({ connected: false }))
+        ]);
+
+        const hasEmailProvider =
+          gmailStatus.connected ||
+          sendgridStatus.connected ||
+          kitStatus.connected ||
+          mailchimpStatus.connected;
+
+        if (!hasEmailProvider) {
+          setScheduleNotification({
+            message: 'No email provider connected. Go to Settings to connect Gmail, SendGrid, Kit, or Mailchimp.',
+            type: 'error'
+          });
+          setTimeout(() => setScheduleNotification(null), 5000);
           return;
-        } finally {
-          setIsCheckingMailchimp(false);
         }
-      } else {
-        setIsCheckingKit(true);
-        try {
-          const status = await getKitStatus();
-          if (!status.connected || status.tokenExpired) {
-            if (status.tokenExpired) {
-              setScheduleNotification({ message: 'Your Kit access has expired. Reconnect to continue.', type: 'error' });
-              setTimeout(() => setScheduleNotification(null), 5000);
-            }
-            setShowConnectKitModal(true);
-            return;
-          }
-        } catch (e) {
-          console.error('Failed to check Kit status:', e);
-          setShowConnectKitModal(true);
-          return;
-        } finally {
-          setIsCheckingKit(false);
-        }
+      } catch (e) {
+        console.error('Failed to check email provider status:', e);
+        setScheduleNotification({
+          message: 'Failed to verify email provider connection. Please try again.',
+          type: 'error'
+        });
+        setTimeout(() => setScheduleNotification(null), 5000);
+        return;
+      } finally {
+        setIsCheckingMailchimp(false);
       }
     }
     if (!isSchedulingSupported(activePlatform)) {
@@ -666,9 +663,6 @@ const ResultsPage: React.FC<ResultsPageProps> = ({ id, onBack }) => {
         // Standard single post scheduling for other platforms
         const content = getContentForPlatform(activePlatform, transcript.result.socialContent);
 
-        console.log('[DEBUG Schedule] activePlatform:', activePlatform);
-        console.log('[DEBUG Schedule] content from getContentForPlatform:', content?.substring(0, 100));
-        console.log('[DEBUG Schedule] linkedinPost:', transcript.result.socialContent?.linkedinPost?.substring(0, 100));
 
         const emailSubject = transcript.result.socialContent?.emailNewsletter?.subject;
         const emailBody = transcript.result.socialContent?.emailNewsletter?.body;
@@ -1232,16 +1226,16 @@ ${(transcript.content || '').substring(0, 1000)}
                 <circle cx="64" cy="64" r="56" stroke="#f3f4f6" strokeWidth="12" fill="transparent" />
                 <circle
                   cx="64" cy="64" r="56"
-                  stroke={sponsorship.score >= 80 ? '#10B981' : sponsorship.score >= 50 ? '#F59E0B' : '#EF4444'}
+                  stroke={(sponsorship.score ?? sponsorship.readinessScore ?? 0) >= 80 ? '#10B981' : (sponsorship.score ?? sponsorship.readinessScore ?? 0) >= 50 ? '#F59E0B' : '#EF4444'}
                   strokeWidth="12"
                   fill="transparent"
                   strokeDasharray={351}
-                  strokeDashoffset={351 - (351 * sponsorship.score / 100)}
+                  strokeDashoffset={351 - (351 * (sponsorship.score ?? sponsorship.readinessScore ?? 0) / 100)}
                   strokeLinecap="round"
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center flex-col">
-                <span className="text-3xl font-bold text-textPrimary">{sponsorship.score}</span>
+                <span className="text-3xl font-bold text-textPrimary">{sponsorship.score ?? sponsorship.readinessScore ?? 0}</span>
                 <span className="text-xs font-bold text-textMuted uppercase">Score</span>
               </div>
             </div>
@@ -1357,14 +1351,16 @@ ${(transcript.content || '').substring(0, 1000)}
             </div>
           </div>
 
-          <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
-            <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
-              <Target className="h-5 w-5 text-primary" /> Target Audience Profile
-            </h3>
-            <p className="text-textSecondary text-sm leading-relaxed bg-gray-100 p-4 rounded-lg border border-gray-300">
-              {sponsorship.targetAudienceProfile}
-            </p>
-          </div>
+          {sponsorship.targetAudienceProfile && (
+            <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
+              <h3 className="font-bold text-textPrimary mb-4 flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" /> Target Audience Profile
+              </h3>
+              <p className="text-textSecondary text-sm leading-relaxed bg-gray-100 p-4 rounded-lg border border-gray-300">
+                {sponsorship.targetAudienceProfile}
+              </p>
+            </div>
+          )}
 
           {sponsorship.actionableNextSteps && sponsorship.actionableNextSteps.length > 0 && (
             <div className="bg-gray-100 rounded-xl border border-gray-300 p-6">
@@ -1635,14 +1631,14 @@ ${(transcript.content || '').substring(0, 1000)}
               </button>
 
               <button
-                onClick={() => handleDownload('kit')}
-                className="w-full flex items-center justify-center gap-2 bg-accent-soft text-primary border border-primary px-4 py-3 rounded-lg font-bold hover:bg-primary transition"
+                disabled
+                className="w-full flex items-center justify-center gap-2 bg-gray-100 text-textMuted border border-gray-300 px-4 py-3 rounded-lg font-bold cursor-not-allowed opacity-60"
               >
-                <FileText className="h-5 w-5" /> Download Media Kit
+                <FileText className="h-5 w-5" /> Media Kit — Coming Soon
               </button>
             </div>
 
-            <p className="text-xs text-center text-textMuted mb-6">Generates a PDF one-sheet with your stats and audience profile.</p>
+            <p className="text-xs text-center text-textMuted mb-6">A PDF one-sheet with your stats and audience profile — coming soon.</p>
 
             <h4 className="font-bold text-textPrimary text-sm mb-3">Recommended Ad Networks</h4>
             <ul className="space-y-2">
@@ -1762,11 +1758,36 @@ ${(transcript.content || '').substring(0, 1000)}
                   </button>
                   {repurposed.emailSeries && repurposed.emailSeries.length > 0 && (
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        setSeriesScheduleType('email');
-                        setSeriesScheduleItems(repurposed.emailSeries || []);
-                        setShowSeriesScheduleWizard(true);
+                        
+                        // Check if any email provider is connected
+                        try {
+                          const [gmailStatus, sendgridStatus, kitStatus, mailchimpStatus] = await Promise.all([
+                            getGmailStatus().catch(() => ({ connected: false })),
+                            getSendGridStatus().catch(() => ({ connected: false })),
+                            getKitStatus().catch(() => ({ connected: false })),
+                            getMailchimpStatus().catch(() => ({ connected: false }))
+                          ]);
+
+                          const hasEmailProvider = 
+                            gmailStatus.connected || 
+                            sendgridStatus.connected || 
+                            kitStatus.connected || 
+                            mailchimpStatus.connected;
+
+                          if (!hasEmailProvider) {
+                            alert('Please connect an email provider first. Go to Settings to connect Gmail, SendGrid, Kit, or Mailchimp.');
+                            return;
+                          }
+
+                          setSeriesScheduleType('email');
+                          setSeriesScheduleItems(repurposed.emailSeries || []);
+                          setShowSeriesScheduleWizard(true);
+                        } catch (error) {
+                          console.error('Failed to check email provider status:', error);
+                          alert('Failed to verify email provider connection. Please try again.');
+                        }
                       }}
                       className="px-3 py-1 bg-primary text-white rounded-md text-sm hover:bg-primary/90 transition flex items-center gap-1"
                     >
@@ -2076,7 +2097,7 @@ ${(transcript.content || '').substring(0, 1000)}
               <p className="text-xs text-textMuted mt-1">Optimized content ready to post</p>
             </div>
             <div className="flex items-center gap-2">
-              {!['tiktok', 'youtube', 'twitter', 'facebook'].includes(activePlatform) && (
+              {!['tiktok', 'youtube', 'twitter', 'facebook', 'medium'].includes(activePlatform) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -2117,16 +2138,18 @@ ${(transcript.content || '').substring(0, 1000)}
               <div className="space-y-3">
                 <div className="bg-gray-100 border border-gray-300 rounded-lg px-4 py-3">
                   <span className="text-xs font-semibold text-textMuted uppercase tracking-wide">Subject</span>
-                  <p className="text-sm text-textPrimary font-medium mt-1">
-                    {socialContent.emailNewsletter?.subject}
-                  </p>
+                  <MarkdownParagraph className="text-sm text-textPrimary font-medium mt-1">
+                    {socialContent.emailNewsletter?.subject || ''}
+                  </MarkdownParagraph>
                 </div>
                 <div className="space-y-3">
                   {socialContent.emailNewsletter?.body?.split('\n').map((para: string, i: number) => {
                     const trimmed = para.trim();
                     if (!trimmed) return null;
-                    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return <li key={i} className="ml-4 text-sm text-textSecondary list-disc">{trimmed.slice(2)}</li>;
-                    return <p key={i} className="text-sm text-textSecondary leading-relaxed">{trimmed}</p>;
+                    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                      return <MarkdownListItem key={i} className="ml-4 text-sm text-textSecondary list-disc">{trimmed.slice(2)}</MarkdownListItem>;
+                    }
+                    return <MarkdownParagraph key={i} className="text-sm text-textSecondary leading-relaxed">{trimmed}</MarkdownParagraph>;
                   })}
                 </div>
               </div>
@@ -2191,12 +2214,18 @@ ${(transcript.content || '').substring(0, 1000)}
                 {socialContent.mediumArticle?.split('\n').map((para: string, i: number) => {
                   const trimmed = para.trim();
                   if (!trimmed) return null;
-                  if (trimmed.startsWith('# ')) return <h1 key={i} className="text-xl font-bold text-textPrimary mt-6 mb-2">{trimmed.slice(2)}</h1>;
-                  if (trimmed.startsWith('## ')) return <h2 key={i} className="text-lg font-bold text-textPrimary mt-5 mb-2">{trimmed.slice(3)}</h2>;
-                  if (trimmed.startsWith('### ')) return <h3 key={i} className="text-base font-bold text-textPrimary mt-4 mb-1">{trimmed.slice(4)}</h3>;
-                  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return <li key={i} className="ml-4 text-sm text-textSecondary list-disc">{trimmed.slice(2)}</li>;
-                  if (trimmed.startsWith('> ')) return <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-textMuted text-sm my-2">{trimmed.slice(2)}</blockquote>;
-                  return <p key={i} className="text-sm text-textSecondary leading-relaxed mb-3">{trimmed}</p>;
+                  if (trimmed.startsWith('# ')) return <MarkdownHeading key={i} level={1} className="text-xl font-bold text-textPrimary mt-6 mb-2">{trimmed.slice(2)}</MarkdownHeading>;
+                  if (trimmed.startsWith('## ')) return <MarkdownHeading key={i} level={2} className="text-lg font-bold text-textPrimary mt-5 mb-2">{trimmed.slice(3)}</MarkdownHeading>;
+                  if (trimmed.startsWith('### ')) return <MarkdownHeading key={i} level={3} className="text-base font-bold text-textPrimary mt-4 mb-1">{trimmed.slice(4)}</MarkdownHeading>;
+                  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return <MarkdownListItem key={i} className="ml-4 text-sm text-textSecondary list-disc">{trimmed.slice(2)}</MarkdownListItem>;
+                  if (trimmed.startsWith('> ')) {
+                    return (
+                      <blockquote key={i} className="border-l-4 border-primary pl-4 italic text-textMuted text-sm my-2">
+                        <MarkdownParagraph className="">{trimmed.slice(2)}</MarkdownParagraph>
+                      </blockquote>
+                    );
+                  }
+                  return <MarkdownParagraph key={i} className="text-sm text-textSecondary leading-relaxed mb-3">{trimmed}</MarkdownParagraph>;
                 })}
               </div>
             ) : (
@@ -2608,9 +2637,9 @@ ${(transcript.content || '').substring(0, 1000)}
 
                 <div className="h-px bg-gray-100 my-1"></div>
 
-                <button onClick={() => handleDownload('kit')} className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textSecondary hover:bg-gray-100 text-left">
-                  <Briefcase className="h-4 w-4 text-accent-violet" />
-                  Media Kit
+                <button disabled className="flex items-center gap-3 w-full px-4 py-2 text-sm text-textMuted cursor-not-allowed text-left opacity-60">
+                  <Briefcase className="h-4 w-4 text-textMuted" />
+                  Media Kit — Coming Soon
                 </button>
 
                 <div className="h-px bg-gray-100 my-1"></div>

@@ -114,7 +114,7 @@ async function runBetaOperations() {
     if (weekError) throw weekError;
 
     // Display metrics
-    const betaCapacity = 50;
+    const betaCapacity = 100;
     const remaining = Math.max(0, betaCapacity - (totalUsers || 0));
 
     console.log('📈 Current Metrics:');

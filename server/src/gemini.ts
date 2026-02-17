@@ -808,6 +808,54 @@ Be brutally honest. If they're not ready, say so. If they're leaving money on th
             type: Type.ARRAY,
             description: "2-3 bullet points: why this recommendation fits their CURRENT status",
             items: { type: Type.STRING }
+          },
+          score: {
+            type: Type.NUMBER,
+            description: "Sponsorship readiness score 0-100 (same as readinessScore, for display consistency)"
+          },
+          targetAudienceProfile: {
+            type: Type.STRING,
+            description: "Detailed audience profile (demographics, psychographics, interests) that makes this content sponsor-ready"
+          },
+          potentialAdSpots: {
+            type: Type.ARRAY,
+            description: "3-5 specific timestamp suggestions for ad placement with context",
+            items: { type: Type.STRING }
+          },
+          actionableNextSteps: {
+            type: Type.ARRAY,
+            description: "3-5 specific action items to land sponsors (e.g. 'Create media kit', 'Reach out to X via Y')",
+            items: { type: Type.STRING }
+          },
+          platformRecommendations: {
+            type: Type.OBJECT,
+            description: "Monetization opportunities by platform",
+            properties: {
+              podcast: {
+                type: Type.OBJECT,
+                properties: {
+                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+                  cpmRange: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              },
+              youtube: {
+                type: Type.OBJECT,
+                properties: {
+                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+                  cpmRange: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              },
+              newsletter: {
+                type: Type.OBJECT,
+                properties: {
+                  priority: { type: Type.STRING, enum: ["High", "Medium", "Low"] },
+                  cpmRange: { type: Type.STRING },
+                  notes: { type: Type.STRING }
+                }
+              }
+            }
           }
         },
         required: [
@@ -821,7 +869,12 @@ Be brutally honest. If they're not ready, say so. If they're leaving money on th
           "suggestedSponsors",
           "truthStatement",
           "nextBestMove",
-          "whyThisWorksNow"
+          "whyThisWorksNow",
+          "score",
+          "targetAudienceProfile",
+          "potentialAdSpots",
+          "actionableNextSteps",
+          "platformRecommendations"
         ]
       }
     }

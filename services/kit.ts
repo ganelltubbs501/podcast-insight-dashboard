@@ -82,6 +82,26 @@ export async function connectKit(): Promise<void> {
 /**
  * Disconnect Kit account
  */
+/**
+ * Send an email via Kit
+ */
+export async function sendKitEmail(to: string, subject: string, body: string): Promise<void> {
+  const token = await getAuthToken();
+  const response = await fetch(`${API_BASE}/api/integrations/kit/send`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ to, subject, body }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to send email via Kit');
+  }
+}
+
 export async function disconnectKit(): Promise<{ success: boolean; message: string }> {
   try {
     const token = await getAuthToken();

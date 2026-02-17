@@ -212,22 +212,21 @@ export const downloadMediaKit = async (transcript: Transcript) => {
     addText(result.seo?.keywords.slice(0, 8).join(", ") || "", 11);
     addSpacing(10);
 
-    // Stats Placeholder
-    // Draw a box for stats
+    // Stats
+    const score = result.sponsorship.score;
+    const engagementLabel = score >= 80 ? "Very High" : score >= 60 ? "High" : score >= 40 ? "Moderate" : "Low";
     doc.setDrawColor(220, 220, 220);
     doc.setFillColor(249, 250, 251);
     doc.roundedRect(margin, yPos, contentWidth, 40, 3, 3, 'FD');
-    
+
     const statsY = yPos + 15;
     doc.setFontSize(10); doc.setTextColor(100, 100, 100);
-    doc.text("ESTIMATED REACH", margin + 20, statsY);
-    doc.text("ENGAGEMENT SCORE", pageWidth / 2, statsY, {align: 'center'});
-    doc.text("SPONSOR FIT", pageWidth - margin - 20, statsY, {align: 'right'});
-    
+    doc.text("SPONSOR FIT", margin + contentWidth * 0.25, statsY, {align: 'center'});
+    doc.text("ENGAGEMENT SCORE", margin + contentWidth * 0.75, statsY, {align: 'center'});
+
     doc.setFontSize(16); doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold");
-    doc.text("5,000+", margin + 20, statsY + 10);
-    doc.text("High", pageWidth / 2, statsY + 10, {align: 'center'});
-    doc.text(`${result.sponsorship.score}/100`, pageWidth - margin - 20, statsY + 10, {align: 'right'});
+    doc.text(`${score}/100`, margin + contentWidth * 0.25, statsY + 10, {align: 'center'});
+    doc.text(engagementLabel, margin + contentWidth * 0.75, statsY + 10, {align: 'center'});
 
     yPos += 55;
 

@@ -225,6 +225,7 @@ export async function getUsageMetrics(): Promise<UsageMetrics> {
     quotaResetDate: cycleEnd,
     hoursSaved: Math.round(used * 0.5),
     isUnlimited: backendUsage?.isUnlimited ?? false,
+    plan: backendUsage?.plan ?? undefined,
   } as UsageMetrics;
 }
 
@@ -250,7 +251,6 @@ export async function getScheduledPosts() {
     throw error;
   }
 
-  console.log('[getScheduledPosts] Raw data from Supabase:', data);
   return data || [];
 }
 
@@ -269,12 +269,6 @@ export async function schedulePost(post: {
   metadata?: Record<string, any>;
   teamId?: string;
 }) {
-  console.log('[schedulePost] INSERTING:', {
-    platform: post.platform,
-    contentPreview: post.content?.substring(0, 160),
-    hasSubjectPrefix: post.content?.startsWith('Subject:'),
-  });
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 

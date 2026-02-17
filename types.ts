@@ -360,4 +360,5 @@ export interface UsageMetrics {
   topPerformingType: string;
   quotaResetDate: string;
   isUnlimited?: boolean;
+  plan?: string;
 }

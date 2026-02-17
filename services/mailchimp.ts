@@ -91,6 +91,26 @@ export async function connectMailchimp(): Promise<void> {
 /**
  * Disconnect Mailchimp account
  */
+/**
+ * Send an email via Mailchimp
+ */
+export async function sendMailchimpEmail(to: string, subject: string, body: string): Promise<void> {
+  const token = await getAuthToken();
+  const response = await fetch(`${API_BASE}/api/integrations/mailchimp/send`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ to, subject, body }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to send email via Mailchimp');
+  }
+}
+
 export async function disconnectMailchimp(): Promise<{ success: boolean; message: string }> {
   try {
     const token = await getAuthToken();

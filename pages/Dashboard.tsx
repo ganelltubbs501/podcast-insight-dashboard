@@ -76,6 +76,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNewAnalysis, onViewResult
   const usagePercent = metrics && !unlimited ? Math.round((metrics.transcriptsUsed / metrics.transcriptQuota) * 100) : 0;
   const isNearLimit = !unlimited && usagePercent >= 80;
   const remaining = metrics && !unlimited ? metrics.transcriptQuota - metrics.transcriptsUsed : 0;
+  // Use the plan from the backend usage response (authoritative) with user.plan as fallback
+  const displayPlan = (metrics?.plan as User['plan']) || user.plan;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -169,8 +171,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onNewAnalysis, onViewResult
           <div className="bg-gray-100 p-6 rounded-xl border border-gray-300 shadow-sm flex flex-col justify-between">
             <div>
               <h3 className="text-sm font-medium text-textMuted mb-1">Current Plan</h3>
-              <p className="text-2xl font-bold text-textPrimary">{PLAN_DISPLAY[user.plan]?.name ?? user.plan}</p>
-              <p className="text-xs text-textSecondary mt-2">{PLAN_DISPLAY[user.plan]?.description ?? ''}</p>
+              <p className="text-2xl font-bold text-textPrimary">{PLAN_DISPLAY[displayPlan]?.name ?? displayPlan}</p>
+              <p className="text-xs text-textSecondary mt-2">{PLAN_DISPLAY[displayPlan]?.description ?? ''}</p>
             </div>
             <button
               onClick={() => navigate('/settings/billing')}

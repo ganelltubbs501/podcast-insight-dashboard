@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Users, UserPlus, Headphones, BarChart3, AlertTriangle, RefreshCw, Trash2, Mail, ExternalLink } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
+async function getAuthToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error('Not authenticated');
+  return session.access_token;
+}
 
 interface BetaMetrics {
   totalUsers: number;
@@ -35,12 +44,13 @@ const BetaAdmin: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
+      const token = await getAuthToken();
       const [metricsRes, testersRes] = await Promise.all([
-        fetch('/api/admin/beta/metrics', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('supabase.auth.token')}` }
+        fetch(`${API_BASE}/api/admin/beta/metrics`, {
+          headers: { Authorization: `Bearer ${token}` }
         }),
-        fetch('/api/admin/beta/testers', {
-          headers: { Authorization: `Bearer ${localStorage.getItem('supabase.auth.token')}` }
+        fetch(`${API_BASE}/api/admin/beta/testers`, {
+          headers: { Authorization: `Bearer ${token}` }
         })
       ]);
 
@@ -66,9 +76,10 @@ const BetaAdmin: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`/api/admin/beta/remove-tester/${userId}`, {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE}/api/admin/beta/remove-tester/${userId}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('supabase.auth.token')}` }
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       if (!response.ok) {
@@ -85,11 +96,12 @@ const BetaAdmin: React.FC = () => {
 
   const reInviteTester = async (email: string) => {
     try {
-      const response = await fetch('/api/admin/beta/reinvite', {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE}/api/admin/beta/reinvite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('supabase.auth.token')}`
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ email })
       });
@@ -187,13 +199,13 @@ const BetaAdmin: React.FC = () => {
       <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm mb-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Beta Capacity</h3>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-gray-600">Used: {metrics?.totalUsers || 0} / {metrics?.betaCapacity || 50}</span>
+          <span className="text-sm text-gray-600">Used: {metrics?.totalUsers || 0} / {metrics?.betaCapacity || 100}</span>
           <span className="text-sm text-gray-600">Remaining: {metrics?.betaRemaining || 0}</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2">
           <div
             className="bg-primary h-2 rounded-full"
-            style={{ width: `${((metrics?.totalUsers || 0) / (metrics?.betaCapacity || 50)) * 100}%` }}
+            style={{ width: `${((metrics?.totalUsers || 0) / (metrics?.betaCapacity || 100)) * 100}%` }}
           />
         </div>
       </div>

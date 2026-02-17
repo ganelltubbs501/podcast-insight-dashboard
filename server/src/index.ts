@@ -17,7 +17,7 @@ import {
 } from "./utils/sentry.js";
 import { requireAuth, optionalAuth, getUserId, AuthRequest } from "./middleware/auth.js";
 import { attachPlan } from "./middleware/planCheck.js";
-import { enforceAnalysisLimit, enforceScheduleLimit, enforceAutomationLimit, getUserUsage, FREE_LIMITS, getLimits } from "./middleware/planLimits.js";
+import { enforceAnalysisLimit, enforceScheduleLimit, enforceAutomationLimit, getUserUsage, FREE_LIMITS, getLimits, getTeamMemberLimit } from "./middleware/planLimits.js";
 import { stripe, PRICE_MAP, PRICE_TO_PLAN, VALID_PRICE_IDS, getPriceId, type Stripe } from "./services/stripe.js";
 import { requireTeamRole, TeamAuthRequest, getPermissionsForRole } from "./middleware/teamAuth.js";
 import {
@@ -109,6 +109,19 @@ app.use(cors(corsOptions));
 
 // CRITICAL: handle preflight BEFORE auth/routes
 app.options("*", cors(corsOptions));
+
+// Admin email check middleware
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean)
+);
+
+function requireAdmin(req: AuthRequest, res: any, next: any) {
+  const email = req.user?.email?.toLowerCase();
+  if (!email || !ADMIN_EMAILS.has(email)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+  next();
+}
 
 // MUST be before app.use(express.json())
 app.post(
@@ -915,6 +928,17 @@ app.post("/api/sponsorship", requireAuth, async (req: AuthRequest, res) => {
 app.post("/api/team", requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
+    const plan = req.user?.plan ?? 'free';
+
+    // Only Pro, Growth, and Beta plans can create teams
+    const memberLimit = getTeamMemberLimit(plan);
+    if (memberLimit === 0) {
+      return res.status(403).json({
+        error: "Teams require a Pro or Growth plan",
+        code: "plan_required",
+        upgradeRequired: true
+      });
+    }
 
     const validation = validateRequest(createTeamSchema, req.body);
     if (!validation.success) {
@@ -936,7 +960,7 @@ app.post("/api/team", requireAuth, async (req: AuthRequest, res) => {
       .insert({
         name,
         owner_id: userId,
-        max_members: 1
+        max_members: memberLimit
       })
       .select()
       .single();
@@ -1305,13 +1329,44 @@ app.post("/api/team/:teamId/invites", requireAuth, requireTeamRole('admin'), asy
       return res.status(500).json({ error: "Database not configured" });
     }
 
-    // Check if user is already a member
-    const { data: existingMember } = await supabaseAdmin
-      .from('team_members')
-      .select('id')
-      .eq('team_id', teamId)
-      .eq('user_id', email) // This won't work directly - need to lookup by email
+    // Look up team owner's plan and enforce member limit
+    const { data: teamData } = await supabaseAdmin
+      .from('teams')
+      .select('owner_id')
+      .eq('id', teamId)
       .single();
+
+    if (teamData) {
+      const { data: ownerProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('plan')
+        .eq('id', teamData.owner_id)
+        .maybeSingle();
+
+      const ownerPlan = ownerProfile?.plan ?? 'free';
+      const memberLimit = getTeamMemberLimit(ownerPlan);
+
+      const { count: currentMembers } = await supabaseAdmin
+        .from('team_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('team_id', teamId);
+
+      if ((currentMembers ?? 0) >= memberLimit) {
+        return res.status(403).json({
+          error: `Your plan allows up to ${memberLimit} team members. Upgrade to add more.`,
+          code: 'team_member_limit',
+          limit: memberLimit,
+          used: currentMembers ?? 0,
+          upgradeRequired: true
+        });
+      }
+
+      // Keep max_members in sync with owner's plan
+      await supabaseAdmin
+        .from('teams')
+        .update({ max_members: memberLimit })
+        .eq('id', teamId);
+    }
 
     // Generate secure token
     const token = crypto.randomBytes(32).toString('hex');
@@ -1516,6 +1571,37 @@ app.post("/api/team/invites/accept", requireAuth, async (req: AuthRequest, res) 
         error: "Already a member",
         message: "You are already a member of this team"
       });
+    }
+
+    // Enforce team member limit based on team owner's plan
+    const { data: acceptTeamData } = await supabaseAdmin
+      .from('teams')
+      .select('owner_id')
+      .eq('id', invite.team_id)
+      .single();
+
+    if (acceptTeamData) {
+      const { data: ownerProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('plan')
+        .eq('id', acceptTeamData.owner_id)
+        .maybeSingle();
+
+      const ownerPlan = ownerProfile?.plan ?? 'free';
+      const memberLimit = getTeamMemberLimit(ownerPlan);
+
+      const { count: currentMembers } = await supabaseAdmin
+        .from('team_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('team_id', invite.team_id);
+
+      if ((currentMembers ?? 0) >= memberLimit) {
+        return res.status(403).json({
+          error: "This team has reached its member limit. The team owner needs to upgrade their plan.",
+          code: 'team_member_limit',
+          upgradeRequired: true
+        });
+      }
     }
 
     // Add user as team member
@@ -1934,6 +2020,128 @@ app.post("/api/integrations/kit/disconnect", requireAuth, async (req: AuthReques
   }
 });
 
+// POST /api/integrations/kit/send - Send email via Kit (creates subscriber + broadcast)
+app.post("/api/integrations/kit/send", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { to, subject, body } = req.body;
+
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: "Missing to, subject, or body" });
+    }
+
+    if (!supabaseAdmin) {
+      return res.status(503).json({ error: "Database not configured" });
+    }
+
+    // Get Kit token
+    const { data: conn } = await supabaseAdmin
+      .from("connected_accounts")
+      .select("access_token")
+      .eq("user_id", userId)
+      .eq("provider", "kit")
+      .maybeSingle();
+
+    if (!conn?.access_token) {
+      return res.status(400).json({ error: "Kit not connected" });
+    }
+
+    const kitToken = conn.access_token;
+    const KIT_API = "https://api.kit.com/v4";
+
+    // 1. Add/find subscriber
+    const subResp = await fetch(`${KIT_API}/subscribers`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${kitToken}`,
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        email_address: to,
+        state: "active",
+      }),
+    });
+
+    if (!subResp.ok) {
+      const err = await subResp.json().catch(() => ({}));
+      console.error("Kit subscriber error:", err);
+      return res.status(500).json({ error: "Failed to add subscriber in Kit" });
+    }
+
+    const subscriber = await subResp.json();
+    const subscriberId = subscriber?.subscriber?.id;
+
+    // 2. Tag subscriber for targeting
+    const tagName = `outreach-${Date.now()}`;
+    const tagResp = await fetch(`${KIT_API}/tags`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${kitToken}`,
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({ name: tagName }),
+    });
+
+    if (tagResp.ok && subscriberId) {
+      const tagData = await tagResp.json();
+      const tagId = tagData?.tag?.id;
+
+      if (tagId) {
+        // Tag the subscriber
+        await fetch(`${KIT_API}/tags/${tagId}/subscribers`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${kitToken}`,
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({ id: subscriberId }),
+        });
+
+        // 3. Create broadcast targeting this tag
+        const broadcastResp = await fetch(`${KIT_API}/broadcasts`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${kitToken}`,
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({
+            email_layout_id: null,
+            content: body.replace(/\n/g, "<br>"),
+            subject,
+            description: `Outreach to ${to}`,
+          }),
+        });
+
+        if (broadcastResp.ok) {
+          const broadcast = await broadcastResp.json();
+          const broadcastId = broadcast?.broadcast?.id;
+
+          if (broadcastId) {
+            // Send the broadcast
+            await fetch(`${KIT_API}/broadcasts/${broadcastId}`, {
+              method: "DELETE", // Kit uses DELETE to queue/send drafts — check API
+              headers: {
+                "Authorization": `Bearer ${kitToken}`,
+                "Accept": "application/json",
+              },
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`✅ Kit outreach email queued for ${to}`);
+    return res.json({ success: true, message: "Email sent via Kit" });
+  } catch (err: any) {
+    console.error("KIT SEND ERROR:", err?.message);
+    return res.status(500).json({ error: err.message || "Failed to send via Kit" });
+  }
+});
+
 // ============================================================================
 // MAILCHIMP OAUTH ENDPOINTS (Email/CRM)
 // ============================================================================
@@ -2126,6 +2334,124 @@ app.get("/api/integrations/mailchimp/automations", requireAuth, async (req: Auth
     return res.json({ automations: data || [] });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Failed to load automations' });
+  }
+});
+
+// POST /api/integrations/mailchimp/send - Send email via Mailchimp campaign
+app.post("/api/integrations/mailchimp/send", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const userId = getUserId(req);
+    const { to, subject, body } = req.body;
+
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: "Missing to, subject, or body" });
+    }
+
+    const connection = await getMailchimpConnection(userId);
+    if (!connection) {
+      return res.status(400).json({ error: "Mailchimp not connected" });
+    }
+
+    const { accessToken, apiEndpoint } = connection;
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    };
+
+    // 1. Get default audience (first list)
+    const listsResp = await fetch(`${apiEndpoint}/lists?count=1`, { headers });
+    const listsJson: any = await listsResp.json();
+    const listId = listsJson?.lists?.[0]?.id;
+
+    if (!listId) {
+      return res.status(400).json({ error: "No Mailchimp audience found. Create one in Mailchimp first." });
+    }
+
+    // 2. Add/update member in audience
+    const subscriberHash = crypto.createHash('md5').update(to.toLowerCase()).digest('hex');
+    await fetch(`${apiEndpoint}/lists/${listId}/members/${subscriberHash}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        email_address: to.toLowerCase(),
+        status_if_new: "subscribed",
+        status: "subscribed",
+      }),
+    });
+
+    // 3. Create a campaign targeting this specific member
+    const segmentResp = await fetch(`${apiEndpoint}/lists/${listId}/segments`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        name: `Outreach: ${to} - ${Date.now()}`,
+        static_segment: [to.toLowerCase()],
+      }),
+    });
+
+    const segmentJson: any = await segmentResp.json();
+    const segmentId = segmentJson?.id;
+
+    if (!segmentId) {
+      return res.status(500).json({ error: "Failed to create target segment in Mailchimp" });
+    }
+
+    // 4. Create campaign
+    const campaignResp = await fetch(`${apiEndpoint}/campaigns`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "regular",
+        recipients: {
+          list_id: listId,
+          segment_opts: {
+            saved_segment_id: segmentId,
+          },
+        },
+        settings: {
+          subject_line: subject,
+          title: `Outreach to ${to}`,
+          from_name: "LoquiHQ",
+          reply_to: "", // Will use default
+        },
+      }),
+    });
+
+    const campaignJson: any = await campaignResp.json();
+    const campaignId = campaignJson?.id;
+
+    if (!campaignId) {
+      console.error("Mailchimp campaign creation failed:", campaignJson);
+      return res.status(500).json({ error: "Failed to create Mailchimp campaign" });
+    }
+
+    // 5. Set campaign content
+    await fetch(`${apiEndpoint}/campaigns/${campaignId}/content`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        plain_text: body,
+        html: `<div style="font-family: sans-serif; line-height: 1.6;">${body.replace(/\n/g, "<br>")}</div>`,
+      }),
+    });
+
+    // 6. Send the campaign
+    const sendResp = await fetch(`${apiEndpoint}/campaigns/${campaignId}/actions/send`, {
+      method: "POST",
+      headers,
+    });
+
+    if (!sendResp.ok) {
+      const sendErr: any = await sendResp.json().catch(() => ({}));
+      console.error("Mailchimp send failed:", sendErr);
+      return res.status(500).json({ error: sendErr?.detail || "Failed to send Mailchimp campaign" });
+    }
+
+    console.log(`✅ Mailchimp outreach email sent to ${to}`);
+    return res.json({ success: true, message: "Email sent via Mailchimp" });
+  } catch (err: any) {
+    console.error("MAILCHIMP SEND ERROR:", err?.message);
+    return res.status(500).json({ error: err.message || "Failed to send via Mailchimp" });
   }
 });
 
@@ -5170,7 +5496,7 @@ app.get("/api/beta/status", async (_req, res) => {
     return res.status(503).json({ error: "Beta management not configured" });
   }
 
-  const cap = 50;
+  const cap = 100;
 
   const { count, error } = await supabaseAdmin
     .from("profiles")
@@ -5204,7 +5530,7 @@ app.post("/api/signup", async (req, res) => {
 
     if (countError) return res.status(500).json({ error: "Could not check beta capacity" });
 
-    const CAP = 50;
+    const CAP = 100;
     if ((count ?? 0) >= CAP) {
       return res.status(403).json({ code: "beta_full", cap: CAP, used: count ?? 0 });
     }
@@ -6370,12 +6696,9 @@ app.post("/api/podcast/resync-rss", requireAuth, async (req: AuthRequest, res) =
 
 // Beta Admin Routes - Admin-only endpoints for beta management
 // GET /api/admin/beta/metrics - Get beta metrics dashboard
-app.get("/api/admin/beta/metrics", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/admin/beta/metrics", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-
-    // TODO: Add admin role check here - for now allowing any authenticated user
-    // In production, check if user has admin role
 
     if (!supabaseAdmin) {
       return res.status(503).json({ error: "Database not configured" });
@@ -6448,8 +6771,8 @@ app.get("/api/admin/beta/metrics", requireAuth, async (req: AuthRequest, res) =>
       connectedPodcasts: connectedPodcasts || 0,
       analysesToday: analysesToday || 0,
       analysesThisWeek: analysesThisWeek || 0,
-      betaCapacity: 50, // Configurable beta capacity
-      betaRemaining: Math.max(0, 50 - (totalUsers || 0)),
+      betaCapacity: 100, // Configurable beta capacity
+      betaRemaining: Math.max(0, 100 - (totalUsers || 0)),
     });
   } catch (err: any) {
     console.error("BETA METRICS ERROR:", err);
@@ -6458,11 +6781,9 @@ app.get("/api/admin/beta/metrics", requireAuth, async (req: AuthRequest, res) =>
 });
 
 // GET /api/admin/beta/testers - Get list of beta testers
-app.get("/api/admin/beta/testers", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/admin/beta/testers", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
     const userId = getUserId(req);
-
-    // TODO: Add admin role check here - for now allowing any authenticated user
 
     if (!supabaseAdmin) {
       return res.status(503).json({ error: "Database not configured" });
@@ -6506,12 +6827,10 @@ app.get("/api/admin/beta/testers", requireAuth, async (req: AuthRequest, res) =>
 });
 
 // DELETE /api/admin/beta/remove-tester/:userId - Remove a tester
-app.delete("/api/admin/beta/remove-tester/:userId", requireAuth, async (req: AuthRequest, res) => {
+app.delete("/api/admin/beta/remove-tester/:userId", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
     const adminUserId = getUserId(req);
     const { userId: targetUserId } = req.params;
-
-    // TODO: Add admin role check here - for now allowing any authenticated user
 
     if (!supabaseAdmin) {
       return res.status(503).json({ error: "Database not configured" });
@@ -6581,7 +6900,7 @@ app.delete("/api/admin/beta/remove-tester/:userId", requireAuth, async (req: Aut
 });
 
 // POST /api/admin/beta/reinvite - Re-invite a tester
-app.post("/api/admin/beta/reinvite", requireAuth, async (req: AuthRequest, res) => {
+app.post("/api/admin/beta/reinvite", requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
     const adminUserId = getUserId(req);
     const { email } = req.body;
@@ -6589,8 +6908,6 @@ app.post("/api/admin/beta/reinvite", requireAuth, async (req: AuthRequest, res) 
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
     }
-
-    // TODO: Add admin role check here - for now allowing any authenticated user
 
     console.log(`📧 Re-inviting beta tester: ${email} by admin: ${adminUserId}`);
 

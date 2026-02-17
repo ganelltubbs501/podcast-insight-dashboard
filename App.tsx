@@ -10,7 +10,7 @@ import ContentCalendar from './pages/ContentCalendar';
 import { TeamProvider } from './contexts/TeamContext';
 import GuestOutreach from './pages/GuestOutreach';
 import UsageAnalytics from './pages/UsageAnalytics';
-import DeveloperSettings from './pages/DeveloperSettings';
+
 import ConnectPodcast from './pages/ConnectPodcast';
 import PodcastAnalytics from './pages/PodcastAnalytics';
 import BetaAdmin from './pages/BetaAdmin';
@@ -36,7 +36,7 @@ import BetaBanner from './components/BetaBanner';
 import UsageNudge from './components/UsageNudge';
 import Pricing from './pages/Pricing';
 import { User } from './types';
-import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, Terminal, CircleHelp, Headphones, Settings as SettingsIcon } from 'lucide-react';
+import { LogOut, LayoutDashboard, BarChart3, Users, Calendar, UserPlus, Menu, X, Plus, PieChart, CircleHelp, Headphones, Settings as SettingsIcon } from 'lucide-react';
 import { validateEnv } from './src/utils/env';
 import { initSentry, ErrorBoundary, setUser as setSentryUser } from './src/utils/sentry';
 import AppErrorBoundary from './components/ErrorBoundary';
@@ -428,12 +428,14 @@ const AppContent: React.FC = () => {
                     >
                         <UserPlus className="h-4 w-4" /> Outreach
                     </button>
+                    {user && ['beta', 'beta_grace', 'pro', 'growth'].includes(user.plan) && (
                     <button
                       onClick={() => navigate('/team')}
                       className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-textSecondary hover:bg-gray-300'}`}
                     >
                         <Users className="h-4 w-4" /> Team
                     </button>
+                    )}
                 </div>
             </div>
 
@@ -462,14 +464,7 @@ const AppContent: React.FC = () => {
                  >
                    <SettingsIcon className="h-5 w-5" />
                  </button>
-                 <button
-                   onClick={() => navigate('/developer')}
-                   className={`transition hidden md:block ${isActive('/developer') ? 'text-primary' : 'text-textMuted hover:text-primary'}`}
-                   title="Developer Settings"
-                 >
-                   <Terminal className="h-5 w-5" />
-                 </button>
-
+ 
                  {/* Theme Toggle */}
                  <ThemeToggle />
 
@@ -525,15 +520,15 @@ const AppContent: React.FC = () => {
                      <button onClick={() => handleNav('/outreach')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/outreach') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <UserPlus className="h-5 w-5" /> Outreach
                      </button>
+                     {user && ['beta', 'beta_grace', 'pro', 'growth'].includes(user.plan) && (
                      <button onClick={() => handleNav('/team')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/team') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <Users className="h-5 w-5" /> Team Workspace
                      </button>
+                     )}
                      <button onClick={() => handleNav('/settings')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/settings') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
                          <SettingsIcon className="h-5 w-5" /> Settings
                      </button>
-                     <button onClick={() => handleNav('/developer')} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 ${isActive('/developer') ? 'bg-indigo-50 text-primary' : 'text-textSecondary'}`}>
-                         <Terminal className="h-5 w-5" /> Developer
-                     </button>
+
                      <button onClick={() => { setHelpPanelOpen(true); setMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl font-medium flex items-center gap-3 text-gray-600`}>
                          <CircleHelp className="h-5 w-5" /> Help & Support
                      </button>
@@ -633,15 +628,12 @@ const AppContent: React.FC = () => {
         } />
 
         <Route path="/team" element={
-          user ? <TeamWorkspace /> : <Navigate to="/login" />
+          user ? <TeamWorkspace user={user} /> : <Navigate to="/login" />
         } />
 
         <Route path="/invite" element={<AcceptInvite />} />
 
 
-        <Route path="/developer" element={
-          user ? <DeveloperSettings /> : <Navigate to="/login" />
-        } />
 
         <Route path="/settings" element={
           user ? <Settings /> : <Navigate to="/login" />
@@ -679,7 +671,9 @@ const AppContent: React.FC = () => {
         } />
 
         <Route path="/beta-admin" element={
-          user ? <BetaAdmin /> : <Navigate to="/login" />
+          user && (import.meta.env.VITE_ADMIN_EMAILS || '').toLowerCase().split(',').includes(user.email.toLowerCase())
+            ? <BetaAdmin />
+            : <Navigate to="/dashboard" replace />
         } />
 
         <Route path="/beta-guide" element={
@@ -698,12 +692,8 @@ const AppContent: React.FC = () => {
           user ? <Pricing user={user} /> : <Navigate to="/login" />
         } />
 
-        <Route path="/privacy" element={
-          user ? <PrivacyPolicy /> : <Navigate to="/login" />
-        } />
-        <Route path="/terms" element={
-          user ? <TermsOfService /> : <Navigate to="/login" />
-        } />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<TermsOfService />} />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
